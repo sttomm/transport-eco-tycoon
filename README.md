@@ -11,12 +11,15 @@ No build step. Serve the folder and open it:
 
 ```bash
 cd transport-eco-tycoon
-python3 -m http.server 8741
+python3 serve.py 8741
 # → http://localhost:8741
 ```
 
-(Any static server works. Three.js is loaded from a CDN, so you need internet
-on first load.)
+(`serve.py` is `http.server` plus `Cache-Control: no-cache` — with a plain
+static server, browsers cache the ES modules and a reload after a `git pull`
+or local edit can load a stale old/new mix that breaks on import. Any static
+server works if it disables caching. Three.js is loaded from a CDN, so you
+need internet on first load.)
 
 ## How to play
 
