@@ -55,6 +55,11 @@ discover this.
   available — modeling hydrogen as industrial feedstock, not just storage.
 - EV charging: trucks 0.8 MW, buses 0.5 MW while loading at stations
   (megawatt-charging research doubles it). Charging pauses during blackouts.
+- Rail traction: locomotives draw 1.0 MW + 0.15 MW/wagon **live from the grid**
+  while moving (no battery — catenary feed, like real electrified rail where a
+  regional EMU averages ~1-2 MW). Counted in the "charging" demand slice.
+  Train speed scales with `servedFraction`: a strained grid slows trains, a
+  blackout stops them.
 
 ## Dispatch (energy.js#tickGrid)
 

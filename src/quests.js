@@ -51,6 +51,11 @@ export const QUESTS = [
     desc: 'Deliver 40 green steel to a city — the most valuable cargo in the region.',
     value: stat('steelToCity'),
   },
+  {
+    id: 'railAge', req: 'grainChain', title: '🚆 The electric railway', target: 120, reward: 50000,
+    desc: 'Steel wheels on steel rails move a tonne with ~10× less energy than trucks. Lay track between two Rail Stations, buy a locomotive, add wagons (passenger or freight) and move 120 units by rail. The loco draws ~1 MW live from your grid!',
+    value: stat('railUnits'),
+  },
   // --- energy chain
   {
     id: 'storagePlay', title: '🔋 Store the sun', target: 40, reward: 25000,

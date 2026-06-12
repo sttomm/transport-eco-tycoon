@@ -1,6 +1,6 @@
 import { G, on, fmtMoney, fmtTime, spend } from './state.js';
-import { BUILDINGS, VEHICLES, TECHS, TIPS, LEARN, CARGO } from './data.js';
-import { createRoute, buyVehicle, sellVehicle } from './transport.js';
+import { BUILDINGS, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from './data.js';
+import { createRoute, buyVehicle, sellVehicle, addWagon } from './transport.js';
 
 const $ = id => document.getElementById(id);
 let activeTab = null;
@@ -13,7 +13,12 @@ export function initUI() {
     const map = { solar: 'firstSolar', wind: 'firstWind', battery: 'firstBattery', electrolyzer: 'firstElectrolyzer', fuelcell: 'firstFuelcell' };
     if (map[p.type]) showTip(map[p.type]);
   });
-  on('stationBuilt', st => { if (st.stype === 'bus') showTip('firstBusStop'); });
+  on('stationBuilt', st => {
+    if (st.stype === 'bus') showTip('firstBusStop');
+    if (st.stype === 'train') showTip('firstTrainStation');
+  });
+  on('railBuilt', () => showTip('firstRail'));
+  on('vehicleBought', v => { if (v.kind === 'train') showTip('firstTrain'); });
   setTimeout(() => showTip('welcome'), 800);
 
   $('speeds').addEventListener('click', e => {
@@ -73,7 +78,7 @@ export function selectTool(id) {
   G.routeEdit = null;
   document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === id));
   $('toolhint').textContent = id
-    ? (id === 'road' ? 'Click & drag to build road. ESC to cancel.' : `Click the map to place ${BUILDINGS[id].name}. ESC to cancel.`)
+    ? (BUILDINGS[id].drag ? `Click & drag to build ${BUILDINGS[id].name.toLowerCase()}. ESC to cancel.` : `Click the map to place ${BUILDINGS[id].name}. ESC to cancel.`)
     : '';
 }
 
@@ -318,7 +323,7 @@ export function tickResearch(gameHours) {
 export function renderRoutes() {
   const el = $('tab-routes');
   el.innerHTML = `<h3>🚌 Routes</h3>
-    <div class="dim small">1. Build stations near industries/cities (toolbar). 2. Create a route, click stations on the map to add stops. 3. Buy vehicles.</div>
+    <div class="dim small">1. Build stations near industries/cities (toolbar). 2. Create a route, click stations on the map to add stops. 3. Buy vehicles. Trains need Rail Stations linked by track — add wagons to give them capacity.</div>
     <button id="newroute" class="big">+ New Route</button><div id="routelist"></div>`;
   el.querySelector('#newroute').onclick = () => {
     if (!G.stations.length) { showTipText('No stations yet', 'Place a Freight Depot or Bus Stop next to a road first.'); return; }
@@ -340,6 +345,7 @@ export function renderRoutes() {
       <div class="route-veh">
         <button data-a="truck">+ ${VEHICLES.truck.icon} ${fmtMoney(VEHICLES.truck.cost)}</button>
         <button data-a="bus">+ ${VEHICLES.bus.icon} ${fmtMoney(VEHICLES.bus.cost)}</button>
+        <button data-a="train">+ ${VEHICLES.train.icon} ${fmtMoney(VEHICLES.train.cost)}</button>
       </div><div class="vehlist" data-r="${r.id}"></div>`;
     d.querySelector('[data-a=del]').onclick = () => {
       [...r.vehicles].forEach(sellVehicle);
@@ -351,15 +357,30 @@ export function renderRoutes() {
     if (eb) eb.onclick = () => { G.routeEdit = r; renderRoutes(); };
     const db = d.querySelector('[data-a=done]');
     if (db) db.onclick = () => { G.routeEdit = null; renderRoutes(); };
-    for (const kind of ['truck', 'bus']) {
+    for (const kind of ['truck', 'bus', 'train']) {
       d.querySelector(`[data-a=${kind}]`).onclick = () => {
         if (r.stops.length < 2) { showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).'); return; }
         if (!spend(VEHICLES[kind].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
         const v = buyVehicle(r, kind);
-        if (!v) { G.money += VEHICLES[kind].cost; showTipText('No road access', 'The first stop has no adjacent road.'); }
+        if (!v) {
+          G.money += VEHICLES[kind].cost;
+          showTipText(kind === 'train' ? 'No rail access' : 'No road access',
+            kind === 'train' ? 'The first stop has no adjacent rail track — trains need Rail Stations connected by track.' : 'The first stop has no adjacent road.');
+        }
         renderRoutes();
       };
     }
+    // wagon buttons live inside the constantly re-rendered vehlist → delegate clicks
+    d.querySelector('.vehlist').onclick = e => {
+      const w = e.target.dataset.w;
+      if (!w) return;
+      const v = r.vehicles[+e.target.dataset.vi];
+      if (!v || v.kind !== 'train') return;
+      if (v.wagons.length >= v.def.maxWagons) { showTipText('Train full', `A locomotive pulls at most ${v.def.maxWagons} wagons.`); return; }
+      if (!spend(WAGONS[w].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
+      addWagon(v, w);
+      renderRoutesLive();
+    };
     list.appendChild(d);
   }
   renderRoutesLive();
@@ -368,15 +389,20 @@ function renderRoutesLive() {
   for (const r of G.routes) {
     const el = document.querySelector(`.vehlist[data-r="${r.id}"]`);
     if (!el) continue;
-    el.innerHTML = r.vehicles.map(v => {
-      let carg;
-      if (v.kind === 'bus') {
-        const groups = (v.pax || []).filter(g => g.n >= 1);
-        carg = groups.length
-          ? `👥 ${groups.reduce((a, g) => a + g.n, 0)} (${groups.map(g => g.type === 'local' ? `${g.n} in ${g.from.name}` : `${g.n} → ${g.dest.name}`).join(', ')})`
-          : 'empty';
-      } else {
-        carg = Object.entries(v.cargo).filter(([, a]) => a > 0).map(([c, a]) => `${CARGO[c].name} ${a.toFixed(0)}`).join(', ') || 'empty';
+    el.innerHTML = r.vehicles.map((v, vi) => {
+      const parts = [];
+      const groups = (v.pax || []).filter(g => g.n >= 1);
+      if (groups.length) parts.push(`👥 ${groups.reduce((a, g) => a + g.n, 0)} (${groups.map(g => g.type === 'local' ? `${g.n} in ${g.from.name}` : `${g.n} → ${g.dest.name}`).join(', ')})`);
+      const freight = Object.entries(v.cargo).filter(([, a]) => a > 0).map(([c, a]) => `${CARGO[c].name} ${a.toFixed(0)}`).join(', ');
+      if (freight) parts.push(freight);
+      const carg = parts.join(' · ') || 'empty';
+      if (v.kind === 'train') {
+        const st = v.state === 'stranded' ? '⚠️ no rail connection!' : v.state === 'loading' ? 'loading' : G.blackout ? '🚫 no traction power!' : '▶';
+        const nPax = v.wagons.filter(w => w.type === 'pax').length, nFr = v.wagons.length - nPax;
+        const wag = v.wagons.length ? `${nPax ? nPax + '×🧍' : ''} ${nFr ? nFr + '×📦' : ''}`.trim() : '<span class="warn">no wagons!</span>';
+        return `<div class="veh small">${v.def.icon} ${st} · ${wag} · ${carg}<br>
+          <button data-w="pax" data-vi="${vi}">+ ${WAGONS.pax.icon} Car ${fmtMoney(WAGONS.pax.cost)}</button>
+          <button data-w="freight" data-vi="${vi}">+ ${WAGONS.freight.icon} Wagon ${fmtMoney(WAGONS.freight.cost)}</button></div>`;
       }
       const st = v.state === 'stranded' ? (v.noRoute ? '⚠️ no road connection!' : '🪫 stranded!') : v.state === 'loading' ? (v.charging ? '⚡charging' : 'loading') : '▶';
       return `<div class="veh small">${v.def.icon} ${st} · 🔋${Math.round(v.battery / v.def.batteryKWh * 100)}% · ${carg}</div>`;
@@ -409,17 +435,18 @@ function renderInfobox() {
     const d = s.def;
     html = `<b>${d.icon} ${d.name}</b><div class="small">${d.desc}</div>`;
   } else if (s.kind === 'station') {
-    let carg;
-    if (s.stype === 'bus' && s.pax) {
-      const parts = [];
+    const parts = [];
+    if ((s.stype === 'bus' || s.stype === 'train') && s.pax) {
       if (s.pax.local >= 1) parts.push(`${Math.round(s.pax.local)} travelling within ${s.paxHome ? s.paxHome.name : 'town'}`);
       for (const [name, n] of Object.entries(s.pax.inter)) if (n >= 1) parts.push(`${Math.round(n)} → ${name}`);
-      carg = parts.join(' · ') || 'nobody waiting';
-    } else {
-      carg = Object.entries(s.cargo).filter(([, a]) => a > 0.5).map(([c, a]) => `${CARGO[c].name}: ${a.toFixed(0)}`).join(' · ') || 'nothing waiting';
     }
+    if (s.stype !== 'bus') {
+      for (const [c, a] of Object.entries(s.cargo)) if (c !== 'pax' && a > 0.5) parts.push(`${CARGO[c].name}: ${a.toFixed(0)}`);
+    }
+    const carg = parts.join(' · ') || 'nothing waiting';
     html = `<b>${s.def.icon} ${s.name || s.def.name}</b><div class="small">Waiting: ${carg}</div>
       ${s.stype === 'bus' ? '<div class="small dim">Buses only board passengers their route can deliver — local trips need a 2nd stop ≥5 tiles away in the same city; intercity trips need a stop at the destination. Press V for the demand overlay.</div>' : ''}
+      ${s.stype === 'train' ? '<div class="small dim">Serves passengers AND freight in radius 7. Trains only board what their wagons can carry and their route can deliver.</div>' : ''}
       <div class="small dim">${G.routeEdit ? 'Click to add to ' + G.routeEdit.name : ''}</div>`;
   } else if (s.kind === 'city') {
     html = `<b>🏙 ${s.name}</b><div class="small">Population ${Math.floor(s.pop).toLocaleString()} · Happiness ${(s.happiness * 100).toFixed(0)}%</div>

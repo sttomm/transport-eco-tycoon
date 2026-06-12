@@ -10,6 +10,7 @@ const { fbm, rand } = noise;
 export const WATER_Y = -0.35;
 let scene;
 let roadMesh, roadDirty = true;
+let railBallast, railSegs, railDirty = true;
 let ambient = { cars: null, peds: null, carList: [], pedList: [] };
 const turbineRotors = [];
 
@@ -25,6 +26,8 @@ export function tile(i, j) {
   return G.tiles[j * G.N + i];
 }
 export function isRoad(i, j) { const t = tile(i, j); return !!t && t.t === 'road'; }
+// rail lives in a flag, not the tile type, so a road tile can also carry a level crossing
+export function isRail(i, j) { const t = tile(i, j); return !!t && !!t.rail; }
 
 function riverX(j) { return G.N * 0.7 + Math.sin(j * 0.075) * 7 + Math.sin(j * 0.021) * 5; }
 
@@ -54,6 +57,7 @@ export function initWorld(sc) {
   buildIndustries();
   buildTrees();
   initRoadMesh();
+  initRailMesh();
   initAmbient();
 }
 
@@ -516,6 +520,14 @@ export function buildPlantMesh(type) {
     g.add(box(3.6, 0.14, 3.6, M('#8d9499')));
     g.add(box(2.6, 1.8, 1.6, M('#c9742e'), 0, 0, -0.9));
     g.add(box(0.5, 1.2, 0.5, M('#4a5560'), 1.4, 0, 1.2)); // charger pillar
+  } else if (type === 'trainStation') {
+    g.add(box(7, 0.5, 2.4, M('#b9b2a4'), 0, 0, 1.6));               // platform
+    g.add(box(4.2, 2.4, 2.6, Mtex(makeStripeTexture('#a8534a', '#934237', 10)), -1.2, 0, -1.4)); // station house
+    const roof = box(4.8, 0.25, 3.1, M('#5a4f46'), -1.2, 2.4, -1.4); g.add(roof);
+    g.add(box(3.2, 0.16, 1.6, M('#dfe3e7'), 1.8, 2.0, 1.6));        // platform canopy
+    g.add(cyl(0.09, 2.0, M('#6a7076'), 0.6, 0, 1.6));
+    g.add(cyl(0.09, 2.0, M('#6a7076'), 3.0, 0, 1.6));
+    g.add(box(0.4, 1.1, 0.1, M('#2c3e50'), -3.0, 0.5, 2.7));        // departures board
   }
   return g;
 }
@@ -592,17 +604,108 @@ function rebuildRoads() {
   roadDirty = false;
 }
 
+// ---------- rails (ballast pads + per-connection track segments) ----------
+function makeBallastTexture() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#6e6a62'; cx.fillRect(0, 0, 64, 64);
+  for (let k = 0; k < 700; k++) {
+    const v = 85 + Math.random() * 60 | 0;
+    cx.fillStyle = `rgba(${v},${v - 4},${v - 10},0.6)`;
+    cx.fillRect(Math.random() * 64, Math.random() * 64, 1.5, 1.5);
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function initRailMesh() {
+  // square gravel pad per rail tile (skipped on road crossings — rails sit on asphalt there)
+  const padGeo = new THREE.BoxGeometry(G.TILE, 0.1, G.TILE);
+  railBallast = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ map: makeBallastTexture(), roughness: 0.95 }), 3000);
+  railBallast.receiveShadow = true;
+  railBallast.count = 0;
+  // half-tile track segment from tile center toward +x: 2 rails + 3 ties, merged
+  const parts = [];
+  const L = G.TILE / 2;
+  for (const z of [-0.55, 0.55]) {
+    const r = new THREE.BoxGeometry(L, 0.09, 0.12);
+    r.translate(L / 2, 0.17, z);
+    parts.push(r);
+  }
+  for (let k = 0; k < 3; k++) {
+    const tie = new THREE.BoxGeometry(0.28, 0.05, 1.6);
+    tie.translate(L * (k + 0.5) / 3, 0.11, 0);
+    parts.push(tie);
+  }
+  // vertex tint: rails bright (steel), ties dark (wood) — one material, vertexColors
+  parts.forEach((g, gi) => {
+    const n = g.attributes.position.count;
+    const v = gi < 2 ? 1 : 0.32;
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(v), 3));
+  });
+  const segGeo = mergeGeometries(parts);
+  const segMat = new THREE.MeshStandardMaterial({ color: '#9aa0a6', roughness: 0.45, metalness: 0.55, vertexColors: true });
+  railSegs = new THREE.InstancedMesh(segGeo, segMat, 9000);
+  railSegs.castShadow = true;
+  railSegs.count = 0;
+  scene.add(railBallast, railSegs);
+  railDirty = true;
+}
+export function refreshRails() { railDirty = true; }
+function rebuildRails() {
+  const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(),
+    s = new THREE.Vector3(1, 1, 1), e = new THREE.Euler();
+  let kp = 0, ks = 0;
+  for (const t of G.tiles) {
+    if (!t.rail) continue;
+    const [x, z] = worldXZ(t.i, t.j);
+    if (t.t !== 'road') {
+      p.set(x, t.h + 0.04, z);
+      q.identity();
+      m.compose(p, q, s);
+      railBallast.setMatrixAt(kp++, m);
+    }
+    let any = false;
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (!isRail(t.i + di, t.j + dj)) continue;
+      any = true;
+      p.set(x, t.h + 0.05, z);
+      e.set(0, Math.atan2(-dj, di), 0); q.setFromEuler(e);
+      m.compose(p, q, s);
+      railSegs.setMatrixAt(ks++, m);
+    }
+    if (!any) { // isolated tile: draw an east-west stub so it's visible
+      for (const yaw of [0, Math.PI]) {
+        p.set(x, t.h + 0.05, z);
+        e.set(0, yaw, 0); q.setFromEuler(e);
+        m.compose(p, q, s);
+        railSegs.setMatrixAt(ks++, m);
+      }
+    }
+  }
+  railBallast.count = kp;
+  railSegs.count = ks;
+  railBallast.instanceMatrix.needsUpdate = true;
+  railSegs.instanceMatrix.needsUpdate = true;
+  railDirty = false;
+}
+
 // ---------- placement ----------
 export function canPlace(toolId, i, j) {
   const def = BUILDINGS[toolId];
   if (!def) return false;
   if (toolId === 'bulldoze') {
     const t = tile(i, j);
-    return !!t && ((t.t === 'road' && !t.cityStreet) || (t.occ && t.occ.removable));
+    return !!t && (t.rail || (t.t === 'road' && !t.cityStreet) || (t.occ && t.occ.removable));
   }
   if (toolId === 'road') {
     const t = tile(i, j);
-    return !!t && (t.t === 'grass' || t.t === 'water') && !t.occ;
+    return !!t && (t.t === 'grass' || t.t === 'water' || (t.t === 'rail' && !t.bridge)) && !t.occ;
+  }
+  if (toolId === 'rail') {
+    const t = tile(i, j);
+    return !!t && !t.rail && (t.t === 'grass' || t.t === 'water' || t.t === 'road') && !t.occ;
   }
   const fp = def.footprint;
   if (!areaFree(i, j, fp)) return false;
@@ -610,6 +713,13 @@ export function canPlace(toolId, i, j) {
     let ok = false;
     for (let d = -1; d <= fp; d++) {
       if (isRoad(i + d, j - 1) || isRoad(i + d, j + fp) || isRoad(i - 1, j + d) || isRoad(i + fp, j + d)) ok = true;
+    }
+    if (!ok) return false;
+  }
+  if (def.nearRail) {
+    let ok = false;
+    for (let d = -1; d <= fp; d++) {
+      if (isRail(i + d, j - 1) || isRail(i + d, j + fp) || isRail(i - 1, j + d) || isRail(i + fp, j + d)) ok = true;
     }
     if (!ok) return false;
   }
@@ -631,12 +741,24 @@ export function place(toolId, i, j) {
     if (t.t === 'water') { t.bridge = true; t.h = WATER_Y + 0.55; } // bridge deck over the river
     t.t = 'road'; if (t.tree) t.tree = false;
     refreshRoads();
+    if (t.rail) refreshRails(); // became a level crossing — redraw without ballast pad
     emit('roadBuilt');
     return { kind: 'road' };
   }
+  if (toolId === 'rail') {
+    const t = tile(i, j);
+    if (t.t === 'water') { t.bridge = true; t.h = WATER_Y + 0.55; t.t = 'rail'; }
+    else if (t.t === 'grass') t.t = 'rail';
+    // on a road tile, t.t stays 'road' → level crossing
+    t.rail = true; if (t.tree) t.tree = false;
+    refreshRails();
+    emit('railBuilt');
+    return { kind: 'rail' };
+  }
+  const STYPE = { busStop: 'bus', truckStop: 'truck', trainStation: 'train' };
   const fp = def.footprint;
   const ref = {
-    kind: toolId === 'busStop' || toolId === 'truckStop' ? 'station' : 'plant',
+    kind: STYPE[toolId] ? 'station' : 'plant',
     type: toolId, def, i, j, fp, removable: true,
   };
   occupy(i, j, fp, ref);
@@ -655,7 +777,7 @@ export function place(toolId, i, j) {
     emit('plantBuilt', ref);
   } else {
     ref.cargo = {}; ref.queue = [];
-    ref.stype = toolId === 'busStop' ? 'bus' : 'truck';
+    ref.stype = STYPE[toolId];
     G.stations.push(ref);
     emit('stationBuilt', ref);
   }
@@ -665,6 +787,15 @@ export function place(toolId, i, j) {
 export function bulldoze(i, j) {
   const t = tile(i, j);
   if (!t) return 0;
+  if (t.rail) { // remove the rail first; on a crossing the road survives
+    t.rail = false;
+    if (t.t === 'rail') {
+      if (t.bridge) { t.t = 'water'; t.bridge = false; t.h = WATER_Y + 0.05; }
+      else t.t = 'grass';
+    }
+    refreshRails();
+    return BUILDINGS.rail.cost * 0.3;
+  }
   if (t.t === 'road' && !t.cityStreet) {
     if (t.bridge) { t.t = 'water'; t.bridge = false; t.h = WATER_Y + 0.05; }
     else t.t = 'grass';
@@ -752,6 +883,7 @@ const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quatern
 
 export function updateWorld(dt, gameDt) {
   if (roadDirty) rebuildRoads();
+  if (railDirty) rebuildRails();
   updateWater(dt);
   // turbines spin with wind
   const windPow = G.wind;

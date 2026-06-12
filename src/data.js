@@ -21,6 +21,14 @@ export const BUILDINGS = {
     name: 'Freight Depot', icon: '📦', cost: 2500, footprint: 1, category: 'transport', nearRoad: true,
     desc: 'Transfers cargo with industries & cities in radius 7. Trucks fast-charge here (grid power!).',
   },
+  rail: {
+    name: 'Rail Track', icon: '🛤', cost: 140, footprint: 1, category: 'transport', drag: true,
+    desc: 'Drag to lay electrified track. Crosses roads at level crossings; crossing the river builds a rail bridge (5× cost).',
+  },
+  trainStation: {
+    name: 'Rail Station', icon: '🚉', cost: 9000, footprint: 2, category: 'transport', nearRail: true,
+    desc: 'Serves BOTH passengers and freight in radius 7. Must touch a rail track. Connect two stations with track, then buy a locomotive in the Routes tab.',
+  },
   solar: {
     name: 'Solar Farm', icon: '☀️', cost: 42000, upkeep: 120, footprint: 3, category: 'energy', capMW: 5,
     desc: '5 MWp photovoltaic park. Output follows the sun and drops with cloud cover. Zero output at night — pair with storage.',
@@ -67,6 +75,17 @@ export const VEHICLES = {
     batteryKWh: 400, usePerTile: 1.4, chargeMW: 0.5,
     desc: 'Electric city bus, 400 kWh pack. Charges at bus stops.',
   },
+  train: {
+    name: 'E-Locomotive', icon: '🚆', cost: 95000, upkeep: 140, capacity: 0, speed: 14,
+    batteryKWh: 0, usePerTile: 0, chargeMW: 0, tractionMW: 1.0, maxWagons: 6,
+    desc: 'Electric locomotive fed by overhead line — ~1 MW straight from your grid while moving, no battery. Add wagons for passengers or freight. Rail moves a tonne with ~10× less energy than road, but a blackout stops every train.',
+  },
+};
+
+// Wagons hooked behind a locomotive. A train's capacity = sum of its wagons.
+export const WAGONS = {
+  pax: { name: 'Passenger Car', icon: '🧍', cost: 9000, capacity: 40 },
+  freight: { name: 'Freight Wagon', icon: '📦', cost: 11000, capacity: 30 },
 };
 
 // Industry archetypes placed by the world generator.
@@ -187,6 +206,18 @@ export const TIPS = {
     title: 'Passengers have destinations',
     text: 'People wait in cities to travel — some across town, some to another city. Press V (or the 👥 Demand button) to see who waits where and where they want to go. A bus only boards passengers its route can actually deliver, so connect two stops in the same city (≥5 tiles apart) for local trips, or two cities for intercity trips.',
   },
+  firstRail: {
+    title: 'The most efficient way to move anything',
+    text: 'Steel wheel on steel rail has ~10× less rolling resistance than rubber on asphalt — that\'s why rail moves a tonne of freight for a fraction of a truck\'s energy. Lay track between two Rail Stations (tracks cross roads at level crossings), then buy a locomotive in the Routes tab.',
+  },
+  firstTrainStation: {
+    title: 'Rail stations do both jobs',
+    text: 'A Rail Station serves passengers AND freight in radius 7 — one station can sit between a city and a factory. It must touch your track. The capacity comes from wagons: add Passenger Cars or Freight Wagons to each locomotive in the Routes tab.',
+  },
+  firstTrain: {
+    title: 'No battery — straight from the catenary',
+    text: 'Most electric railways skip the battery entirely: power flows from the grid through the overhead line to the motors. Your locomotive draws ~1 MW while moving (see the "Charging" slice in the Dashboard) — and during a blackout, trains roll to a stop. Reliable grid, reliable railway.',
+  },
   chargingLoad: {
     title: 'Vehicle charging hits the grid',
     text: 'Your electric fleet charges at stations — see the "Charging" slice in the Dashboard. Smart timing matters: in reality, fleets charge at midday (solar surplus) or at night (cheap wind), not during the evening peak.',
@@ -213,6 +244,7 @@ export const LEARN = [
   ['Dunkelflaute', 'German for "dark calm": overcast AND windless for days. Rare but defining for system design — this is why grids keep long-duration reserves (hydrogen, in this game) even if rarely used.'],
   ['Green steel', 'Steel = ~7% of world CO₂. Green route: hydrogen direct reduction (H₂-DRI) + electric arc furnace ≈ 3.5 MWh per tonne of steel. Pioneers: HYBRIT (Sweden), Stegra, Thyssenkrupp.'],
   ['Electric transport', 'EVs are ~3x more energy-efficient than combustion vehicles. Fleet charging is a big but FLEXIBLE load — charge when power is abundant and it stabilizes the grid instead of stressing it.'],
+  ['Electrified rail', 'Steel-on-steel rolling resistance is ~10× lower than tyre-on-road, so rail moves a tonne-km on a fraction of the energy. Most electric trains have no battery: traction power flows live from the grid via the catenary (overhead line) — grid reliability IS railway reliability.'],
   ['Efficiency', 'Heat pumps (300-400% "efficient"), LED, waste-heat recovery: every MWh not consumed needs no generation, no storage, no grid. Cheapest energy is the energy you don\'t use.'],
   ['CO₂ accounting', 'Each renewable MWh that replaces fossil generation avoids roughly 0.4-0.8 t CO₂ (this game uses 0.4 t/MWh, a typical gas/coal-mix figure).'],
 ];

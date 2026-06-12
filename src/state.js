@@ -51,6 +51,7 @@ export const G = {
   stats: {
     paxLocal: 0, paxInter: 0,
     grainToFood: 0, oreToSteel: 0, foodToCity: 0, steelToCity: 0,
+    railUnits: 0,   // passengers + cargo units delivered by train
   },
   // ui / interaction
   showDemand: false,        // passenger demand overlay

@@ -7,7 +7,7 @@ import {
   canPlace, place, bulldoze, buildPlantMesh, setNightAmount,
 } from './world.js';
 import { updateWeather, tickGrid, sampleHistory, dailyUpkeep } from './energy.js';
-import { initTransport, tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle, findPath, updateDemandOverlay } from './transport.js';
+import { initTransport, tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle, addWagon, findPath, updateDemandOverlay } from './transport.js';
 import { initUI, updateUI, selectTool, tickResearch, renderRoutes, showTipText } from './ui.js';
 import { initQuests, tickQuests } from './quests.js';
 
@@ -160,7 +160,7 @@ function terrainHit(ev) {
 }
 
 function refreshGhost() {
-  if (!G.tool || G.tool === 'road' || G.tool === 'bulldoze') {
+  if (!G.tool || BUILDINGS[G.tool].drag || G.tool === 'bulldoze') {
     if (ghost) { scene.remove(ghost); ghost = null; ghostType = null; }
     return;
   }
@@ -184,10 +184,11 @@ function lShapedPath(i0, j0, i1, j1) {
 }
 
 const pvMat = { ok: new THREE.MeshBasicMaterial({ color: '#44ff66', transparent: true, opacity: 0.5 }), bad: new THREE.MeshBasicMaterial({ color: '#ff4444', transparent: true, opacity: 0.5 }) };
-function showRoadPreview(tiles) {
+function showRoadPreview(tiles, tool) {
   roadPreview.clear();
   for (const [i, j] of tiles) {
-    const ok = canPlace('road', i, j) || (tile(i, j) && tile(i, j).t === 'road');
+    const t = tile(i, j);
+    const ok = canPlace(tool, i, j) || (t && (tool === 'road' ? t.t === 'road' : t.rail));
     const m = new THREE.Mesh(new THREE.PlaneGeometry(G.TILE, G.TILE).rotateX(-Math.PI / 2), ok ? pvMat.ok : pvMat.bad);
     const [x, z] = worldXZ(i, j);
     m.position.set(x, tileY(i, j) + 0.1, z);
@@ -199,11 +200,11 @@ let downPos = null;
 renderer.domElement.addEventListener('pointerdown', ev => {
   if (ev.button !== 0) return;
   downPos = [ev.clientX, ev.clientY];
-  if (G.tool === 'road') {
+  if (G.tool && BUILDINGS[G.tool] && BUILDINGS[G.tool].drag) {
     const p = terrainHit(ev);
     if (p) {
       const [i, j] = tileFromWorld(p.x, p.z);
-      roadDrag = { i0: i, j0: j };
+      roadDrag = { tool: G.tool, i0: i, j0: j };
       controls.enabled = false;
     }
   }
@@ -216,10 +217,10 @@ renderer.domElement.addEventListener('pointermove', ev => {
   ghostTile = [i, j];
   refreshGhost();
   if (roadDrag) {
-    showRoadPreview(lShapedPath(roadDrag.i0, roadDrag.j0, i, j));
+    showRoadPreview(lShapedPath(roadDrag.i0, roadDrag.j0, i, j), roadDrag.tool);
     return;
   }
-  if (G.tool && G.tool !== 'road') {
+  if (G.tool && !BUILDINGS[G.tool].drag) {
     const def = BUILDINGS[G.tool];
     ghostOK = canPlace(G.tool, i, j);
     const fp = def.footprint || 1;
@@ -233,11 +234,11 @@ renderer.domElement.addEventListener('pointermove', ev => {
     hl.scale.set(fp, 1, fp);
     hl.position.set(cx, tileY(i, j) + 0.08, cz);
     hl.material.color.set(ghostOK ? '#44ff66' : '#ff4444');
-  } else if (G.tool === 'road') {
+  } else if (G.tool) { // drag tools: road / rail
     hl.visible = true; hl.scale.set(1, 1, 1);
     const [x, z] = worldXZ(i, j);
     hl.position.set(x, tileY(i, j) + 0.08, z);
-    hl.material.color.set(canPlace('road', i, j) ? '#44ff66' : '#ff4444');
+    hl.material.color.set(canPlace(G.tool, i, j) ? '#44ff66' : '#ff4444');
   } else if (G.tool === 'bulldoze') {
     hl.visible = true; hl.scale.set(1, 1, 1);
     const [x, z] = worldXZ(i, j);
@@ -250,17 +251,18 @@ renderer.domElement.addEventListener('pointerup', ev => {
   if (ev.button !== 0) return;
   const wasDrag = downPos && (Math.abs(ev.clientX - downPos[0]) + Math.abs(ev.clientY - downPos[1]) > 6);
   downPos = null;
-  // finish road drag
+  // finish road / rail drag
   if (roadDrag) {
     const p = terrainHit(ev);
+    const dragTool = roadDrag.tool;
     controls.enabled = true;
     roadPreview.clear();
     if (p) {
       const [i1, j1] = tileFromWorld(p.x, p.z);
-      const tiles = lShapedPath(roadDrag.i0, roadDrag.j0, i1, j1).filter(([i, j]) => canPlace('road', i, j));
-      const cost = tiles.reduce((sum, [i, j]) => sum + BUILDINGS.road.cost * (tile(i, j).t === 'water' ? 5 : 1), 0);
-      if (tiles.length && spend(cost)) tiles.forEach(([i, j]) => place('road', i, j));
-      else if (tiles.length) showTipText('Too expensive', `That road costs ${cost.toLocaleString()}.`);
+      const tiles = lShapedPath(roadDrag.i0, roadDrag.j0, i1, j1).filter(([i, j]) => canPlace(dragTool, i, j));
+      const cost = tiles.reduce((sum, [i, j]) => sum + BUILDINGS[dragTool].cost * (tile(i, j).t === 'water' ? 5 : 1), 0);
+      if (tiles.length && spend(cost)) tiles.forEach(([i, j]) => place(dragTool, i, j));
+      else if (tiles.length) showTipText('Too expensive', `That ${BUILDINGS[dragTool].name.toLowerCase()} costs ${cost.toLocaleString()}.`);
     }
     roadDrag = null;
     return;
@@ -315,7 +317,8 @@ function nameStation(st) {
     }
   }
   stationSeq[best] = (stationSeq[best] || 0) + 1;
-  st.name = `${best} ${st.stype === 'bus' ? 'Stop' : 'Depot'} ${stationSeq[best] > 1 ? stationSeq[best] : ''}`.trim();
+  const suffix = { bus: 'Stop', truck: 'Depot', train: 'Station' }[st.stype];
+  st.name = `${best} ${suffix} ${stationSeq[best] > 1 ? stationSeq[best] : ''}`.trim();
 }
 
 // ---------- game loop ----------
@@ -364,4 +367,4 @@ addEventListener('resize', () => {
 
 // expose for debugging
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, findPath, nameStation };
+window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation };

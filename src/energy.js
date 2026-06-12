@@ -81,7 +81,11 @@ export function tickGrid(gameHours) {
   let indMW = 0;
   for (const ind of G.industries) if (ind.wantsPower) indMW += ind.def.powerMW * m.industryDemand;
   let chargeMW = 0;
-  for (const v of G.vehicles) if (v.charging) chargeMW += v.def.chargeMW * m.chargeRate;
+  for (const v of G.vehicles) {
+    if (v.charging) chargeMW += v.def.chargeMW * m.chargeRate;
+    // electric trains draw traction power live from the catenary while moving
+    else if (v.kind === 'train' && v.state === 'travel') chargeMW += v.def.tractionMW + 0.15 * v.wagons.length;
+  }
 
   const renewable = solarMW + windMW + hydroMW;
   const inflex = cityMW + indMW + chargeMW;
