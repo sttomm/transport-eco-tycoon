@@ -160,7 +160,7 @@ export const TECHS = [
 export const TIPS = {
   welcome: {
     title: 'Welcome, Director!',
-    text: 'You run both transport AND the power grid of this region. Every truck, bus, factory and home runs on electricity — and you sell it to them. Your first goals are in the 🎯 Objectives panel (top left) — click one to read how to do it. Pan with WASD/arrow keys or mouse, press V to see passenger demand.',
+    text: 'You run both transport AND the power grid of this region. Every truck, bus, factory and home runs on electricity — and you sell it to them. Your first goals are in the 🎯 Objectives panel (top left) — click one to read how to do it, then hit 📍 to fly to the destination. Pan with the right mouse button or WASD, rotate with the middle button, press V to see passenger demand.',
   },
   firstSolar: {
     title: 'Solar: cheap but sun-shaped',

@@ -246,6 +246,8 @@ function buildCities() {
     const city = {
       name: CITY_NAMES[idx], ci, cj, idx, pop: 2200 + Math.floor(rand() * 800),
       happiness: 0.7, roadTiles: [], blockTiles: [], food: 0, goods: 0, paxTimer: 0,
+      foodLevel: 0, goodsLevel: 0,   // recent supply levels (0..1+), decay over days
+
       paxLocal: 6, paxTo: [0, 0, 0],   // waiting travellers: within town / to each other city
     };
     const R = 8;
@@ -276,6 +278,7 @@ function buildCities() {
     byStyle.forEach((group, si) => {
       if (!group.length) return;
       const inst = new THREE.InstancedMesh(geo, styles[si], group.length);
+      inst.frustumCulled = false;
       inst.castShadow = inst.receiveShadow = true;
       group.forEach((b, k) => {
         const [x, z] = worldXZ(b.i, b.j);
@@ -445,28 +448,137 @@ export function makeStripeTexture(c1, c2, stripes = 16, vertical = true) {
 }
 const Mtex = (tex, o = {}) => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, ...o });
 
+function canvasTex(px, draw) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = px;
+  draw(cv.getContext('2d'), px);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// photovoltaic module: dark cells, busbars, aluminium frame
+function makeSolarTexture() {
+  return canvasTex(128, (cx, S) => {
+    cx.fillStyle = '#0c1626'; cx.fillRect(0, 0, S, S);
+    const n = 6, c = S / n;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const g = cx.createLinearGradient(x * c, y * c, (x + 1) * c, (y + 1) * c);
+      g.addColorStop(0, '#17335f'); g.addColorStop(0.55, '#0e2348'); g.addColorStop(1, '#1d3f72');
+      cx.fillStyle = g;
+      cx.fillRect(x * c + 2, y * c + 2, c - 4, c - 4);
+      cx.strokeStyle = 'rgba(200,215,235,0.3)'; cx.lineWidth = 1;
+      cx.beginPath(); cx.moveTo(x * c + c / 2, y * c + 3); cx.lineTo(x * c + c / 2, y * c + c - 3); cx.stroke();
+    }
+    cx.strokeStyle = '#c3cad2'; cx.lineWidth = 4; cx.strokeRect(0, 0, S, S);
+  });
+}
+
+// poured concrete: speckle + formwork panel lines
+function makeConcreteTexture() {
+  return canvasTex(64, (cx, S) => {
+    cx.fillStyle = '#9aa1a6'; cx.fillRect(0, 0, S, S);
+    for (let k = 0; k < 500; k++) {
+      cx.fillStyle = `rgba(60,64,68,${Math.random() * 0.12})`;
+      cx.fillRect(Math.random() * S, Math.random() * S, 2, 2);
+    }
+    cx.strokeStyle = 'rgba(50,55,60,0.35)'; cx.lineWidth = 1.5;
+    for (const y of [S / 3, 2 * S / 3]) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(S, y); cx.stroke(); }
+  });
+}
+
+// painted wooden planks (barn walls)
+function makePlankTexture(base = '#a8392c', dark = '#7e2a20') {
+  return canvasTex(64, (cx, S) => {
+    cx.fillStyle = base; cx.fillRect(0, 0, S, S);
+    const w = S / 8;
+    for (let k = 0; k < 8; k++) {
+      cx.fillStyle = `rgba(0,0,0,${0.12 + Math.random() * 0.1})`;
+      cx.fillRect(k * w, 0, 1.5, S);
+      cx.fillStyle = `rgba(255,255,255,${Math.random() * 0.05})`;
+      cx.fillRect(k * w + 2, 0, w - 3, S);
+    }
+    cx.fillStyle = dark;
+    for (let k = 0; k < 60; k++) cx.fillRect(Math.random() * S, Math.random() * S, 2, 4);
+  });
+}
+
+// ploughed field with crop rows
+function makeCropTexture() {
+  return canvasTex(64, (cx, S) => {
+    cx.fillStyle = '#8a6f42'; cx.fillRect(0, 0, S, S);
+    for (let y = 2; y < S; y += 6) {
+      cx.fillStyle = '#c9b34a';
+      cx.fillRect(0, y, S, 3);
+      cx.fillStyle = 'rgba(90,120,40,0.55)';
+      cx.fillRect(0, y, S, 1.5);
+    }
+  });
+}
+
+// gabled roof: stretched 4-sided cone reads as a ridge roof from game distance
+function gableRoof(w, h, d, mat, x, y, z) {
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.71, h, 4), mat);
+  roof.scale.set(w, 1, d);
+  roof.position.set(x, y + h / 2, z);
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  return roof;
+}
+
 function buildIndustryMesh(type) {
   const g = new THREE.Group();
   if (type === 'mine') {
-    g.add(box(5, 3, 4, M('#7d7468')));
-    const heap = cyl(2.4, 2.6, M('#9c7b60'), -3.4, 0, 1, 0.3);
+    const rust = Mtex(makeStripeTexture('#7d6a58', '#6a5a4a', 18), { roughness: 0.8, metalness: 0.25 });
+    g.add(box(4.6, 2.8, 3.6, rust, 0.4, 0, 0.2));                       // processing hall
+    g.add(gableRoof(5.0, 1.1, 4.0, M('#4e463e'), 0.4, 2.8, 0.2));
+    // headframe tower with sheave wheel over the shaft
+    g.add(box(0.5, 5.4, 0.5, M('#5a5550'), 2.6, 0, -1.6));
+    g.add(box(0.5, 5.4, 0.5, M('#5a5550'), 3.6, 0, -1.6));
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.2, 12), M('#3c3835', { metalness: 0.5 }));
+    wheel.rotation.x = Math.PI / 2; wheel.position.set(3.1, 5.6, -1.6); wheel.castShadow = true; g.add(wheel);
+    // conveyor ramp onto the ore heap
+    const belt = box(4.2, 0.25, 0.8, M('#454744', { metalness: 0.4 }), -1.4, 0, 1.8);
+    belt.rotation.z = 0.38; belt.position.y = 1.6; g.add(belt);
+    const heap = cyl(2.2, 2.2, Mtex(makeBallastTexture(), { roughness: 1 }), -3.4, 0, 1.6, 0.25);
     g.add(heap);
-    g.add(box(0.6, 5, 0.6, M('#5a5550'), 2.5, 0, -1.5));
   } else if (type === 'steel') {
-    g.add(box(7, 5, 5, Mtex(makeStripeTexture('#646c78', '#545c68', 22), { metalness: 0.4, roughness: 0.55 })));
-    g.add(cyl(0.7, 9, M('#8a929c'), -2, 0, -1.4));
-    g.add(cyl(0.7, 8, M('#8a929c'), 0, 0, -1.4));
+    const corr = Mtex(makeStripeTexture('#646c78', '#545c68', 26), { metalness: 0.45, roughness: 0.5 });
+    g.add(box(7, 4.6, 5, corr));                                         // main hall
+    g.add(gableRoof(7.4, 1.4, 5.4, M('#454c56', { metalness: 0.4 }), 0, 4.6, 0));
+    g.add(box(3.4, 2.2, 2.6, corr, -4.6, 0, 0.8));                       // annex
+    // banded chimneys
+    for (const [x, h] of [[-2, 9.5], [0, 8.5]]) {
+      g.add(cyl(0.62, h, Mtex(makeStripeTexture('#8a929c', '#788089', 8, false), { metalness: 0.3 }), x, 0, -1.4, 0.5));
+      g.add(cyl(0.66, 0.5, M('#c5483c'), x, h - 0.5, -1.4));
+    }
+    g.add(cyl(1.1, 3.2, Mtex(makeConcreteTexture()), 2.4, 0, -1.6));     // furnace tower
     const glow = box(2.4, 2.2, 0.4, new THREE.MeshStandardMaterial({ color: '#331a00', emissive: '#ff7a1a', emissiveIntensity: 1.6 }), 1.6, 0.6, 2.55);
     glow.name = 'glow'; g.add(glow);
   } else if (type === 'farm') {
-    g.add(box(3.4, 2.4, 2.6, Mtex(makeStripeTexture('#b5483a', '#9e3d31', 10), { roughness: 0.85 }), -1.6, 0, -1));
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.4, 1.4, 4), M('#7a322a'));
-    roof.position.set(-1.6, 3.1, -1); roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
-    g.add(box(6, 0.18, 5, M('#c9b34a'), 1.6, 0, 1.4));
+    const planks = Mtex(makePlankTexture(), { roughness: 0.85 });
+    g.add(box(3.6, 2.2, 2.8, planks, -1.6, 0, -1));                      // barn
+    g.add(gableRoof(4.0, 1.5, 3.1, M('#6e4634'), -1.6, 2.2, -1));
+    g.add(box(1.1, 1.6, 0.1, M('#54311f'), -1.6, 0, 0.42));              // barn door
+    // grain silo with dome
+    g.add(cyl(0.9, 3.4, Mtex(makeStripeTexture('#d9dde1', '#c4c9ce', 20, false), { metalness: 0.55, roughness: 0.35 }), 1.2, 0, -1.6));
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), M('#aeb4ba', { metalness: 0.5 }));
+    dome.position.set(1.2, 3.4, -1.6); dome.castShadow = true; g.add(dome);
+    // crop field with rows
+    const field = box(5.6, 0.22, 4.6, Mtex(makeCropTexture(), { roughness: 1 }), 1.6, 0, 1.6);
+    field.material.map.wrapS = field.material.map.wrapT = THREE.RepeatWrapping;
+    field.material.map.repeat.set(2, 2);
+    g.add(field);
   } else if (type === 'food') {
-    g.add(box(5.6, 3.4, 4.2, Mtex(makeStripeTexture('#dde2e7', '#cdd3d9', 22), { roughness: 0.6 })));
-    g.add(cyl(1, 4.6, M('#aeb6bd', { metalness: 0.5 }), 3.4, 0, 0));
-    g.add(cyl(1, 4.6, M('#aeb6bd', { metalness: 0.5 }), 3.4, 0, 2.2));
+    const panel = Mtex(makeStripeTexture('#dde2e7', '#cdd3d9', 26), { roughness: 0.55, metalness: 0.2 });
+    g.add(box(5.6, 3.2, 4.2, panel));                                    // hall
+    g.add(box(5.8, 0.25, 4.4, M('#9aa2aa'), 0, 3.2, 0));                 // flat roof rim
+    for (const z of [-1.2, 0.2, 1.4]) g.add(box(0.8, 0.55, 0.8, M('#8d959d', { metalness: 0.5 }), -1.4, 3.4, z)); // roof vents
+    g.add(box(2.0, 1.1, 0.12, M('#3f7fbf'), 0, 1.6, 2.12));              // company sign
+    // stainless silos with pipes
+    for (const z of [0, 2.2]) {
+      g.add(cyl(0.95, 4.4, M('#c8ced4', { metalness: 0.7, roughness: 0.25 }), 3.4, 0, z));
+      g.add(cyl(0.12, 2.4, M('#9aa1a7', { metalness: 0.6 }), 2.6, 2.0, z));
+    }
   }
   return g;
 }
@@ -474,33 +586,60 @@ function buildIndustryMesh(type) {
 export function buildPlantMesh(type) {
   const g = new THREE.Group();
   if (type === 'solar') {
-    const panel = new THREE.MeshStandardMaterial({ color: '#16263e', roughness: 0.25, metalness: 0.7 });
-    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
-      const p = box(3.0, 0.12, 1.5, panel, (c - 1) * 3.6, 0.7, (r - 1.5) * 2.6);
-      p.rotation.x = -0.42;
-      g.add(p);
-      g.add(cyl(0.08, 0.7, M('#8b8f94'), (c - 1) * 3.6, 0, (r - 1.5) * 2.6));
+    // three long panel tables on steel piles, PV-cell texture, repeated along the row
+    const tex = makeSolarTexture();
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 1);
+    const panelMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.22, metalness: 0.45 });
+    const steel = M('#8b8f94', { metalness: 0.6, roughness: 0.4 });
+    for (let r = 0; r < 3; r++) {
+      const z = (r - 1) * 3.6;
+      const table = new THREE.Group();
+      const p = box(10.4, 0.12, 2.2, panelMat, 0, 1.05, 0);
+      p.rotation.x = -0.45;
+      table.add(p);
+      for (const x of [-4.4, -1.5, 1.5, 4.4]) table.add(cyl(0.09, 1.0, steel, x, 0, 0));
+      table.position.z = z;
+      g.add(table);
     }
+    g.add(box(1.3, 1.1, 0.9, M('#dfe3e7'), 4.6, 0, 5.0));   // inverter cabinet
+    g.add(box(1.2, 0.12, 0.8, M('#9aa2a8'), 4.6, 1.1, 5.0));
   } else if (type === 'wind') {
-    g.add(cyl(0.55, 14, M('#e8eaec'), 0, 0, 0, 0.3));
-    const nac = box(1.6, 0.9, 0.9, M('#dfe2e5'), 0, 13.6, 0); g.add(nac);
-    const rotor = new THREE.Group(); rotor.position.set(0.95, 14.05, 0);
+    const towerMat = M('#e8eaec', { roughness: 0.35, metalness: 0.15 });
+    g.add(cyl(0.55, 14, towerMat, 0, 0, 0, 0.3));
+    g.add(cyl(0.6, 0.25, M('#c9cdd1'), 0, 0, 0));                                  // base flange
+    const nac = box(1.7, 0.95, 0.95, M('#dfe2e5', { metalness: 0.25 }), 0, 13.55, 0); g.add(nac);
+    // rotor hub sits in front of the nacelle (+x); blades sweep the y/z plane
+    // and spin around the x axis — clear of the tower
+    const rotor = new THREE.Group(); rotor.position.set(1.1, 14.0, 0);
+    const hub = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.8, 10), M('#d2d6da'));
+    hub.rotation.z = -Math.PI / 2; hub.position.x = 0.25; hub.castShadow = true;
+    rotor.add(hub);
     for (let b = 0; b < 3; b++) {
-      const blade = box(0.18, 6.2, 0.5, M('#f2f4f6'));
-      blade.position.y = 0; blade.geometry.translate(0, 3.1, 0);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.14, 6.0, 0.55), M('#f2f4f6', { roughness: 0.3 }));
+      blade.geometry.translate(0, 3.2, 0);
+      // slight taper illusion: narrow the tip by scaling a second segment is overkill — keep flat blade
       blade.rotation.x = b * Math.PI * 2 / 3;
+      blade.castShadow = true;
       rotor.add(blade);
     }
-    rotor.rotation.y = Math.PI / 2;
     g.add(rotor); turbineRotors.push(rotor);
     g.userData.rotor = rotor;
   } else if (type === 'hydro') {
-    g.add(box(5, 3.2, 4, M('#7e8a93')));
-    g.add(box(5.6, 1, 1.4, M('#46708e'), 0, 0, 2.6));
-    g.add(cyl(0.5, 4.4, M('#9fa8af'), 1.6, 0, -1));
+    const conc = Mtex(makeConcreteTexture(), { roughness: 0.9 });
+    g.add(box(5, 3.2, 4, conc));                                       // powerhouse
+    g.add(gableRoof(5.4, 1.0, 4.4, M('#5d6a73'), 0, 3.2, 0));
+    g.add(box(5.6, 1, 1.4, conc, 0, 0, 2.6));                          // weir
+    g.add(box(5.6, 0.25, 0.5, M('#46708e', { metalness: 0.4 }), 0, 1.0, 2.6));
+    for (const x of [-1.6, 0, 1.6]) g.add(box(0.5, 1.6, 0.2, M('#3a4754', { metalness: 0.5 }), x, 0.4, 2.05)); // intake gates
+    g.add(cyl(0.5, 4.4, M('#9fa8af', { metalness: 0.4 }), 1.6, 0, -1));
   } else if (type === 'battery') {
-    for (let k = 0; k < 4; k++) g.add(box(3.4, 1.5, 1.2, M(k % 2 ? '#e9edf0' : '#dfe5ea', { metalness: 0.3 }), 0, 0, (k - 1.5) * 1.7));
-    g.add(box(1.2, 1.8, 1.2, M('#3a4754'), 2.6, 0, 0));
+    const cont = Mtex(makeStripeTexture('#e9edf0', '#d6dce2', 14), { metalness: 0.35, roughness: 0.5 });
+    for (let k = 0; k < 4; k++) {
+      g.add(box(3.4, 1.5, 1.2, cont, 0, 0, (k - 1.5) * 1.7));
+      g.add(box(0.5, 0.9, 0.08, M('#3a7d4f'), -1.2, 0.3, (k - 1.5) * 1.7 + 0.65)); // hv warning panel
+    }
+    g.add(box(1.2, 1.8, 1.2, M('#3a4754', { metalness: 0.4 }), 2.6, 0, 0));        // transformer
   } else if (type === 'electrolyzer') {
     for (let k = 0; k < 3; k++) g.add(cyl(0.8, 2.8, M('#3fae9c', { metalness: 0.4, roughness: 0.35 }), (k - 1) * 2.1, 0, 0));
     g.add(box(4.5, 0.25, 0.25, M('#c2c8cd'), 0, 2.6, 0));
@@ -542,8 +681,8 @@ function buildTrees() {
   }
   const trunkG = new THREE.CylinderGeometry(0.12, 0.18, 1, 5);
   const crownG = new THREE.ConeGeometry(0.9, 2.2, 7);
-  const trunks = new THREE.InstancedMesh(trunkG, M('#6b4a32'), spots.length);
-  const crowns = new THREE.InstancedMesh(crownG, M('#3e7d3a'), spots.length);
+  const trunks = noCull(new THREE.InstancedMesh(trunkG, M('#6b4a32'), spots.length));
+  const crowns = noCull(new THREE.InstancedMesh(crownG, M('#3e7d3a'), spots.length));
   crowns.castShadow = true;
   const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
   const col = new THREE.Color();
@@ -562,27 +701,50 @@ function buildTrees() {
 }
 
 // ---------- roads (dynamic instanced mesh) ----------
+// sidewalk band (light) around the tile edge, asphalt in the middle
+export const SIDEWALK_W = 0.5;                    // world units, matches the texture border
 function makeAsphaltTexture() {
-  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const S = 64, B = Math.round(S * SIDEWALK_W / G.TILE); // border px
+  const cv = document.createElement('canvas'); cv.width = cv.height = S;
   const cx = cv.getContext('2d');
-  cx.fillStyle = '#3c4043'; cx.fillRect(0, 0, 64, 64);
-  for (let k = 0; k < 600; k++) {
+  // sidewalk base with paving grain
+  cx.fillStyle = '#8f959b'; cx.fillRect(0, 0, S, S);
+  for (let k = 0; k < 250; k++) {
+    const v = 125 + Math.random() * 40 | 0;
+    cx.fillStyle = `rgba(${v},${v + 3},${v + 5},0.6)`;
+    cx.fillRect(Math.random() * S, Math.random() * S, 2, 2);
+  }
+  // paving slab joints along the border
+  cx.strokeStyle = 'rgba(60,64,68,0.4)'; cx.lineWidth = 1;
+  for (let k = 0; k < S; k += 8) {
+    cx.strokeRect(k, 0, 8, B); cx.strokeRect(k, S - B, 8, B);
+    cx.strokeRect(0, k, B, 8); cx.strokeRect(S - B, k, B, 8);
+  }
+  // asphalt middle
+  cx.fillStyle = '#3c4043'; cx.fillRect(B, B, S - 2 * B, S - 2 * B);
+  for (let k = 0; k < 500; k++) {
     const v = 50 + Math.random() * 40 | 0;
     cx.fillStyle = `rgba(${v},${v + 4},${v + 6},0.5)`;
-    cx.fillRect(Math.random() * 64, Math.random() * 64, 1.5, 1.5);
+    cx.fillRect(B + Math.random() * (S - 2 * B), B + Math.random() * (S - 2 * B), 1.5, 1.5);
   }
-  cx.strokeStyle = 'rgba(20,22,24,0.55)'; // worn tile edges
-  cx.lineWidth = 3;
-  cx.strokeRect(0, 0, 64, 64);
+  cx.strokeStyle = 'rgba(20,22,24,0.6)'; // curb line
+  cx.lineWidth = 1.5;
+  cx.strokeRect(B, B, S - 2 * B, S - 2 * B);
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
+// Instanced meshes get their bounding sphere from the (origin-centered, tiny)
+// geometry, so three.js frustum-culls them as soon as the map center leaves the
+// view — instances vanish while their shadows (different camera) survive.
+// Disable culling for every world-spanning instanced mesh.
+const noCull = m => { m.frustumCulled = false; return m; };
+
 function initRoadMesh() {
   const geo = new THREE.BoxGeometry(G.TILE, 0.12, G.TILE);
   const mat = new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.9 });
-  roadMesh = new THREE.InstancedMesh(geo, mat, 4500);
+  roadMesh = noCull(new THREE.InstancedMesh(geo, mat, 4500));
   roadMesh.receiveShadow = true;
   roadMesh.count = 0;
   scene.add(roadMesh);
@@ -619,10 +781,15 @@ function makeBallastTexture() {
   return t;
 }
 
+// rails sit on a raised ballast bed: terrain height varies within a tile, so a
+// thin pad at tile-center height clips into slopes. The thick bed (top ~0.28
+// above tile height) keeps the track visible everywhere.
+const BALLAST_H = 0.36, BALLAST_Y = 0.10, RAIL_Y = 0.17, RAIL_CROSSING_Y = 0.07;
+
 function initRailMesh() {
   // square gravel pad per rail tile (skipped on road crossings — rails sit on asphalt there)
-  const padGeo = new THREE.BoxGeometry(G.TILE, 0.1, G.TILE);
-  railBallast = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ map: makeBallastTexture(), roughness: 0.95 }), 3000);
+  const padGeo = new THREE.BoxGeometry(G.TILE, BALLAST_H, G.TILE);
+  railBallast = noCull(new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ map: makeBallastTexture(), roughness: 0.95 }), 3000));
   railBallast.receiveShadow = true;
   railBallast.count = 0;
   // half-tile track segment from tile center toward +x: 2 rails + 3 ties, merged
@@ -646,7 +813,7 @@ function initRailMesh() {
   });
   const segGeo = mergeGeometries(parts);
   const segMat = new THREE.MeshStandardMaterial({ color: '#9aa0a6', roughness: 0.45, metalness: 0.55, vertexColors: true });
-  railSegs = new THREE.InstancedMesh(segGeo, segMat, 9000);
+  railSegs = noCull(new THREE.InstancedMesh(segGeo, segMat, 9000));
   railSegs.castShadow = true;
   railSegs.count = 0;
   scene.add(railBallast, railSegs);
@@ -660,8 +827,9 @@ function rebuildRails() {
   for (const t of G.tiles) {
     if (!t.rail) continue;
     const [x, z] = worldXZ(t.i, t.j);
+    const segY = t.h + (t.t === 'road' ? RAIL_CROSSING_Y : RAIL_Y);
     if (t.t !== 'road') {
-      p.set(x, t.h + 0.04, z);
+      p.set(x, t.h + BALLAST_Y, z);
       q.identity();
       m.compose(p, q, s);
       railBallast.setMatrixAt(kp++, m);
@@ -670,14 +838,14 @@ function rebuildRails() {
     for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       if (!isRail(t.i + di, t.j + dj)) continue;
       any = true;
-      p.set(x, t.h + 0.05, z);
+      p.set(x, segY, z);
       e.set(0, Math.atan2(-dj, di), 0); q.setFromEuler(e);
       m.compose(p, q, s);
       railSegs.setMatrixAt(ks++, m);
     }
     if (!any) { // isolated tile: draw an east-west stub so it's visible
       for (const yaw of [0, Math.PI]) {
-        p.set(x, t.h + 0.05, z);
+        p.set(x, segY, z);
         e.set(0, yaw, 0); q.setFromEuler(e);
         m.compose(p, q, s);
         railSegs.setMatrixAt(ks++, m);
@@ -840,12 +1008,12 @@ function initAmbient() {
   tint(carBody, 1); tint(carCab, 0.3);
   const carGeo = mergeGeometries([carBody, carCab]);
   const carMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, vertexColors: true });
-  ambient.cars = new THREE.InstancedMesh(carGeo, carMat, 160);
+  ambient.cars = noCull(new THREE.InstancedMesh(carGeo, carMat, 160));
   ambient.cars.castShadow = true;
 
   const pedGeo = new THREE.CapsuleGeometry(0.13, 0.42, 2, 6);
   pedGeo.translate(0, 0.34, 0);
-  ambient.peds = new THREE.InstancedMesh(pedGeo, new THREE.MeshStandardMaterial({ roughness: 0.8 }), 240);
+  ambient.peds = noCull(new THREE.InstancedMesh(pedGeo, new THREE.MeshStandardMaterial({ roughness: 0.8 }), 240));
 
   const carCols = ['#d8dadc', '#2f3338', '#b33a3a', '#3a6fb3', '#c9c94a', '#e0e3e6', '#587158'];
   const pedCols = ['#caa', '#8aa', '#a98', '#99b', '#b89', '#789', '#ba9', '#a89'];
@@ -937,7 +1105,13 @@ export function updateWorld(dt, gameDt) {
       p.i = p.ti; p.j = p.tj; p.ti = ni; p.tj = nj;
     }
     const [x0, z0] = worldXZ(p.i, p.j), [x1, z1] = worldXZ(p.ti, p.tj);
-    _p.set(x0 + (x1 - x0) * p.prog + p.off * 0.7, tileY(p.i, p.j) + 0.1, z0 + (z1 - z0) * p.prog + (p.off > 0 ? 1.6 : -1.6));
+    // walk on the sidewalk: offset perpendicular to the walking direction,
+    // onto the light paving band at the tile edge
+    const dirx = x1 - x0, dirz = z1 - z0;
+    const len = Math.hypot(dirx, dirz);
+    const lat = (G.TILE / 2 - SIDEWALK_W / 2 - 0.08) * (p.off > 0 ? 1 : -1) * (1 + Math.abs(p.off) * 0.05);
+    const lx = len ? (dirz / len) * lat : lat, lz = len ? (-dirx / len) * lat : 0;
+    _p.set(x0 + dirx * p.prog + lx, tileY(p.i, p.j) + 0.13, z0 + dirz * p.prog + lz);
     _q.identity();
     _m.compose(_p, _q, _s);
     ambient.peds.setMatrixAt(k, _m);

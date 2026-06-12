@@ -1,4 +1,4 @@
-import { G, emit, hourOfDay } from './state.js';
+import { G, emit, hourOfDay, season } from './state.js';
 
 // Electricity price paid by cities & industries per MWh served.
 export const POWER_PRICE = 85;
@@ -17,7 +17,8 @@ export function updateWeather(gameHours) {
     G.wind = drift(0.06, G.wind, 0.5);
     G.cloud = drift(0.92, G.cloud, 0.5);
   } else {
-    G.wind = drift(0.45 + 0.25 * Math.sin(G.day * 0.7), G.wind, 0.15);
+    // windier in autumn/winter, calmer in summer (seasonal storm tracks)
+    G.wind = drift(0.42 * season().windMul + 0.25 * Math.sin(G.day * 0.7), G.wind, 0.15);
     G.cloud = drift(0.35, G.cloud, 0.12);
     // rare events, evaluated roughly hourly
     if (weatherTimer > 1) {
@@ -37,10 +38,11 @@ export function updateWeather(gameHours) {
 
 // ---- generation curves -------------------------------------------------
 export function solarFactor() {
+  const s = season();
   const h = hourOfDay();
-  if (h < 5.5 || h > 18.5) return 0;
-  const s = Math.sin(Math.PI * (h - 5.5) / 13);
-  return Math.max(0, s) * (1 - G.cloud * 0.82);
+  if (h < s.sunrise || h > s.sunset) return 0; // no sun, no solar
+  const x = Math.sin(Math.PI * (h - s.sunrise) / (s.sunset - s.sunrise));
+  return Math.max(0, x) * s.solarAmp * (1 - G.cloud * 0.82);
 }
 export function windFactor() {
   const w = G.wind;
@@ -77,7 +79,9 @@ export function tickGrid(gameHours) {
 
   // --- inflexible demand
   let cityMW = 0;
-  for (const c of G.cities) cityMW += (c.pop / 1000) * 1.1 * cityDemandCurve() * m.cityDemand;
+  // winter heating raises city demand, mild seasons lower it
+  const seasonDemand = season().demandMul;
+  for (const c of G.cities) cityMW += (c.pop / 1000) * 1.1 * cityDemandCurve() * m.cityDemand * seasonDemand;
   let indMW = 0;
   for (const ind of G.industries) if (ind.wantsPower) indMW += ind.def.powerMW * m.industryDemand;
   let chargeMW = 0;

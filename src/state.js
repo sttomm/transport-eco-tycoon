@@ -53,10 +53,16 @@ export const G = {
     grainToFood: 0, oreToSteel: 0, foodToCity: 0, steelToCity: 0,
     railUnits: 0,   // passengers + cargo units delivered by train
   },
+  // income breakdown for the finance drill-down (reset daily, prev = yesterday)
+  finance: {
+    today: { bus: 0, truck: 0, train: 0, routes: {} },
+    prev: null,
+  },
   // ui / interaction
   showDemand: false,        // passenger demand overlay
   tool: null,               // active build tool id
   routeEdit: null,          // route being edited
+  routeHover: null,         // route hovered in the routes tab (map highlight)
   selected: null,
   // emitter for advisor triggers
   firedTips: {},
@@ -71,6 +77,19 @@ export function on(name, fn) {
 }
 
 export function hourOfDay() { return (G.minutes / 60) % 24; }
+
+// ---- seasons: 7 game days each, year starts in spring -------------------
+// sunrise/sunset are kept symmetric around 12:00 so the sun-elevation curve
+// stays continuous across midnight.
+export const DAYS_PER_SEASON = 7;
+export const SEASONS = [
+  { name: 'Spring', icon: '🌸', solarAmp: 1.0, sunrise: 5.5, sunset: 18.5, windMul: 1.0, demandMul: 1.0 },
+  { name: 'Summer', icon: '☀️', solarAmp: 1.15, sunrise: 4.5, sunset: 19.5, windMul: 0.85, demandMul: 0.95 },
+  { name: 'Autumn', icon: '🍂', solarAmp: 0.8, sunrise: 6.5, sunset: 17.5, windMul: 1.15, demandMul: 1.05 },
+  { name: 'Winter', icon: '❄️', solarAmp: 0.55, sunrise: 8, sunset: 16, windMul: 1.25, demandMul: 1.3 },
+];
+export function seasonOf(day) { return SEASONS[Math.floor((day - 1) / DAYS_PER_SEASON) % 4]; }
+export function season() { return seasonOf(G.day); }
 
 export function fmtMoney(v) {
   const a = Math.abs(v);

@@ -1,6 +1,8 @@
-import { G, on, fmtMoney, fmtTime, spend } from './state.js';
+import { G, on, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from './state.js';
 import { BUILDINGS, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from './data.js';
-import { createRoute, buyVehicle, sellVehicle, addWagon } from './transport.js';
+import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor } from './transport.js';
+import { solarFactor, POWER_PRICE } from './energy.js';
+import { clearSave } from './save.js';
 
 const $ = id => document.getElementById(id);
 let activeTab = null;
@@ -19,7 +21,7 @@ export function initUI() {
   });
   on('railBuilt', () => showTip('firstRail'));
   on('vehicleBought', v => { if (v.kind === 'train') showTip('firstTrain'); });
-  setTimeout(() => showTip('welcome'), 800);
+  initTopbarTooltips();
 
   $('speeds').addEventListener('click', e => {
     const s = e.target.dataset.s;
@@ -27,12 +29,17 @@ export function initUI() {
   });
   $('demandbtn').onclick = toggleDemand;
   document.addEventListener('keydown', e => {
+    if ($('welcome')) return; // game is paused behind the welcome screen
     if (e.key === ' ') { setSpeed(G.speed === 0 ? (G._lastSpeed || 1) : 0); e.preventDefault(); }
     if (e.key === '1') setSpeed(1);
     if (e.key === '2') setSpeed(3);
     if (e.key === '3') setSpeed(10);
     if (e.key === 'v' || e.key === 'V') toggleDemand();
-    if (e.key === 'Escape') selectTool(null);
+    if (e.key === 'Escape') {
+      selectTool(null);
+      G.selected = null;
+      if (G.showDemand) toggleDemand(); // also dismisses the demand arrows
+    }
   });
 }
 
@@ -87,11 +94,57 @@ function showTooltip(e, html) {
   const t = $('tooltip');
   t.innerHTML = html;
   t.style.display = 'block';
-  const r = e.target.getBoundingClientRect();
+  const r = e.currentTarget.getBoundingClientRect();
   t.style.left = Math.min(window.innerWidth - 320, r.left) + 'px';
-  t.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+  // flip below for elements near the top of the screen (topbar)
+  if (r.top < window.innerHeight / 2) { t.style.top = (r.bottom + 8) + 'px'; t.style.bottom = 'auto'; }
+  else { t.style.bottom = (window.innerHeight - r.top + 8) + 'px'; t.style.top = 'auto'; }
 }
 function hideTooltip() { $('tooltip').style.display = 'none'; }
+// tooltip whose content is computed live on hover
+function liveTip(el, fn) {
+  if (!el) return;
+  el.onmouseenter = e => showTooltip(e, fn());
+  el.onmouseleave = hideTooltip;
+}
+
+// ---------- topbar explainer tooltips ----------
+function initTopbarTooltips() {
+  liveTip($('money'), () => `<b>💰 Company funds</b><br>Cash for building, vehicles and research. You earn from transport deliveries and from selling every served MWh of electricity (€${POWER_PRICE}/MWh).`);
+  liveTip($('clock'), () => {
+    const s = season();
+    const into = ((G.day - 1) % DAYS_PER_SEASON) + 1;
+    return `<b>📅 Game time</b><br>1 game day ≈ 3 real minutes at 1× speed.<br><br>Current season: <b>${s.icon} ${s.name}</b> (day ${into}/${DAYS_PER_SEASON}) — seasons change day length, solar yield, wind and heating demand.`;
+  });
+  liveTip($('season'), () => {
+    const s = season();
+    return `<b>${s.icon} ${s.name}</b> — seasons last ${DAYS_PER_SEASON} days and change the energy system:<br>
+      ☀️ Solar peak: <b>${Math.round(s.solarAmp * 100)}%</b> · daylight ${(s.sunset - s.sunrise).toFixed(1)} h (${fmtH(s.sunrise)}–${fmtH(s.sunset)})<br>
+      🌬 Wind level: <b>${Math.round(s.windMul * 100)}%</b><br>
+      🏠 City demand: <b>${Math.round(s.demandMul * 100)}%</b> (winter heating!)<br>
+      <span class="dim">Winter is the test: short days, little sun, high demand — plan storage ahead.</span>`;
+  });
+  liveTip($('gridstat'), () => {
+    const sup = G.supply, dem = G.demand;
+    return `<b>⚡ Grid: supply / demand (MW)</b><br>
+      Generation right now — Solar ${sup.solar.toFixed(1)}, Wind ${sup.wind.toFixed(1)}, Hydro ${sup.hydro.toFixed(1)}, Battery ${sup.battery.toFixed(1)}, Fuel cell ${sup.fuelcell.toFixed(1)}.<br>
+      Demand — Cities ${dem.city.toFixed(1)}, Industry ${dem.industry.toFixed(1)}, Vehicle charging ${dem.charging.toFixed(1)}.<br>
+      <span class="dim">Green = stable · yellow = curtailing surplus · red = blackout.</span>`;
+  });
+  liveTip($('storemini'), () => `<b>Energy storage</b><br>
+    🔋 Battery: ${G.batteryMWh.toFixed(1)} / ${G.batteryCapMWh.toFixed(0)} MWh — charges on surplus, covers the evening peak (~92% round trip).<br>
+    🫧 Hydrogen: ${G.h2MWh.toFixed(0)} / ${G.h2CapMWh.toFixed(0)} MWh — made by electrolyzers from surplus, burned in fuel cells during dark calm spells.`);
+  liveTip($('solarstat'), () => {
+    const s = season();
+    return `<b>☀️ Solar output now: ${(solarFactor() * 100).toFixed(0)}%</b> of installed panel capacity.<br>
+      Follows the sun (0% at night!), drops with cloud cover (currently ${(G.cloud * 100).toFixed(0)}%), and varies by season — ${s.name.toLowerCase()} peaks at ${Math.round(s.solarAmp * 100)}% with daylight ${fmtH(s.sunrise)}–${fmtH(s.sunset)}.`;
+  });
+  liveTip($('windstat'), () => `<b>🌬 Wind speed: ${(G.wind * 90).toFixed(0)} km/h</b><br>
+    Turbines need ~11 km/h to start, reach full power around 43 km/h and shut down above ~90 km/h (storm protection). Output grows with the cube of wind speed.`);
+  liveTip($('pop'), () => `<b>👥 Region population</b><br>Sum of all cities. Happy cities (power, food, transit) grow — and more people mean more passengers and more electricity demand.`);
+  liveTip($('co2'), () => `<b>🌍 CO₂ avoided</b><br>Every renewable MWh you serve replaces fossil generation (~0.4 t CO₂ per MWh). This counter is your climate scoreboard.`);
+}
+const fmtH = h => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
 
 // ---------- advisor toasts ----------
 function showTip(id) {
@@ -112,6 +165,7 @@ function buildTabs() {
     b.onclick = () => {
       const tab = b.dataset.tab;
       activeTab = activeTab === tab ? null : tab;
+      G.routeHover = null;
       document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
       $('sidepanel').style.display = activeTab ? 'flex' : 'none';
       document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
@@ -137,11 +191,12 @@ export function updateUI(dt) {
     const grid = $('gridstat');
     grid.innerHTML = `⚡ ${totalSup.toFixed(1)} / ${totalDem.toFixed(1)} MW`;
     grid.className = G.blackout ? 'bad blink' : (G.curtailedMW > 0.5 ? 'warn' : 'good');
-    grid.title = G.blackout ? 'BLACKOUT — demand unserved!' : G.curtailedMW > 0.5 ? `Curtailing ${G.curtailedMW.toFixed(1)} MW` : 'Grid stable';
-    $('weather').innerHTML =
-      `${G.cloud > 0.6 ? '☁️' : G.cloud > 0.3 ? '🌤' : '☀️'} ${(100 - G.cloud * 100).toFixed(0)}%` +
-      ` &nbsp; 🌬 ${(G.wind * 90).toFixed(0)} km/h` +
+    const sf = solarFactor();
+    $('solarstat').innerHTML = `${sf <= 0 ? '🌙' : G.cloud > 0.6 ? '☁️' : G.cloud > 0.3 ? '🌤' : '☀️'} ${(sf * 100).toFixed(0)}%`;
+    $('windstat').innerHTML = `🌬 ${(G.wind * 90).toFixed(0)} km/h` +
       (G.dunkelflaute > 0 ? ' <span class="bad blink">DUNKELFLAUTE</span>' : '');
+    const sn = season();
+    $('season').textContent = `${sn.icon} ${sn.name}`;
     const pop = Math.floor(G.cities.reduce((a, c) => a + c.pop, 0));
     $('pop').textContent = `👥 ${pop.toLocaleString()}`;
     $('co2').textContent = `🌍 ${G.co2SavedTons.toFixed(0)} t CO₂ avoided`;
@@ -180,11 +235,12 @@ function drawPowerChart() {
   maxY *= 1.15;
   const x = i => i / (G.histMax - 1) * W;
   const y = v => H - v / maxY * H;
-  // night shading
+  // night shading (seasonal day length)
   ctx.fillStyle = 'rgba(40,50,90,0.25)';
   hist.forEach((s, i) => {
     const h = (s.t / 60) % 24;
-    if (h < 5.5 || h > 18.5) ctx.fillRect(x(i), 0, W / G.histMax + 1, H);
+    const sn = seasonOf(Math.floor(s.t / 1440) + 1);
+    if (h < sn.sunrise || h > sn.sunset) ctx.fillRect(x(i), 0, W / G.histMax + 1, H);
   });
   // stacked areas
   let base = hist.map(() => 0);
@@ -245,6 +301,7 @@ function drawBar(cv, f, color, label) {
   ctx.fillText(label, 6, cv.height / 2 + 4);
 }
 
+const finOpen = new Set(); // which <details> stay open across re-renders
 function drawFinance() {
   const cv = $('moneychart'); const ctx = cv.getContext('2d');
   ctx.clearRect(0, 0, cv.width, cv.height);
@@ -257,12 +314,34 @@ function drawFinance() {
     i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
   });
   ctx.stroke();
+
+  const f = G.finance.today, fp = G.finance.prev;
+  const routeRows = G.routes.map(r => {
+    const today = f.routes[r.id] || 0;
+    const prev = fp && fp.routes ? fp.routes[r.id] : null;
+    return `<div class="finrow finsub2"><span><i class="rdot" style="background:${routeColor(r)}"></i>${r.name}</span>
+      <span class="good">${fmtMoney(today)}${prev != null ? ` <span class="dim">/ ${fmtMoney(prev)}</span>` : ''}</span></div>`;
+  }).join('') || '<div class="finrow finsub2 dim">no routes yet</div>';
   $('finrows').innerHTML =
-    finrow('Transport income (today)', G.incomeTransportToday, 'good') +
+    `<details class="findet" data-k="transport">
+      <summary class="finrow"><span>▸ Transport income (today)</span><span class="good">${fmtMoney(G.incomeTransportToday)}</span></summary>
+      ${finrow('🚌 Buses (passengers)', f.bus || 0, 'good', 'finsub')}
+      ${finrow('🚚 Trucks (freight)', f.truck || 0, 'good', 'finsub')}
+      ${finrow('🚆 Trains (pax + freight)', f.train || 0, 'good', 'finsub')}
+      <details class="findet" data-k="routes">
+        <summary class="finrow finsub"><span>▸ By route — today${fp ? ' / <span class="dim">yesterday</span>' : ''}</span><span></span></summary>
+        ${routeRows}
+      </details>
+    </details>` +
     finrow('Energy sales (today)', G.incomeEnergyToday, 'good') +
     finrow('Expenses (today)', -G.expensesToday, 'bad');
+  // re-apply + track open state (the panel re-renders every 0.6 s)
+  $('finrows').querySelectorAll('details').forEach(d => {
+    d.open = finOpen.has(d.dataset.k);
+    d.addEventListener('toggle', () => d.open ? finOpen.add(d.dataset.k) : finOpen.delete(d.dataset.k));
+  });
 }
-const finrow = (n, v, cls) => `<div class="finrow"><span>${n}</span><span class="${cls}">${fmtMoney(v)}</span></div>`;
+const finrow = (n, v, cls, extra = '') => `<div class="finrow ${extra}"><span>${n}</span><span class="${cls}">${fmtMoney(v)}</span></div>`;
 
 // ---------- research ----------
 function renderResearch() {
@@ -334,9 +413,13 @@ export function renderRoutes() {
     renderRoutes();
   };
   const list = el.querySelector('#routelist');
+  G.routeHover = null;
   for (const r of G.routes) {
     const d = document.createElement('div');
     d.className = 'route' + (G.routeEdit === r ? ' editing' : '');
+    d.style.borderLeft = `4px solid ${routeColor(r)}`;
+    d.onmouseenter = () => { G.routeHover = r; };
+    d.onmouseleave = () => { if (G.routeHover === r) G.routeHover = null; };
     const stops = r.stops.map(s => s.name || s.def.name).join(' → ') || '<i class="dim">click stations on the map…</i>';
     d.innerHTML = `<div class="route-head"><b>${r.name}</b>
         ${G.routeEdit === r ? '<button data-a="done">✔ Done</button>' : '<button data-a="edit">✎</button>'}
@@ -419,6 +502,128 @@ function renderLearn() {
     `<details class="learn"><summary>${t}</summary><div class="small">${b}</div></details>`).join('');
 }
 
+// ---------- welcome screen ----------
+// stylised scene: sun→solar, wind, hydro, storage feeding a city + e-transport
+const WELCOME_SVG = `
+<svg viewBox="0 0 640 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;border-radius:10px;display:block">
+  <defs>
+    <linearGradient id="wsky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b3a5c"/><stop offset="0.55" stop-color="#3a7ca8"/><stop offset="1" stop-color="#8ec9e8"/>
+    </linearGradient>
+    <linearGradient id="wgrass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fae5c"/><stop offset="1" stop-color="#4a7d3e"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="240" fill="url(#wsky)"/>
+  <circle cx="80" cy="56" r="26" fill="#ffd95e"/>
+  <g stroke="#ffd95e" stroke-width="3" opacity="0.8">
+    <line x1="80" y1="14" x2="80" y2="26"/><line x1="80" y1="86" x2="80" y2="98"/>
+    <line x1="38" y1="56" x2="50" y2="56"/><line x1="110" y1="56" x2="122" y2="56"/>
+    <line x1="50" y1="26" x2="59" y2="35"/><line x1="101" y1="77" x2="110" y2="86"/>
+    <line x1="50" y1="86" x2="59" y2="77"/><line x1="101" y1="35" x2="110" y2="26"/>
+  </g>
+  <rect y="170" width="640" height="70" fill="url(#wgrass)"/>
+  <!-- city skyline -->
+  <g>
+    <rect x="468" y="92" width="34" height="80" fill="#5a6b7d"/>
+    <rect x="508" y="72" width="40" height="100" fill="#48586a"/>
+    <rect x="554" y="104" width="30" height="68" fill="#62758a"/>
+    <rect x="590" y="86" width="36" height="86" fill="#52647a"/>
+    <g fill="#ffd97a">
+      <rect x="514" y="80" width="7" height="8"/><rect x="528" y="80" width="7" height="8"/>
+      <rect x="514" y="96" width="7" height="8"/><rect x="528" y="112" width="7" height="8"/>
+      <rect x="474" y="100" width="6" height="7"/><rect x="486" y="116" width="6" height="7"/>
+      <rect x="596" y="94" width="7" height="8"/><rect x="610" y="110" width="7" height="8"/>
+      <rect x="560" y="112" width="6" height="7"/><rect x="572" y="128" width="6" height="7"/>
+    </g>
+  </g>
+  <!-- wind turbines -->
+  <g stroke="#eef2f5" stroke-width="5" stroke-linecap="round">
+    <line x1="180" y1="170" x2="180" y2="84"/><line x1="252" y1="170" x2="252" y2="104"/>
+  </g>
+  <g fill="#f4f7f9">
+    <g transform="translate(180,84)"><path d="M0 0 L8 -52 L-8 -52 Z"/><path d="M0 0 L8 -52 L-8 -52 Z" transform="rotate(120)"/><path d="M0 0 L8 -52 L-8 -52 Z" transform="rotate(240)"/><circle r="6" fill="#dfe5ea"/></g>
+    <g transform="translate(252,104) rotate(40)"><path d="M0 0 L6 -40 L-6 -40 Z"/><path d="M0 0 L6 -40 L-6 -40 Z" transform="rotate(120)"/><path d="M0 0 L6 -40 L-6 -40 Z" transform="rotate(240)"/><circle r="5" fill="#dfe5ea"/></g>
+  </g>
+  <!-- solar farm -->
+  <g transform="translate(50,150)">
+    <g transform="skewX(-18)">
+      <rect x="0" y="0" width="54" height="22" rx="2" fill="#16335f" stroke="#c3cad2" stroke-width="2"/>
+      <line x1="18" y1="0" x2="18" y2="22" stroke="#3b6db0" stroke-width="1.5"/>
+      <line x1="36" y1="0" x2="36" y2="22" stroke="#3b6db0" stroke-width="1.5"/>
+    </g>
+    <g transform="translate(64,0) skewX(-18)">
+      <rect x="0" y="0" width="54" height="22" rx="2" fill="#16335f" stroke="#c3cad2" stroke-width="2"/>
+      <line x1="18" y1="0" x2="18" y2="22" stroke="#3b6db0" stroke-width="1.5"/>
+      <line x1="36" y1="0" x2="36" y2="22" stroke="#3b6db0" stroke-width="1.5"/>
+    </g>
+  </g>
+  <!-- battery -->
+  <g transform="translate(300,142)">
+    <rect width="46" height="28" rx="4" fill="#dfe5ea"/><rect x="46" y="9" width="5" height="10" rx="2" fill="#dfe5ea"/>
+    <rect x="4" y="4" width="24" height="20" rx="2" fill="#7ed87e"/>
+    <text x="14" y="19" font-size="14" font-weight="700" fill="#19405c">⚡</text>
+  </g>
+  <!-- power line: plants → city -->
+  <path d="M 130 160 C 220 120 360 120 470 140" fill="none" stroke="#ffd95e" stroke-width="3" stroke-dasharray="7 6" opacity="0.9"/>
+  <!-- road + e-bus & truck -->
+  <rect y="196" width="640" height="26" fill="#3c4043"/>
+  <g stroke="#e8edf2" stroke-width="2" stroke-dasharray="14 12"><line x1="0" y1="209" x2="640" y2="209"/></g>
+  <g transform="translate(360,184)">
+    <rect width="64" height="24" rx="5" fill="#2a78c2"/><rect x="6" y="5" width="52" height="9" rx="2" fill="#bfe3ff"/>
+    <circle cx="14" cy="26" r="6" fill="#16191c"/><circle cx="50" cy="26" r="6" fill="#16191c"/>
+  </g>
+  <g transform="translate(120,186)">
+    <rect width="26" height="20" rx="3" fill="#2e7d4f"/><rect x="28" y="2" width="38" height="18" rx="2" fill="#e8e4da"/>
+    <circle cx="12" cy="22" r="5.5" fill="#16191c"/><circle cx="36" cy="22" r="5.5" fill="#16191c"/><circle cx="56" cy="22" r="5.5" fill="#16191c"/>
+  </g>
+  <!-- rail + train -->
+  <rect y="228" width="640" height="4" fill="#6e6a62"/>
+  <g transform="translate(470,206)">
+    <rect width="90" height="20" rx="5" fill="#c8453c"/><rect x="8" y="4" width="74" height="7" rx="2" fill="#18242f"/>
+    <line x1="20" y1="0" x2="26" y2="-10" stroke="#3a4046" stroke-width="2"/>
+    <circle cx="16" cy="22" r="5" fill="#16191c"/><circle cx="40" cy="22" r="5" fill="#16191c"/><circle cx="74" cy="22" r="5" fill="#16191c"/>
+  </g>
+</svg>`;
+
+export function showWelcome(hasSaveFlag) {
+  G._lastSpeed = G.speed || 1;
+  G.speed = 0; // pause behind the overlay
+  const el = document.createElement('div');
+  el.id = 'welcome';
+  el.innerHTML = `<div id="welcome-card">
+    ${WELCOME_SVG}
+    <h1>🌍 Transport Eco Tycoon</h1>
+    <p class="wlead">You run this region's <b>transport company</b> — and its <b>100% renewable power grid</b>.</p>
+    <div class="wgrid">
+      <div>☀️🌬💧 <b>Generate</b> clean power with solar, wind & hydro — and sell every MWh to cities and industry.</div>
+      <div>🔋🫧 <b>Store</b> the surplus: batteries for the evening, hydrogen for dark, windless weeks.</div>
+      <div>🚌🚚🚆 <b>Move</b> people & goods with e-buses, e-trucks and electric trains — they all run on your grid.</div>
+      <div>🎯 <b>Grow</b>: follow the Objectives, research better tech and keep your cities happy.</div>
+    </div>
+    <p class="wcontrols dim">🖱 Right-drag: move map · Middle-drag: rotate · Wheel: zoom · WASD: pan · V: passenger demand · Space: pause</p>
+    <div class="wbtns">
+      ${hasSaveFlag
+        ? '<button id="w-continue" class="wprimary">▶ Continue game</button><button id="w-new">↺ Start new game</button>'
+        : '<button id="w-start" class="wprimary">▶ Start playing</button>'}
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+  const start = () => {
+    el.remove();
+    setSpeed(1);
+    if (!hasSaveFlag) showTip('welcome');
+  };
+  const bs = el.querySelector('#w-start'), bc = el.querySelector('#w-continue'), bn = el.querySelector('#w-new');
+  if (bs) bs.onclick = start;
+  if (bc) bc.onclick = start;
+  if (bn) bn.onclick = () => {
+    if (!confirm('Delete the saved game and start over?')) return;
+    clearSave();
+    location.reload();
+  };
+}
+
 // ---------- selection infobox ----------
 function renderInfobox() {
   const el = $('infobox');
@@ -449,8 +654,19 @@ function renderInfobox() {
       ${s.stype === 'train' ? '<div class="small dim">Serves passengers AND freight in radius 7. Trains only board what their wagons can carry and their route can deliver.</div>' : ''}
       <div class="small dim">${G.routeEdit ? 'Click to add to ' + G.routeEdit.name : ''}</div>`;
   } else if (s.kind === 'city') {
-    html = `<b>🏙 ${s.name}</b><div class="small">Population ${Math.floor(s.pop).toLocaleString()} · Happiness ${(s.happiness * 100).toFixed(0)}%</div>
-      <div class="small dim">Cities grow with reliable power, food, goods & bus service. They pay you for every MWh.</div>`;
+    const hp = Math.round(s.happiness * 100);
+    const cls = hp >= 70 ? 'good' : hp >= 45 ? 'warn' : 'bad';
+    const facts = happinessFactors(s).map(x => {
+      if (x.got >= x.max && x.max > 0)
+        return `<div class="hfact good">✓ ${x.label} <b>+${x.got}%</b></div>`;
+      if (x.got < 0)
+        return `<div class="hfact bad">⚠ ${x.label} <b>${x.got}%</b> — ${x.hint}</div>`;
+      return `<div class="hfact dim">○ ${x.label} <b>+${x.got}/${x.max}%</b> — ${x.hint}</div>`;
+    }).join('');
+    html = `<b>🏙 ${s.name}</b><div class="small">Population ${Math.floor(s.pop).toLocaleString()} · Happiness <b class="${cls}">${hp}%</b></div>
+      <div class="small" style="margin-top:4px"><b>Happiness factors</b> <span class="dim">(base 35%)</span></div>
+      ${facts}
+      <div class="small dim" style="margin-top:3px">Happy cities grow — more people, more passengers, more power sales.</div>`;
   }
   el.innerHTML = html + '<div class="small dim" style="margin-top:4px">(click elsewhere to deselect)</div>';
 }

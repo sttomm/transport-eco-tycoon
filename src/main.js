@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { G, hourOfDay, spend, emit } from './state.js';
+import { G, hourOfDay, spend, emit, on, season } from './state.js';
 import { BUILDINGS } from './data.js';
 import {
   initWorld, updateWorld, tile, tileFromWorld, worldXZ, tileY,
   canPlace, place, bulldoze, buildPlantMesh, setNightAmount,
 } from './world.js';
 import { updateWeather, tickGrid, sampleHistory, dailyUpkeep } from './energy.js';
-import { initTransport, tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle, addWagon, findPath, updateDemandOverlay } from './transport.js';
-import { initUI, updateUI, selectTool, tickResearch, renderRoutes, showTipText } from './ui.js';
+import { initTransport, tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle, addWagon, findPath, updateDemandOverlay, updateRouteHighlight } from './transport.js';
+import { initUI, updateUI, selectTool, tickResearch, renderRoutes, showTipText, showWelcome } from './ui.js';
 import { initQuests, tickQuests } from './quests.js';
+import { loadGame, saveGame, initAutosave } from './save.js';
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -30,7 +31,8 @@ camera.position.set(-60, 70, 30);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(-110, 0, -110);
 camera.position.set(-110 - 50, 65, -110 + 55);
-controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+// left button is reserved for building/selecting; camera: right = pan, middle = rotate
+controls.mouseButtons = { MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.maxPolarAngle = 1.42;
@@ -52,24 +54,26 @@ const hemi = new THREE.HemisphereLight('#cfe8ff', '#5a6b4a', 0.7);
 scene.add(hemi);
 
 const SKY = {
-  night: new THREE.Color('#0d1430'), dawn: new THREE.Color('#e89a6a'),
+  night: new THREE.Color('#222e54'), dawn: new THREE.Color('#e89a6a'),
   day: new THREE.Color('#9cc8e8'), dusk: new THREE.Color('#d97a5a'),
 };
 const skyCol = new THREE.Color();
 
 function updateDayNight() {
   const h = hourOfDay();
-  // sun elevation: -1 (midnight) .. 1 (noon)
-  const elev = Math.sin((h - 6) / 12 * Math.PI);
+  const s = season();
+  // sun elevation: negative at night, 1 around noon; day length follows the season
+  const elev = Math.sin(Math.PI * (h - s.sunrise) / (s.sunset - s.sunrise));
   const az = (h / 24) * Math.PI * 2;
   const R = 320;
   sun.position.set(Math.cos(az) * R * 0.6, Math.max(elev, 0.04) * 260 + 20, Math.sin(az) * R * 0.6);
   sun.position.add(controls.target);
   sun.target.position.copy(controls.target);
   const dayAmount = THREE.MathUtils.clamp(elev * 2.2 + 0.15, 0, 1);
-  sun.intensity = 0.15 + dayAmount * 2.6;
-  sun.color.set(elev < 0.25 ? '#ffb070' : '#fff6e8');
-  hemi.intensity = 0.18 + dayAmount * 0.65;
+  // night keeps a generous moonlight floor so the map stays readable
+  sun.intensity = 0.75 + dayAmount * 2.0;
+  sun.color.set(elev < -0.05 ? '#aabdff' : elev < 0.25 ? '#ffb070' : '#fff6e8');
+  hemi.intensity = 0.58 + dayAmount * 0.4;
   // sky color blending
   if (elev < -0.18) skyCol.copy(SKY.night);
   else if (elev < 0.12) {
@@ -87,8 +91,30 @@ function updateDayNight() {
 // ---------- init ----------
 initWorld(scene);
 initTransport(scene);
+const loadedSave = loadGame();   // restore player progress before the UI reads it
 initUI();
 initQuests();
+
+// ---------- camera fly-to (quest 📍 buttons etc.) ----------
+let camTween = null;
+on('flyTo', ({ i, j }) => {
+  const [x, z] = worldXZ(i, j);
+  const dir = camera.position.clone().sub(controls.target);
+  if (dir.length() > 130) dir.setLength(130);
+  camTween = {
+    t: 0,
+    fromT: controls.target.clone(), toT: new THREE.Vector3(x, 0, z),
+    fromP: camera.position.clone(), toP: new THREE.Vector3(x, 0, z).add(dir),
+  };
+});
+function tickCamTween(dt) {
+  if (!camTween) return;
+  camTween.t = Math.min(1, camTween.t + dt * 1.6);
+  const k = camTween.t * camTween.t * (3 - 2 * camTween.t); // smoothstep
+  controls.target.lerpVectors(camTween.fromT, camTween.toT, k);
+  camera.position.lerpVectors(camTween.fromP, camTween.toP, k);
+  if (camTween.t >= 1) camTween = null;
+}
 
 // ---------- keyboard camera pan (WASD + arrows) ----------
 const keysDown = new Set();
@@ -127,15 +153,19 @@ function placeStarter(type, ni, nj) {
   }
   return false;
 }
-// suppress build-tips while placing the legacy grid, then re-arm them for the player's own builds
-for (const id of ['firstSolar', 'firstWind', 'firstBattery']) G.firedTips[id] = true;
-placeStarter('hydro', 66, 22);     // at the river
-placeStarter('wind', 30, 14);
-placeStarter('wind', 33, 14);
-placeStarter('solar', 12, 28);
-placeStarter('battery', 14, 34);
-G.batteryMWh = G.batteryCapMWh * 0.5;
-for (const id of ['firstSolar', 'firstWind', 'firstBattery']) delete G.firedTips[id];
+if (!loadedSave) {
+  // suppress build-tips while placing the legacy grid, then re-arm them for the player's own builds
+  for (const id of ['firstSolar', 'firstWind', 'firstBattery']) G.firedTips[id] = true;
+  placeStarter('hydro', 66, 22);     // at the river
+  placeStarter('wind', 30, 14);
+  placeStarter('wind', 33, 14);
+  placeStarter('solar', 12, 28);
+  placeStarter('battery', 14, 34);
+  G.batteryMWh = G.batteryCapMWh * 0.5;
+  for (const id of ['firstSolar', 'firstWind', 'firstBattery']) delete G.firedTips[id];
+}
+initAutosave();
+showWelcome(loadedSave);
 
 // ---------- build interaction ----------
 const ray = new THREE.Raycaster();
@@ -338,6 +368,8 @@ function frame(now) {
       G.day = Math.floor(G.minutes / 1440) + 1;
       G.incomeTransportToday = 0; G.incomeEnergyToday = 0; G.expensesToday = 0;
       G.curtailedTodayMWh = 0;
+      G.finance.prev = G.finance.today;   // keep yesterday for the finance drill-down
+      G.finance.today = { bus: 0, truck: 0, train: 0, routes: {} };
       dailyUpkeep(); // after the reset, so upkeep shows in today's expenses
     }
     updateWeather(gh);
@@ -350,9 +382,11 @@ function frame(now) {
   }
   updateWorld(dt, gm);
   updateDemandOverlay(dt);
+  updateRouteHighlight(dt);
   tickQuests(dt);
   updateDayNight();
   keyboardPan(dt);
+  tickCamTween(dt);
   controls.update();
   updateUI(dt);
   renderer.render(scene, camera);
@@ -367,4 +401,4 @@ addEventListener('resize', () => {
 
 // expose for debugging
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation };
+window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, scene, camera, controls, renderer };
