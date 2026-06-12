@@ -10,9 +10,11 @@ src/
   noise.js              seeded value-noise (terrain, masks) — deterministic worlds
   world.js              terrain/river/cities/industries, meshes, placement, ambient life
   energy.js             weather + grid dispatch simulation
-  transport.js          A* pathfinding, stations, routes, vehicles, industry production
+  transport.js          A* pathfinding, stations, routes, vehicles, industry production,
+                        passenger demand pools + demand overlay + floating income FX
+  quests.js             objective chains (transport / freight / energy) + quest panel
   ui.js                 HUD, dashboard charts, research, routes panel, advisor toasts
-  main.js               renderer, lighting/day-night, camera, input, game loop
+  main.js               renderer, lighting/day-night, camera (mouse + WASD/arrows), game loop
 ```
 
 Data flow per frame (`main.js#frame`):
@@ -90,6 +92,25 @@ population. They are not simulated citizens.
 **Why:** The requirement is the world *feels* alive. Agent-based citizen sim
 (CS2-style) costs enormous complexity for no teaching value. Two instanced
 draw calls give hundreds of moving entities at negligible cost.
+
+### 9a. Passengers are demand pools with destinations
+**Decision:** each city accumulates travellers (60% local, 40% split to the
+other cities); they walk to a bus stop only if a vehicle-staffed route through
+that stop can actually deliver them (local = 2nd stop ≥5 tiles away in the same
+city; intercity = a stop near the destination). Buses carry typed groups and
+get paid per delivered passenger (€9 local / €24 intercity, distance bonus).
+**Why:** "carry pax between two cities" alone made intra-city lines useless and
+demand invisible. Pools + the 👥 demand overlay (V) turn passenger work into a
+read-the-map puzzle, and the no-clogging rule keeps stops from filling with
+travellers nobody serves.
+
+### 9b. Quest chains as guidance
+**Decision:** `quests.js` defines three parallel objective chains (bus lines →
+intercity; grain → food → ore → steel; storage → hydrogen → research → CO₂)
+with progress bars and cash rewards, rendered in an always-visible panel.
+**Why:** Playtesting showed the sandbox needs direction: quests sequence the
+teaching arc (transport first, then the grid grows with the load) without
+gating the sandbox.
 
 ### 9. Teaching via event-triggered advisor, not tutorial gates
 **Decision:** ~15 one-shot tips fire when the *simulation* first produces the

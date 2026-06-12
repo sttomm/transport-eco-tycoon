@@ -7,8 +7,9 @@ import {
   canPlace, place, bulldoze, buildPlantMesh, setNightAmount,
 } from './world.js';
 import { updateWeather, tickGrid, sampleHistory, dailyUpkeep } from './energy.js';
-import { initTransport, tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle, findPath } from './transport.js';
+import { initTransport, tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle, findPath, updateDemandOverlay } from './transport.js';
 import { initUI, updateUI, selectTool, tickResearch, renderRoutes, showTipText } from './ui.js';
+import { initQuests, tickQuests } from './quests.js';
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -87,6 +88,37 @@ function updateDayNight() {
 initWorld(scene);
 initTransport(scene);
 initUI();
+initQuests();
+
+// ---------- keyboard camera pan (WASD + arrows) ----------
+const keysDown = new Set();
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  keysDown.add(e.code);
+  if (e.code.startsWith('Arrow')) e.preventDefault();
+});
+addEventListener('keyup', e => keysDown.delete(e.code));
+addEventListener('blur', () => keysDown.clear());
+
+const panFwd = new THREE.Vector3(), panRight = new THREE.Vector3();
+function keyboardPan(dt) {
+  let mx = 0, mz = 0; // right / forward
+  if (keysDown.has('KeyW') || keysDown.has('ArrowUp')) mz += 1;
+  if (keysDown.has('KeyS') || keysDown.has('ArrowDown')) mz -= 1;
+  if (keysDown.has('KeyA') || keysDown.has('ArrowLeft')) mx -= 1;
+  if (keysDown.has('KeyD') || keysDown.has('ArrowRight')) mx += 1;
+  if (!mx && !mz) return;
+  // camera-yaw-relative directions, projected on the ground plane
+  camera.getWorldDirection(panFwd);
+  panFwd.y = 0;
+  if (panFwd.lengthSq() < 1e-6) return;
+  panFwd.normalize();
+  panRight.crossVectors(panFwd, camera.up).normalize();
+  const speed = camera.position.distanceTo(controls.target) * 0.9 * dt; // zoom-scaled
+  const move = panFwd.multiplyScalar(mz * speed).addScaledVector(panRight, mx * speed);
+  controls.target.add(move);
+  camera.position.add(move);
+}
 
 // Starter infrastructure: a small legacy grid so the lights are on at game start.
 function placeStarter(type, ni, nj) {
@@ -301,9 +333,9 @@ function frame(now) {
     G.minutes += gm;
     if (Math.floor(G.minutes / 1440) + 1 > G.day) {
       G.day = Math.floor(G.minutes / 1440) + 1;
-      dailyUpkeep();
       G.incomeTransportToday = 0; G.incomeEnergyToday = 0; G.expensesToday = 0;
       G.curtailedTodayMWh = 0;
+      dailyUpkeep(); // after the reset, so upkeep shows in today's expenses
     }
     updateWeather(gh);
     tickGrid(gh);
@@ -314,7 +346,10 @@ function frame(now) {
     sampleHistory(gm);
   }
   updateWorld(dt, gm);
+  updateDemandOverlay(dt);
+  tickQuests(dt);
   updateDayNight();
+  keyboardPan(dt);
   controls.update();
   updateUI(dt);
   renderer.render(scene, camera);

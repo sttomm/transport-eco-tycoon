@@ -103,8 +103,24 @@
   .toast-x { cursor: pointer; color: var(--dim); padding: 0 2px; }
   .toast-body { font-size: 12.5px; }
 
-  #infobox { position: absolute; left: 12px; top: 90px; z-index: 10; width: 300px; display: none;
+  #leftcol { position: absolute; left: 12px; top: 90px; z-index: 10; width: 300px;
+    display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 200px); }
+  #infobox { display: none;
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px); }
+
+  /* quest panel */
+  #quests { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; backdrop-filter: blur(6px); overflow-y: auto; }
+  #quest-head { font-weight: 700; cursor: pointer; display: flex; justify-content: space-between; }
+  .quest { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 8px; margin-top: 6px; cursor: pointer; }
+  .quest-title { font-weight: 600; font-size: 12.5px; display: flex; justify-content: space-between; gap: 6px; }
+  .quest-reward { color: #f0d264; font-weight: 700; white-space: nowrap; }
+  .quest-desc { display: none; margin: 4px 0; }
+  .quest.open .quest-desc { display: block; }
+  .quest-prog { height: 7px; background: #1a222c; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+  .quest-prog div { height: 100%; background: linear-gradient(90deg, #4fc3f7, #7ed87e); transition: width 0.4s; }
+  .quest-nums { color: var(--dim); margin-top: 2px; }
 
   #tooltip { position: absolute; z-index: 20; display: none; width: 300px;
     background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; font-size: 12px; pointer-events: none; }
@@ -128,6 +144,8 @@
     <span id="speeds">
       <button data-s="0">⏸</button><button data-s="1" class="on">▶</button><button data-s="3">▶▶</button><button data-s="10">▶▶▶</button>
     </span>
+    <span class="sep"></span>
+    <button id="demandbtn" title="Show where passengers wait and where they want to go (V)">👥 Demand</button>
     <span class="sep"></span>
     <span id="gridstat" class="good">⚡ 0 / 0 MW</span>
     <span id="storemini" class="small"></span>
@@ -163,7 +181,10 @@
     <div class="tabpage" id="tab-learn" style="display:none"></div>
   </div>
 
-  <div id="infobox"></div>
+  <div id="leftcol">
+    <div id="quests"></div>
+    <div id="infobox"></div>
+  </div>
   <div id="advisor"></div>
   <div id="toolbar"></div>
   <div id="tooltip"></div>

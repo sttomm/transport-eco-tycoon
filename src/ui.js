@@ -13,19 +13,27 @@ export function initUI() {
     const map = { solar: 'firstSolar', wind: 'firstWind', battery: 'firstBattery', electrolyzer: 'firstElectrolyzer', fuelcell: 'firstFuelcell' };
     if (map[p.type]) showTip(map[p.type]);
   });
+  on('stationBuilt', st => { if (st.stype === 'bus') showTip('firstBusStop'); });
   setTimeout(() => showTip('welcome'), 800);
 
   $('speeds').addEventListener('click', e => {
     const s = e.target.dataset.s;
     if (s !== undefined) setSpeed(+s);
   });
+  $('demandbtn').onclick = toggleDemand;
   document.addEventListener('keydown', e => {
     if (e.key === ' ') { setSpeed(G.speed === 0 ? (G._lastSpeed || 1) : 0); e.preventDefault(); }
     if (e.key === '1') setSpeed(1);
     if (e.key === '2') setSpeed(3);
     if (e.key === '3') setSpeed(10);
+    if (e.key === 'v' || e.key === 'V') toggleDemand();
     if (e.key === 'Escape') selectTool(null);
   });
+}
+
+function toggleDemand() {
+  G.showDemand = !G.showDemand;
+  $('demandbtn').classList.toggle('on', G.showDemand);
 }
 
 function setSpeed(s) {
@@ -129,7 +137,7 @@ export function updateUI(dt) {
       `${G.cloud > 0.6 ? '☁️' : G.cloud > 0.3 ? '🌤' : '☀️'} ${(100 - G.cloud * 100).toFixed(0)}%` +
       ` &nbsp; 🌬 ${(G.wind * 90).toFixed(0)} km/h` +
       (G.dunkelflaute > 0 ? ' <span class="bad blink">DUNKELFLAUTE</span>' : '');
-    const pop = G.cities.reduce((a, c) => a + c.pop, 0);
+    const pop = Math.floor(G.cities.reduce((a, c) => a + c.pop, 0));
     $('pop').textContent = `👥 ${pop.toLocaleString()}`;
     $('co2').textContent = `🌍 ${G.co2SavedTons.toFixed(0)} t CO₂ avoided`;
     // storage minis
@@ -140,7 +148,7 @@ export function updateUI(dt) {
     if (activeTab === 'routes') renderRoutesLive();
     if (activeTab === 'research') renderResearchLive();
     // rich-grid teaching moment
-    if (G.incomeEnergyToday > 4000 && G.incomeEnergyToday > G.incomeTransportToday) showTip('richGrid');
+    if (G.incomeEnergyToday > 12000 && G.incomeEnergyToday > G.incomeTransportToday) showTip('richGrid');
   }
   chartTimer += dt;
   if (chartTimer > 0.6 && activeTab === 'dashboard') {
@@ -361,7 +369,15 @@ function renderRoutesLive() {
     const el = document.querySelector(`.vehlist[data-r="${r.id}"]`);
     if (!el) continue;
     el.innerHTML = r.vehicles.map(v => {
-      const carg = Object.entries(v.cargo).filter(([, a]) => a > 0).map(([c, a]) => `${CARGO[c].name} ${a.toFixed(0)}`).join(', ') || 'empty';
+      let carg;
+      if (v.kind === 'bus') {
+        const groups = (v.pax || []).filter(g => g.n >= 1);
+        carg = groups.length
+          ? `👥 ${groups.reduce((a, g) => a + g.n, 0)} (${groups.map(g => g.type === 'local' ? `${g.n} in ${g.from.name}` : `${g.n} → ${g.dest.name}`).join(', ')})`
+          : 'empty';
+      } else {
+        carg = Object.entries(v.cargo).filter(([, a]) => a > 0).map(([c, a]) => `${CARGO[c].name} ${a.toFixed(0)}`).join(', ') || 'empty';
+      }
       const st = v.state === 'stranded' ? (v.noRoute ? '⚠️ no road connection!' : '🪫 stranded!') : v.state === 'loading' ? (v.charging ? '⚡charging' : 'loading') : '▶';
       return `<div class="veh small">${v.def.icon} ${st} · 🔋${Math.round(v.battery / v.def.batteryKWh * 100)}% · ${carg}</div>`;
     }).join('');
@@ -393,11 +409,20 @@ function renderInfobox() {
     const d = s.def;
     html = `<b>${d.icon} ${d.name}</b><div class="small">${d.desc}</div>`;
   } else if (s.kind === 'station') {
-    const carg = Object.entries(s.cargo).filter(([, a]) => a > 0.5).map(([c, a]) => `${CARGO[c].name}: ${a.toFixed(0)}`).join(' · ') || 'nothing waiting';
+    let carg;
+    if (s.stype === 'bus' && s.pax) {
+      const parts = [];
+      if (s.pax.local >= 1) parts.push(`${Math.round(s.pax.local)} travelling within ${s.paxHome ? s.paxHome.name : 'town'}`);
+      for (const [name, n] of Object.entries(s.pax.inter)) if (n >= 1) parts.push(`${Math.round(n)} → ${name}`);
+      carg = parts.join(' · ') || 'nobody waiting';
+    } else {
+      carg = Object.entries(s.cargo).filter(([, a]) => a > 0.5).map(([c, a]) => `${CARGO[c].name}: ${a.toFixed(0)}`).join(' · ') || 'nothing waiting';
+    }
     html = `<b>${s.def.icon} ${s.name || s.def.name}</b><div class="small">Waiting: ${carg}</div>
+      ${s.stype === 'bus' ? '<div class="small dim">Buses only board passengers their route can deliver — local trips need a 2nd stop ≥5 tiles away in the same city; intercity trips need a stop at the destination. Press V for the demand overlay.</div>' : ''}
       <div class="small dim">${G.routeEdit ? 'Click to add to ' + G.routeEdit.name : ''}</div>`;
   } else if (s.kind === 'city') {
-    html = `<b>🏙 ${s.name}</b><div class="small">Population ${s.pop.toLocaleString()} · Happiness ${(s.happiness * 100).toFixed(0)}%</div>
+    html = `<b>🏙 ${s.name}</b><div class="small">Population ${Math.floor(s.pop).toLocaleString()} · Happiness ${(s.happiness * 100).toFixed(0)}%</div>
       <div class="small dim">Cities grow with reliable power, food, goods & bus service. They pay you for every MWh.</div>`;
   }
   el.innerHTML = html + '<div class="small dim" style="margin-top:4px">(click elsewhere to deselect)</div>';

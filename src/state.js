@@ -47,7 +47,13 @@ export const G = {
   history: [],
   histMax: 192,
   moneyHistory: [],
+  // lifetime delivery counters (quests & insights)
+  stats: {
+    paxLocal: 0, paxInter: 0,
+    grainToFood: 0, oreToSteel: 0, foodToCity: 0, steelToCity: 0,
+  },
   // ui / interaction
+  showDemand: false,        // passenger demand overlay
   tool: null,               // active build tool id
   routeEdit: null,          // route being edited
   selected: null,

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { G, emit } from './state.js';
 import { VEHICLES, CARGO } from './data.js';
-import { tile, isRoad, worldXZ, tileY } from './world.js';
+import { tile, isRoad, worldXZ, tileY, makeStripeTexture } from './world.js';
 
 const STATION_RADIUS = 7;
 let scene;
@@ -105,14 +105,40 @@ export function tickIndustries(gameHours) {
     }
     ind.stock = Math.min(ind.stock, 120);
   }
-  // cities generate passengers at bus stations in range
+  // bus stops collect waiting travellers from their home city's demand pool
   for (const st of G.stations) {
     if (st.stype !== 'bus') continue;
     const { cities } = stationCatchment(st);
+    if (!cities.length) continue;
+    let home = cities[0], bd = Infinity;
     for (const c of cities) {
-      st.cargo.pax = Math.min((st.cargo.pax || 0) + c.pop * 0.004 * gameHours, 60);
-      st.paxHome = c;
+      const d = Math.hypot(c.ci - st.i, c.cj - st.j);
+      if (d < bd) { bd = d; home = c; }
     }
+    st.paxHome = home;
+    st.pax = st.pax || { local: 0, inter: {} };
+    // people only walk to a stop if a route with a vehicle can take them where they want to go
+    const served = { local: false, inter: new Set() };
+    for (const r of G.routes) {
+      if (!r.vehicles.length || !r.stops.includes(st)) continue;
+      const s = routeServes(r, st);
+      if (s.local) served.local = true;
+      for (const c of s.inter) served.inter.add(c);
+    }
+    const stopsOfCity = G.stations.filter(s => s.stype === 'bus' && s.paxHome === home).length || 1;
+    const flow = 16 * gameHours / stopsOfCity;   // travellers walking to each stop per hour
+    const waiting = () => st.pax.local + Object.values(st.pax.inter).reduce((a, b) => a + b, 0);
+    if (served.local) {
+      const take = Math.min(home.paxLocal, flow, Math.max(0, 40 - waiting()));
+      home.paxLocal -= take; st.pax.local += take;
+    }
+    G.cities.forEach((dest, di) => {
+      if (dest === home || !served.inter.has(dest)) return;
+      const t2 = Math.min(home.paxTo[di], flow * 0.6, Math.max(0, 40 - waiting()));
+      home.paxTo[di] -= t2;
+      st.pax.inter[dest.name] = (st.pax.inter[dest.name] || 0) + t2;
+    });
+    st.cargo.pax = waiting(); // mirror for UI / infobox
   }
   // freight stations pull from producers in range
   for (const st of G.stations) {
@@ -162,18 +188,38 @@ export function buyVehicle(route, kind) {
 function buildVehicleMesh(kind) {
   const g = new THREE.Group();
   const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.4, metalness: 0.4, ...o });
+  const glassM = M('#18242f', { roughness: 0.12, metalness: 0.3 });
+  const wheelM = M('#141618', { roughness: 0.9, metalness: 0 });
+  const wheel = (x, z, r = 0.26) => {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.18, 10), wheelM);
+    w.rotation.x = Math.PI / 2;
+    w.position.set(x, r, z);
+    return w;
+  };
   if (kind === 'truck') {
     const cab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 1.1), M('#2e7d4f'));
     cab.position.set(1.05, 0.65, 0);
-    const trailer = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.1, 1.1), M('#e8e4da'));
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.38, 0.95), glassM);
+    shield.position.set(1.5, 0.86, 0);
+    const trailer = new THREE.Mesh(
+      new THREE.BoxGeometry(2.0, 1.1, 1.1),
+      new THREE.MeshStandardMaterial({ map: makeStripeTexture('#e8e4da', '#d6d2c6', 18), roughness: 0.5, metalness: 0.25 }),
+    );
     trailer.position.set(-0.45, 0.75, 0);
-    g.add(cab, trailer);
+    g.add(cab, shield, trailer,
+      wheel(1.1, 0.46), wheel(1.1, -0.46), wheel(-0.1, 0.46), wheel(-0.1, -0.46),
+      wheel(-1.1, 0.46), wheel(-1.1, -0.46));
   } else {
     const body = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.0, 1.05), M('#2a78c2'));
     body.position.set(0, 0.7, 0);
+    const windows = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.38, 1.08), glassM);
+    windows.position.set(0.05, 0.92, 0);
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.9), glassM);
+    shield.position.set(1.4, 0.9, 0);
     const roofLine = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.18, 1.05), M('#dfe7ee'));
     roofLine.position.set(0, 1.28, 0);
-    g.add(body, roofLine);
+    g.add(body, windows, shield, roofLine,
+      wheel(0.95, 0.46), wheel(0.95, -0.46), wheel(-0.95, 0.46), wheel(-0.95, -0.46));
   }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
@@ -194,6 +240,7 @@ function payDelivery(cargoId, amount, dist) {
 }
 
 export function tickVehicles(dt, gameHours) {
+  updateFx(dt);
   for (const v of G.vehicles) {
     const m = G.mult;
     if (v.state === 'travel') {
@@ -232,7 +279,8 @@ export function tickVehicles(dt, gameHours) {
       }
     } else if (v.state === 'loading') {
       // charge from the grid while loading (this demand hits the grid!)
-      v.charging = v.battery < v.def.batteryKWh && G.servedFraction > 0.97;
+      // gate only on real blackouts — a slightly strained grid still charges
+      v.charging = v.battery < v.def.batteryKWh && G.servedFraction > 0.85;
       if (v.charging) {
         v.battery = Math.min(v.def.batteryKWh, v.battery + v.def.chargeMW * m.chargeRate * 1000 * gameHours);
         emit('tip', 'chargingLoad');
@@ -254,74 +302,237 @@ export function tickVehicles(dt, gameHours) {
   }
 }
 
+// what passenger destinations can this route deliver from stop st?
+const LOCAL_MIN_DIST = 5;
+export function routeServes(route, st) {
+  const home = st.paxHome;
+  const res = { local: false, inter: [] };
+  for (const o of route.stops) {
+    if (o === st) continue;
+    const { cities } = stationCatchment(o);
+    for (const c of cities) {
+      if (c === home) {
+        if (Math.hypot(o.i - st.i, o.j - st.j) >= LOCAL_MIN_DIST) res.local = true;
+      } else if (!res.inter.includes(c)) res.inter.push(c);
+    }
+  }
+  return res;
+}
+
 function arriveAtStation(v) {
   const st = v.route.stops[v.stopIndex];
   if (!st) return;
   const { acceptors, cities } = stationCatchment(st);
   const dist = v.lastStop ? Math.hypot(st.i - v.lastStop.i, st.j - v.lastStop.j) : 10;
+  let paidHere = 0;
 
-  // --- unload: anything accepted here
-  for (const [cid, amt] of Object.entries(v.cargo)) {
-    if (amt <= 0) continue;
-    let accepted = false;
-    if (cid === 'pax') {
-      // passengers want a DIFFERENT city than where they boarded
-      const target = cities.find(c => c !== v.paxFrom);
-      if (target) {
-        accepted = true;
-        target.happiness = Math.min(1, target.happiness + 0.01);
-        target.pop += Math.floor(amt * 0.1);
-      }
-    } else if (cid === 'food' || cid === 'steel') {
-      if (cities.length) {
-        accepted = true;
-        cities[0].happiness = Math.min(1, cities[0].happiness + amt * 0.002);
-      }
-      // factories also accept their inputs
-      const acc = acceptors.find(a => a.def.accepts === cid);
-      if (acc) { acc.inStock += amt; accepted = true; }
-    } else {
-      const acc = acceptors.find(a => a.def.accepts === cid);
-      if (acc) { acc.inStock += amt; accepted = true; }
-    }
-    if (accepted) {
-      payDelivery(cid, amt, dist);
-      v.cargo[cid] = 0;
-    }
-  }
-  // --- load: only cargo that some OTHER stop on this route accepts
-  const wanted = new Set();
-  for (const other of v.route.stops) {
-    if (other === st) continue;
-    for (const cid of stationAccepts(other)) wanted.add(cid);
-  }
-  const freeCap = () => v.def.capacity - Object.values(v.cargo).reduce((a, b) => a + b, 0);
   if (v.kind === 'bus') {
-    // passengers only board if another stop reaches a different city
-    const otherCity = v.route.stops.some(o => o !== st && stationCatchment(o).cities.some(c => c !== st.paxHome));
-    const take = otherCity ? Math.min(st.cargo.pax || 0, freeCap()) : 0;
-    if (take > 0) {
-      v.cargo.pax = (v.cargo.pax || 0) + take;
-      st.cargo.pax -= take;
-      v.paxFrom = st.paxHome;
+    // --- unload passenger groups whose destination this stop serves
+    v.pax = v.pax || [];
+    const keep = [];
+    for (const grp of v.pax) {
+      const ride = Math.hypot(st.i - grp.fi, st.j - grp.fj);
+      const deliver = grp.type === 'local'
+        ? cities.includes(grp.from) && ride >= LOCAL_MIN_DIST
+        : cities.includes(grp.dest);
+      if (deliver) {
+        const rate = grp.type === 'local' ? CARGO.pax.payLocal : CARGO.pax.pay;
+        const pay = rate * grp.n * (1 + ride / 50);
+        G.money += pay; G.incomeTransportToday += pay; paidHere += pay;
+        G.stats[grp.type === 'local' ? 'paxLocal' : 'paxInter'] += grp.n;
+        const cityRef = grp.type === 'local' ? grp.from : grp.dest;
+        cityRef.happiness = Math.min(1, cityRef.happiness + grp.n * 0.0015);
+        if (grp.type === 'inter') cityRef.pop += Math.floor(grp.n * 0.08);
+      } else keep.push(grp);
+    }
+    v.pax = keep;
+    // --- board only travellers this route can actually deliver
+    if (st.pax && st.paxHome) {
+      const serves = routeServes(v.route, st);
+      const room = () => v.def.capacity - v.pax.reduce((a, g) => a + g.n, 0);
+      if (serves.local && st.pax.local >= 1 && room() >= 1) {
+        const n = Math.floor(Math.min(st.pax.local, room()));
+        if (n) { st.pax.local -= n; v.pax.push({ type: 'local', n, from: st.paxHome, fi: st.i, fj: st.j }); }
+      }
+      for (const dest of serves.inter) {
+        const n = Math.floor(Math.min(st.pax.inter[dest.name] || 0, room()));
+        if (n >= 1) { st.pax.inter[dest.name] -= n; v.pax.push({ type: 'inter', n, dest, from: st.paxHome, fi: st.i, fj: st.j }); }
+      }
+      st.cargo.pax = st.pax.local + Object.values(st.pax.inter).reduce((a, b) => a + b, 0);
     }
   } else {
+    // --- unload: anything accepted here
+    for (const [cid, amt] of Object.entries(v.cargo)) {
+      if (amt <= 0) continue;
+      let accepted = false;
+      if (cid === 'food' || cid === 'steel') {
+        if (cities.length) {
+          accepted = true;
+          cities[0].happiness = Math.min(1, cities[0].happiness + amt * 0.002);
+          G.stats[cid + 'ToCity'] += amt;
+        }
+        const acc = acceptors.find(a => a.def.accepts === cid);
+        if (acc) { acc.inStock += amt; accepted = true; }
+      } else {
+        const acc = acceptors.find(a => a.def.accepts === cid);
+        if (acc) {
+          acc.inStock += amt; accepted = true;
+          if (cid === 'grain') G.stats.grainToFood += amt;
+          if (cid === 'ore') G.stats.oreToSteel += amt;
+        }
+      }
+      if (accepted) {
+        paidHere += payDelivery(cid, amt, dist);
+        v.cargo[cid] = 0;
+      }
+    }
+    // --- load: only cargo that some OTHER stop on this route accepts
+    const wanted = new Set();
+    for (const other of v.route.stops) {
+      if (other === st) continue;
+      for (const cid of stationAccepts(other)) wanted.add(cid);
+    }
+    const freeCap = () => v.def.capacity - Object.values(v.cargo).reduce((a, b) => a + b, 0);
     for (const cid of Object.keys(st.cargo)) {
       if (cid === 'pax' || !wanted.has(cid)) continue;
       const take = Math.min(st.cargo[cid] || 0, freeCap());
       if (take > 0) { v.cargo[cid] = (v.cargo[cid] || 0) + take; st.cargo[cid] -= take; }
     }
   }
+  if (paidHere > 0.5) spawnMoneyFx(st, paidHere);
   v.lastStop = st;
+}
+
+// ---------- floating text & demand overlay ----------
+function makeTextSprite(lines, { color = '#ffffff', size = 2.4, bg = 'rgba(8,14,22,0.74)' } = {}) {
+  if (!Array.isArray(lines)) lines = [lines];
+  const font = '600 30px "Segoe UI", system-ui, sans-serif';
+  const meas = document.createElement('canvas').getContext('2d');
+  meas.font = font;
+  const w = Math.ceil(Math.max(...lines.map(l => meas.measureText(l.text ?? l).width)) + 30);
+  const lh = 38, h = lines.length * lh + 16;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d');
+  if (bg) {
+    cx.fillStyle = bg;
+    cx.beginPath(); cx.roundRect(0, 0, w, h, 12); cx.fill();
+  }
+  cx.font = font; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  lines.forEach((l, i) => {
+    cx.fillStyle = l.color || color;
+    cx.fillText(l.text ?? l, w / 2, 8 + lh * i + lh / 2);
+  });
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  const sH = lines.length * size + 0.4;
+  sp.scale.set(sH * w / h, sH, 1);
+  sp.renderOrder = 50;
+  return sp;
+}
+
+const fxList = [];
+function spawnMoneyFx(st, pay) {
+  const [x, z] = worldXZ(st.i, st.j);
+  const sp = makeTextSprite('+€' + Math.round(pay).toLocaleString(), { color: '#9fe87e', size: 2.1, bg: null });
+  sp.position.set(x, tileY(st.i, st.j) + 4, z);
+  scene.add(sp);
+  fxList.push({ sp, t: 0 });
+}
+function updateFx(dt) {
+  for (let k = fxList.length - 1; k >= 0; k--) {
+    const f = fxList[k];
+    f.t += dt;
+    f.sp.position.y += dt * 2.4;
+    f.sp.material.opacity = Math.max(0, 1 - f.t / 1.8);
+    if (f.t > 1.8) {
+      scene.remove(f.sp);
+      f.sp.material.map.dispose(); f.sp.material.dispose();
+      fxList.splice(k, 1);
+    }
+  }
+}
+
+let overlayGroup = null, overlayTimer = 9;
+export function updateDemandOverlay(dt) {
+  overlayTimer += dt;
+  if (!G.showDemand) { if (overlayGroup) disposeOverlay(); return; }
+  if (overlayGroup && overlayTimer < 1.2) return;
+  overlayTimer = 0;
+  disposeOverlay();
+  overlayGroup = new THREE.Group();
+  // city labels: who is waiting, and where they want to go
+  for (const c of G.cities) {
+    const total = Math.round(c.paxLocal + c.paxTo.reduce((a, b) => a + b, 0));
+    const lines = [
+      { text: `${c.name} · 👥 ${total} waiting`, color: '#ffffff' },
+      { text: `${Math.round(c.paxLocal)} around town`, color: '#9fd0ff' },
+    ];
+    G.cities.forEach((o, oi) => {
+      if (o !== c && c.paxTo[oi] >= 1) lines.push({ text: `${Math.round(c.paxTo[oi])} → ${o.name}`, color: '#f0c64a' });
+    });
+    const sp = makeTextSprite(lines, { size: 2.6 });
+    const [x, z] = worldXZ(c.ci, c.cj);
+    sp.position.set(x, tileY(c.ci, c.cj) + 26, z);
+    overlayGroup.add(sp);
+  }
+  // arcs: intercity travel demand between city pairs
+  for (let a = 0; a < G.cities.length; a++) for (let b = a + 1; b < G.cities.length; b++) {
+    const ca = G.cities[a], cb = G.cities[b];
+    const n = ca.paxTo[b] + cb.paxTo[a];
+    if (n < 3) continue;
+    const [xa, za] = worldXZ(ca.ci, ca.cj), [xb, zb] = worldXZ(cb.ci, cb.cj);
+    const curve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(xa, 8, za),
+      new THREE.Vector3((xa + xb) / 2, 30 + n * 0.1, (za + zb) / 2),
+      new THREE.Vector3(xb, 8, zb),
+    );
+    const tube = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 24, Math.min(0.8, 0.15 + n / 70), 6),
+      new THREE.MeshBasicMaterial({ color: '#f0a23c', transparent: true, opacity: 0.6, depthWrite: false }),
+    );
+    overlayGroup.add(tube);
+  }
+  // bus stop badges, colored by crowding
+  for (const st of G.stations) {
+    if (st.stype !== 'bus' || !st.pax) continue;
+    const n = Math.round(st.cargo.pax || 0);
+    const color = n >= 30 ? '#ff6b5e' : n >= 15 ? '#f0c64a' : '#9fe87e';
+    const sp = makeTextSprite(`🚏 ${n}`, { color, size: 1.8 });
+    const [x, z] = worldXZ(st.i, st.j);
+    sp.position.set(x, tileY(st.i, st.j) + 5, z);
+    overlayGroup.add(sp);
+  }
+  scene.add(overlayGroup);
+}
+function disposeOverlay() {
+  if (!overlayGroup) return;
+  overlayGroup.traverse(o => {
+    if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    if (o.geometry) o.geometry.dispose();
+  });
+  scene.remove(overlayGroup);
+  overlayGroup = null;
 }
 
 // city food/happiness/growth, once per game-hour
 export function tickCities(gameHours) {
   for (const c of G.cities) {
+    // travel demand: ~0.5% of population per hour wants to go somewhere
+    const want = c.pop * 0.005 * gameHours;
+    c.paxLocal = Math.min(c.paxLocal + want * 0.6, 90);
+    const others = Math.max(1, G.cities.length - 1);
+    G.cities.forEach((o, oi) => {
+      if (o !== c) c.paxTo[oi] = Math.min(c.paxTo[oi] + want * 0.4 / others, 60);
+    });
     const power = G.servedFraction;
     c.happiness += ((power > 0.97 ? 0.75 : 0.2) - c.happiness) * 0.02 * gameHours;
     if (G.blackout) c.happiness = Math.max(0.05, c.happiness - 0.03 * gameHours);
-    const growth = (c.happiness - 0.45) * 4 * gameHours;
-    c.pop = Math.max(400, Math.floor(c.pop + growth));
+    // big stranded crowds make people grumpy — bus service fixes it
+    const stuck = c.paxLocal + c.paxTo.reduce((a, b) => a + b, 0);
+    if (stuck > 150) c.happiness = Math.max(0.05, c.happiness - 0.004 * gameHours);
+    const growth = (c.happiness - 0.45) * 6 * gameHours;
+    c.pop = Math.max(400, c.pop + growth); // keep fractional — flooring here froze growth & nuked declines
   }
 }

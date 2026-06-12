@@ -98,7 +98,7 @@ export const CARGO = {
   grain: { name: 'Grain', color: '#d8b84a', pay: 24 },
   steel: { name: 'Green Steel', color: '#8fa8c0', pay: 75 },
   food:  { name: 'Food', color: '#7ec97e', pay: 55 },
-  pax:   { name: 'Passengers', color: '#e8e0d0', pay: 16 },
+  pax:   { name: 'Passengers', color: '#e8e0d0', pay: 24, payLocal: 9 }, // pay = intercity rate
 };
 
 export const TECHS = [
@@ -141,7 +141,7 @@ export const TECHS = [
 export const TIPS = {
   welcome: {
     title: 'Welcome, Director!',
-    text: 'You run both transport AND the power grid of this region. Every truck, bus, factory and home runs on electricity — and you sell it to them. Build a Solar Farm and a Wind Turbine to get started, then connect industries with roads, depots and trucks.',
+    text: 'You run both transport AND the power grid of this region. Every truck, bus, factory and home runs on electricity — and you sell it to them. Your first goals are in the 🎯 Objectives panel (top left) — click one to read how to do it. Pan with WASD/arrow keys or mouse, press V to see passenger demand.',
   },
   firstSolar: {
     title: 'Solar: cheap but sun-shaped',
@@ -182,6 +182,10 @@ export const TIPS = {
   steelHungry: {
     title: 'Green steel is power-hungry',
     text: 'Your Steel Works uses hydrogen direct reduction + an electric arc furnace — like real plants in Sweden (HYBRIT) and Germany. Real green steel needs ~3.5 MWh per tonne, ~10x a household\'s daily use per single tonne. Industry, not homes, is the big electrification challenge.',
+  },
+  firstBusStop: {
+    title: 'Passengers have destinations',
+    text: 'People wait in cities to travel — some across town, some to another city. Press V (or the 👥 Demand button) to see who waits where and where they want to go. A bus only boards passengers its route can actually deliver, so connect two stops in the same city (≥5 tiles apart) for local trips, or two cities for intercity trips.',
   },
   chargingLoad: {
     title: 'Vehicle charging hits the grid',

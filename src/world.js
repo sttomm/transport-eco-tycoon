@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, emit } from './state.js';
 import { makeNoise } from './noise.js';
 import { BUILDINGS, INDUSTRY_TYPES } from './data.js';
@@ -9,7 +10,6 @@ const { fbm, rand } = noise;
 export const WATER_Y = -0.35;
 let scene;
 let roadMesh, roadDirty = true;
-let cityBuildingMat;
 let ambient = { cars: null, peds: null, carList: [], pedList: [] };
 const turbineRotors = [];
 
@@ -62,57 +62,187 @@ function buildTerrainMesh() {
   const geo = new THREE.PlaneGeometry(S, S, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const cWater = new THREE.Color('#8a8f6a'), cSand = new THREE.Color('#cbbd8f'),
-    cGrass = new THREE.Color('#6fae5c'), cGrass2 = new THREE.Color('#5d9a4e'), cRock = new THREE.Color('#9aa0a3');
-  const c = new THREE.Color();
-  for (let k = 0; k < pos.count; k++) {
-    const x = pos.getX(k), z = pos.getZ(k);
-    const h = heightAt(x, z);
-    pos.setY(k, h);
-    if (h < WATER_Y + 0.08) c.copy(cWater);
-    else if (h < WATER_Y + 0.5) c.copy(cSand);
-    else if (h > 3.4) c.copy(cRock);
-    else c.lerpColors(cGrass, cGrass2, fbm(x * 0.05 + 9, z * 0.05, 3));
-    colors[k * 3] = c.r; colors[k * 3 + 1] = c.g; colors[k * 3 + 2] = c.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  for (let k = 0; k < pos.count; k++) pos.setY(k, heightAt(pos.getX(k), pos.getZ(k)));
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
+  const mat = new THREE.MeshStandardMaterial({ map: bakeTerrainTexture(), roughness: 0.95, metalness: 0 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   scene.add(mesh);
 }
 
-let waterMat;
+// integer hash → [0,1) — cheap per-pixel grain
+function hash2(x, y) {
+  let n = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+// Bake a biome texture over the whole map: river bed, wet/dry sand banks,
+// mottled grass with dirt patches, striated rock — plus slope shading.
+function bakeTerrainTexture() {
+  const PX = 1024, S = G.N * G.TILE;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = PX;
+  const cx = cv.getContext('2d');
+  const img = cx.createImageData(PX, PX);
+  const d = img.data;
+  const C = s => { const c = new THREE.Color(s); return [c.r * 255, c.g * 255, c.b * 255]; };
+  const cBedHi = C('#9a9a72'), cBedLo = C('#4e5f55'), cWet = C('#a08a5e'), cSand = C('#d3c494'),
+    cGrassA = C('#6fae5c'), cGrassB = C('#558f47'), cDirt = C('#8a7a52'), cRock = C('#9aa0a3'), cRockD = C('#767c80');
+  const out = [0, 0, 0];
+  const mix = (a, b, t) => { t = Math.max(0, Math.min(1, t)); out[0] = a[0] + (b[0] - a[0]) * t; out[1] = a[1] + (b[1] - a[1]) * t; out[2] = a[2] + (b[2] - a[2]) * t; return out; };
+  const prevRow = new Float32Array(PX);
+  for (let py = 0; py < PX; py++) {
+    let left = 0;
+    for (let px = 0; px < PX; px++) {
+      const x = ((px + 0.5) / PX - 0.5) * S, z = ((py + 0.5) / PX - 0.5) * S;
+      const h = heightAt(x, z);
+      const slope = py && px ? Math.abs(h - left) + Math.abs(h - prevRow[px]) : 0;
+      prevRow[px] = h; left = h;
+      const grain = hash2(px, py) - 0.5;            // fine speckle
+      let c;
+      if (h < WATER_Y + 0.02) {                     // river bed, darker with depth
+        c = mix(cBedHi, cBedLo, (WATER_Y - h) / 1.1 + grain * 0.15);
+      } else if (h < WATER_Y + 0.24) {              // wet sand at the waterline
+        c = mix(cWet, cSand, (h - WATER_Y) / 0.24 * 0.5 + grain * 0.3);
+      } else {
+        // irregular sand→grass border driven by noise
+        const edge = (h - (WATER_Y + 0.65)) / 0.45 + (fbm(x * 0.22 + 31, z * 0.22, 2) - 0.5) * 1.4;
+        if (edge < 1) {
+          const sandC = mix(cSand, cWet, 0.18 + grain * 0.5);
+          if (edge <= 0) c = sandC;
+          else {
+            const g0 = mix(cGrassA, cGrassB, fbm(x * 0.05 + 9, z * 0.05, 3));
+            c = mix([sandC[0], sandC[1], sandC[2]], g0, edge);
+          }
+        } else {
+          // grass: large patches + fine mottling + occasional dirt
+          const patch = fbm(x * 0.05 + 9, z * 0.05, 3);
+          const mottle = fbm(x * 0.6 + 200, z * 0.6, 2) - 0.5;
+          c = mix(cGrassA, cGrassB, patch + mottle * 0.7 + grain * 0.35);
+          const dirt = fbm(x * 0.13 + 77, z * 0.13, 3);
+          if (dirt > 0.58) c = mix([c[0], c[1], c[2]], cDirt, (dirt - 0.58) * 6 + grain * 0.3);
+          if (h > 2.6) { // rocky highland blend with striations
+            const stria = Math.sin(h * 7 + fbm(x * 0.3, z * 0.3, 2) * 5) * 0.5 + 0.5;
+            const rockC = mix(cRock, cRockD, stria * 0.7 + grain * 0.4);
+            c = mix([c[0], c[1], c[2]], rockC, (h - 2.6) / 0.9);
+          }
+        }
+      }
+      // slope shading: steeper = darker (fake AO on river banks & hills)
+      const shade = 1 - Math.min(0.3, slope * 0.55) + grain * 0.06;
+      const k = (py * PX + px) * 4;
+      d[k] = c[0] * shade; d[k + 1] = c[1] * shade; d[k + 2] = c[2] * shade; d[k + 3] = 255;
+    }
+  }
+  cx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+let waterMat, waterGeo, waterTime = 0;
+// wave components: [amp, freqX, freqZ, speed]
+const WAVES = [
+  [0.045, 0.55, 0.22, 1.6],
+  [0.035, -0.28, 0.62, 2.1],
+  [0.025, 0.95, -0.7, 2.8],
+];
 function buildWater() {
-  const S = G.N * G.TILE;
+  const S = G.N * G.TILE, SEG = 110;
+  waterGeo = new THREE.PlaneGeometry(S, S, SEG, SEG).rotateX(-Math.PI / 2);
   waterMat = new THREE.MeshPhysicalMaterial({
-    color: '#2a6f9e', roughness: 0.12, metalness: 0, transparent: true, opacity: 0.86,
-    transmission: 0, clearcoat: 1, clearcoatRoughness: 0.1,
+    color: '#2e7aab', roughness: 0.14, metalness: 0, transparent: true, opacity: 0.84,
+    transmission: 0, clearcoat: 1, clearcoatRoughness: 0.08,
+    normalMap: makeWaterNormalTexture(), normalScale: new THREE.Vector2(0.5, 0.5),
   });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(S, S).rotateX(-Math.PI / 2), waterMat);
+  waterMat.normalMap.repeat.set(16, 16);
+  const mesh = new THREE.Mesh(waterGeo, waterMat);
   mesh.position.y = WATER_Y;
   mesh.receiveShadow = true;
   scene.add(mesh);
 }
 
+// tileable ripple normal map from a sum of integer-wavenumber sinusoids
+function makeWaterNormalTexture() {
+  const PX = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = PX;
+  const cx = cv.getContext('2d');
+  const img = cx.createImageData(PX, PX);
+  const comps = [];
+  for (let k = 0; k < 9; k++) {
+    comps.push({
+      a: 1 + Math.floor(rand() * 6), b: 1 + Math.floor(rand() * 6),
+      ph: rand() * Math.PI * 2, amp: 0.5 + rand(),
+    });
+  }
+  for (let py = 0; py < PX; py++) for (let px = 0; px < PX; px++) {
+    const u = px / PX, v = py / PX;
+    let dx = 0, dy = 0;
+    for (const c of comps) {
+      const arg = Math.PI * 2 * (c.a * u + c.b * v) + c.ph;
+      const cs = Math.cos(arg) * c.amp;
+      dx += cs * c.a; dy += cs * c.b;
+    }
+    const k = (py * PX + px) * 4;
+    img.data[k] = 128 + Math.max(-127, Math.min(127, dx * 7));
+    img.data[k + 1] = 128 + Math.max(-127, Math.min(127, dy * 7));
+    img.data[k + 2] = 255;
+    img.data[k + 3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+function updateWater(dt) {
+  waterTime += dt;
+  const t = waterTime;
+  const pos = waterGeo.attributes.position, nor = waterGeo.attributes.normal;
+  for (let k = 0; k < pos.count; k++) {
+    const x = pos.getX(k), z = pos.getZ(k);
+    let y = 0, ddx = 0, ddz = 0;
+    for (const [a, fx, fz, sp] of WAVES) {
+      const arg = x * fx + z * fz + t * sp;
+      y += a * Math.sin(arg);
+      const c = a * Math.cos(arg);
+      ddx += c * fx; ddz += c * fz;
+    }
+    pos.setY(k, y);
+    const inv = 1 / Math.hypot(ddx, 1, ddz);
+    nor.setXYZ(k, -ddx * inv, inv, -ddz * inv);
+  }
+  pos.needsUpdate = nor.needsUpdate = true;
+  waterMat.normalMap.offset.set(t * 0.014, t * 0.009);
+}
+
 // ---------- cities ----------
 const CITY_NAMES = ['Solhaven', 'Windburg', 'Hydrovale'];
+const facadeMats = []; // emissive (lit windows) facade materials, dimmed by day
 function buildCities() {
   const sites = [[22, 22], [24, 72], [62, 40]];
-  // procedural window texture shared by all buildings
-  const tex = makeWindowTexture();
-  cityBuildingMat = new THREE.MeshStandardMaterial({
-    color: '#ffffff', roughness: 0.6, metalness: 0.15,
-    emissive: '#ffd97a', emissiveMap: tex, emissiveIntensity: 0,
+  // four facade styles, each [sideMat...roofMat] for the box faces
+  const styles = ['concrete', 'brick', 'glass', 'plaster'].map(style => {
+    const { map, emi, rough, metal } = makeFacadeTexture(style);
+    const side = new THREE.MeshStandardMaterial({
+      map, roughness: rough, metalness: metal,
+      emissive: '#ffd97a', emissiveMap: emi, emissiveIntensity: 0,
+    });
+    facadeMats.push(side);
+    const roof = new THREE.MeshStandardMaterial({ color: style === 'glass' ? '#4a5560' : '#6e6a64', roughness: 0.92 });
+    // BoxGeometry face order: +x, -x, +y, -y, +z, -z
+    return [side, side, roof, roof, side, side];
   });
 
   sites.forEach(([ci, cj], idx) => {
     const city = {
-      name: CITY_NAMES[idx], ci, cj, pop: 2200 + Math.floor(rand() * 800),
+      name: CITY_NAMES[idx], ci, cj, idx, pop: 2200 + Math.floor(rand() * 800),
       happiness: 0.7, roadTiles: [], blockTiles: [], food: 0, goods: 0, paxTimer: 0,
+      paxLocal: 6, paxTo: [0, 0, 0],   // waiting travellers: within town / to each other city
     };
     const R = 8;
     const boxes = [];
@@ -132,47 +262,99 @@ function buildCities() {
         boxes.push({ i, j, hgt, w: G.TILE * (0.62 + rand() * 0.22) });
       }
     }
-    // instanced buildings for this city
+    // instanced buildings for this city, split by facade style
     const geo = new THREE.BoxGeometry(1, 1, 1);
     geo.translate(0, 0.5, 0);
-    const inst = new THREE.InstancedMesh(geo, cityBuildingMat, boxes.length);
-    inst.castShadow = inst.receiveShadow = true;
+    const byStyle = styles.map(() => []);
+    boxes.forEach(b => byStyle[Math.floor(rand() * styles.length)].push(b));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const col = new THREE.Color();
-    boxes.forEach((b, k) => {
-      const [x, z] = worldXZ(b.i, b.j);
-      p.set(x, tileY(b.i, b.j) - 0.15, z);
-      s.set(b.w, b.hgt, b.w);
-      m.compose(p, q, s);
-      inst.setMatrixAt(k, m);
-      const tone = 0.72 + rand() * 0.25;
-      col.setRGB(tone, tone * (0.96 + rand() * 0.06), tone * (0.92 + rand() * 0.1));
-      inst.setColorAt(k, col);
+    byStyle.forEach((group, si) => {
+      if (!group.length) return;
+      const inst = new THREE.InstancedMesh(geo, styles[si], group.length);
+      inst.castShadow = inst.receiveShadow = true;
+      group.forEach((b, k) => {
+        const [x, z] = worldXZ(b.i, b.j);
+        p.set(x, tileY(b.i, b.j) - 0.15, z);
+        s.set(b.w, b.hgt, b.w);
+        m.compose(p, q, s);
+        inst.setMatrixAt(k, m);
+        const tone = 0.8 + rand() * 0.2;
+        col.setRGB(tone, tone * (0.96 + rand() * 0.06), tone * (0.92 + rand() * 0.1));
+        inst.setColorAt(k, col);
+      });
+      inst.instanceColor.needsUpdate = true;
+      scene.add(inst);
     });
-    inst.instanceColor.needsUpdate = true;
-    scene.add(inst);
     G.cities.push(city);
   });
 }
 
-function makeWindowTexture() {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
+// facade texture (day look) + matching emissive map (lit windows at night)
+function makeFacadeTexture(style) {
+  const W = 128, H = 256;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const cx = cv.getContext('2d');
-  cx.fillStyle = '#000'; cx.fillRect(0, 0, 128, 128);
-  for (let y = 8; y < 120; y += 14) for (let x = 8; x < 120; x += 12) {
-    if (Math.random() < 0.55) {
-      cx.fillStyle = Math.random() < 0.8 ? '#ffdc8e' : '#bfe3ff';
-      cx.fillRect(x, y, 6, 8);
+  const ev = document.createElement('canvas'); ev.width = W; ev.height = H;
+  const ex = ev.getContext('2d');
+  ex.fillStyle = '#000'; ex.fillRect(0, 0, W, H);
+  let rough = 0.75, metal = 0.05;
+
+  if (style === 'brick') {
+    cx.fillStyle = '#9c5a44'; cx.fillRect(0, 0, W, H);
+    for (let y = 0; y < H; y += 6) {
+      for (let x = (y / 6) % 2 ? -6 : 0; x < W; x += 12) {
+        cx.fillStyle = `rgb(${140 + Math.random() * 35 | 0},${78 + Math.random() * 20 | 0},${58 + Math.random() * 15 | 0})`;
+        cx.fillRect(x + 1, y + 1, 10, 4);
+      }
+    }
+  } else if (style === 'glass') {
+    cx.fillStyle = '#36444f'; cx.fillRect(0, 0, W, H);
+    rough = 0.25; metal = 0.55;
+  } else if (style === 'plaster') {
+    cx.fillStyle = '#ddd3c2'; cx.fillRect(0, 0, W, H);
+    for (let k = 0; k < 900; k++) { // stucco grain
+      cx.fillStyle = `rgba(90,80,65,${Math.random() * 0.08})`;
+      cx.fillRect(Math.random() * W, Math.random() * H, 2, 2);
+    }
+  } else { // concrete panels
+    cx.fillStyle = '#c4beb2'; cx.fillRect(0, 0, W, H);
+    for (let k = 0; k < 700; k++) {
+      cx.fillStyle = `rgba(70,70,70,${Math.random() * 0.07})`;
+      cx.fillRect(Math.random() * W, Math.random() * H, 3, 3);
     }
   }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
+  // floors & windows (12 floors, 4 columns)
+  const rows = 12, cols = 4, fh = H / rows, fw = W / cols;
+  for (let r = 0; r < rows; r++) {
+    if (style !== 'glass') { // floor slab line
+      cx.fillStyle = 'rgba(0,0,0,0.18)';
+      cx.fillRect(0, r * fh, W, 2);
+    }
+    for (let c = 0; c < cols; c++) {
+      const wx = c * fw + fw * 0.2, wy = r * fh + fh * 0.25, ww = fw * 0.6, wh = fh * 0.55;
+      if (style === 'glass') {
+        cx.fillStyle = `rgba(${120 + Math.random() * 40 | 0},${160 + Math.random() * 40 | 0},${190 + Math.random() * 30 | 0},0.9)`;
+        cx.fillRect(c * fw + 2, r * fh + 2, fw - 4, fh - 4);
+      } else {
+        cx.fillStyle = 'rgba(30,40,55,0.92)';
+        cx.fillRect(wx, wy, ww, wh);
+        cx.fillStyle = 'rgba(255,255,255,0.25)'; // sill highlight
+        cx.fillRect(wx, wy + wh, ww, 1.5);
+      }
+      if (Math.random() < 0.5) { // lit at night
+        ex.fillStyle = Math.random() < 0.8 ? '#ffdc8e' : '#bfe3ff';
+        if (style === 'glass') ex.fillRect(c * fw + 2, r * fh + 2, fw - 4, fh - 4);
+        else ex.fillRect(wx, wy, ww, wh);
+      }
+    }
+  }
+  const mk = c => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+  return { map: mk(cv), emi: new THREE.CanvasTexture(ev), rough, metal };
 }
 
 export function setNightAmount(n) { // 0 = day, 1 = night
-  if (cityBuildingMat) cityBuildingMat.emissiveIntensity = n * 1.6;
+  for (const m of facadeMats) m.emissiveIntensity = n * 1.6;
 }
 
 // ---------- industries ----------
@@ -241,6 +423,24 @@ function cyl(r, h, mat, x = 0, y = 0, z = 0, rt) {
   return m;
 }
 
+// tiled stripe texture — corrugated metal walls, wood planks, etc.
+export function makeStripeTexture(c1, c2, stripes = 16, vertical = true) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = c1; cx.fillRect(0, 0, 64, 64);
+  cx.fillStyle = c2;
+  const w = 64 / stripes;
+  for (let k = 0; k < stripes; k += 2) {
+    if (vertical) cx.fillRect(k * w, 0, w, 64);
+    else cx.fillRect(0, k * w, 64, w);
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+const Mtex = (tex, o = {}) => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, ...o });
+
 function buildIndustryMesh(type) {
   const g = new THREE.Group();
   if (type === 'mine') {
@@ -249,18 +449,18 @@ function buildIndustryMesh(type) {
     g.add(heap);
     g.add(box(0.6, 5, 0.6, M('#5a5550'), 2.5, 0, -1.5));
   } else if (type === 'steel') {
-    g.add(box(7, 5, 5, M('#5c6470', { metalness: 0.4 })));
+    g.add(box(7, 5, 5, Mtex(makeStripeTexture('#646c78', '#545c68', 22), { metalness: 0.4, roughness: 0.55 })));
     g.add(cyl(0.7, 9, M('#8a929c'), -2, 0, -1.4));
     g.add(cyl(0.7, 8, M('#8a929c'), 0, 0, -1.4));
     const glow = box(2.4, 2.2, 0.4, new THREE.MeshStandardMaterial({ color: '#331a00', emissive: '#ff7a1a', emissiveIntensity: 1.6 }), 1.6, 0.6, 2.55);
     glow.name = 'glow'; g.add(glow);
   } else if (type === 'farm') {
-    g.add(box(3.4, 2.4, 2.6, M('#b5483a'), -1.6, 0, -1));
+    g.add(box(3.4, 2.4, 2.6, Mtex(makeStripeTexture('#b5483a', '#9e3d31', 10), { roughness: 0.85 }), -1.6, 0, -1));
     const roof = new THREE.Mesh(new THREE.ConeGeometry(2.4, 1.4, 4), M('#7a322a'));
     roof.position.set(-1.6, 3.1, -1); roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
     g.add(box(6, 0.18, 5, M('#c9b34a'), 1.6, 0, 1.4));
   } else if (type === 'food') {
-    g.add(box(5.6, 3.4, 4.2, M('#d8dde2')));
+    g.add(box(5.6, 3.4, 4.2, Mtex(makeStripeTexture('#dde2e7', '#cdd3d9', 22), { roughness: 0.6 })));
     g.add(cyl(1, 4.6, M('#aeb6bd', { metalness: 0.5 }), 3.4, 0, 0));
     g.add(cyl(1, 4.6, M('#aeb6bd', { metalness: 0.5 }), 3.4, 0, 2.2));
   }
@@ -350,9 +550,26 @@ function buildTrees() {
 }
 
 // ---------- roads (dynamic instanced mesh) ----------
+function makeAsphaltTexture() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#3c4043'; cx.fillRect(0, 0, 64, 64);
+  for (let k = 0; k < 600; k++) {
+    const v = 50 + Math.random() * 40 | 0;
+    cx.fillStyle = `rgba(${v},${v + 4},${v + 6},0.5)`;
+    cx.fillRect(Math.random() * 64, Math.random() * 64, 1.5, 1.5);
+  }
+  cx.strokeStyle = 'rgba(20,22,24,0.55)'; // worn tile edges
+  cx.lineWidth = 3;
+  cx.strokeRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function initRoadMesh() {
   const geo = new THREE.BoxGeometry(G.TILE, 0.12, G.TILE);
-  const mat = new THREE.MeshStandardMaterial({ color: '#3c4043', roughness: 0.9 });
+  const mat = new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.9 });
   roadMesh = new THREE.InstancedMesh(geo, mat, 4500);
   roadMesh.receiveShadow = true;
   roadMesh.count = 0;
@@ -480,9 +697,18 @@ export function bulldoze(i, j) {
 
 // ---------- ambient life: cars & pedestrians ----------
 function initAmbient() {
-  const carGeo = new THREE.BoxGeometry(1.5, 0.55, 0.75);
-  carGeo.translate(0, 0.35, 0);
-  const carMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5 });
+  // car = body + darker cabin, merged with vertex tints so instance colors only tint the body
+  const carBody = new THREE.BoxGeometry(1.5, 0.42, 0.78);
+  carBody.translate(0, 0.3, 0);
+  const carCab = new THREE.BoxGeometry(0.82, 0.34, 0.72);
+  carCab.translate(-0.08, 0.66, 0);
+  const tint = (geom, v) => {
+    const n = geom.attributes.position.count;
+    geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(v), 3));
+  };
+  tint(carBody, 1); tint(carCab, 0.3);
+  const carGeo = mergeGeometries([carBody, carCab]);
+  const carMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, vertexColors: true });
   ambient.cars = new THREE.InstancedMesh(carGeo, carMat, 160);
   ambient.cars.castShadow = true;
 
@@ -526,6 +752,7 @@ const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quatern
 
 export function updateWorld(dt, gameDt) {
   if (roadDirty) rebuildRoads();
+  updateWater(dt);
   // turbines spin with wind
   const windPow = G.wind;
   const spin = windPow < 0.12 || windPow > 0.96 ? 0 : (0.5 + windPow * 3.2);
