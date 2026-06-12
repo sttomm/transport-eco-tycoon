@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transport Eco Tycoon — Renewable Grid Edition</title>
+<style>
+  :root {
+    --panel: rgba(16, 22, 30, 0.88);
+    --panel2: rgba(28, 36, 48, 0.9);
+    --line: rgba(255, 255, 255, 0.08);
+    --txt: #e8edf2;
+    --dim: #93a0ad;
+    --accent: #4fc3f7;
+    --good: #7ed87e;
+    --warn: #f0c64a;
+    --bad: #ff6b5e;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font: 13px/1.45 'Segoe UI', system-ui, sans-serif; color: var(--txt); background: #0b0f14; }
+  #app, #app canvas { position: absolute; inset: 0; }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .dim { color: var(--dim); }
+  .small { font-size: 12px; }
+  .blink { animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.35; } }
+  button { font: inherit; color: var(--txt); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: #04141f; font-weight: 600; }
+
+  /* top bar */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 7px 14px; backdrop-filter: blur(6px);
+  }
+  #topbar .sep { width: 1px; height: 18px; background: var(--line); }
+  #money { font-size: 16px; font-weight: 700; color: #f0d264; }
+  #speeds button { padding: 2px 8px; }
+  #toolhint { position: absolute; top: 46px; left: 50%; transform: translateX(-50%); z-index: 9;
+    background: var(--panel); padding: 4px 14px; border-radius: 0 0 8px 8px; color: var(--warn); }
+  #toolhint:empty { display: none; }
+
+  /* bottom toolbar */
+  #toolbar {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); z-index: 10;
+    display: flex; gap: 14px; padding: 8px 14px 10px;
+    background: var(--panel); border: 1px solid var(--line); border-bottom: none;
+    border-radius: 12px 12px 0 0; backdrop-filter: blur(6px);
+  }
+  .toolgroup-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 4px; text-align: center; }
+  .toolrow { display: flex; gap: 6px; }
+  .tool { display: flex; flex-direction: column; align-items: center; width: 74px; padding: 5px 2px; gap: 1px; }
+  .ticon { font-size: 19px; } .tname { font-size: 10.5px; line-height: 1.15; text-align: center; } .tcost { font-size: 10px; color: #f0d264; }
+
+  /* right tab buttons + panel */
+  #tabbtns { position: absolute; top: 52px; right: 10px; z-index: 11; display: flex; flex-direction: column; gap: 6px; }
+  #tabbtns button { padding: 8px 10px; font-size: 17px; }
+  #sidepanel {
+    position: absolute; top: 52px; right: 58px; bottom: 70px; width: 360px; z-index: 10;
+    display: none; flex-direction: column; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; backdrop-filter: blur(8px);
+  }
+  #sidepanel h3 { margin-bottom: 6px; }
+  canvas.chart { width: 100%; border-radius: 6px; background: rgba(10, 14, 20, 0.7); margin: 6px 0; }
+  #chartlegend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--dim); margin-bottom: 8px; }
+  #chartlegend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 3px; }
+  #kpis { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 8px 0; }
+  .kpi { background: var(--panel2); border-radius: 6px; padding: 6px; text-align: center; }
+  .kpi-v { font-size: 15px; font-weight: 700; color: var(--accent); }
+  .kpi-n { font-size: 10px; color: var(--dim); }
+  .finrow { display: flex; justify-content: space-between; padding: 3px 2px; border-bottom: 1px solid var(--line); }
+
+  .tech { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 7px 0; }
+  .tech.done { opacity: 0.65; border-color: var(--good); }
+  .tech.locked { opacity: 0.5; }
+  .tech-head { display: flex; justify-content: space-between; }
+  .tech-foot { margin-top: 5px; }
+  .prog { height: 10px; background: #1a222c; border-radius: 5px; overflow: hidden; }
+  .prog div { height: 100%; background: linear-gradient(90deg, #4fc3f7, #7ed87e); transition: width 0.4s; }
+
+  .route { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 7px 0; }
+  .route.editing { border-color: var(--warn); box-shadow: 0 0 8px rgba(240, 198, 74, 0.3); }
+  .route-head { display: flex; gap: 6px; align-items: center; }
+  .route-head b { flex: 1; }
+  .route-veh { margin-top: 5px; display: flex; gap: 6px; }
+  .veh { padding: 2px 0; border-top: 1px dashed var(--line); }
+  button.big { width: 100%; padding: 7px; margin: 8px 0 2px; }
+
+  details.learn { background: var(--panel2); border-radius: 7px; padding: 7px 10px; margin: 5px 0; }
+  details.learn summary { cursor: pointer; font-weight: 600; }
+  details.learn div { margin-top: 5px; color: var(--dim); }
+
+  /* advisor toasts */
+  #advisor { position: absolute; left: 12px; bottom: 14px; z-index: 12; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+  .toast { background: var(--panel); border: 1px solid rgba(79, 195, 247, 0.4); border-radius: 10px; padding: 10px 12px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); animation: slidein 0.35s ease; }
+  .toast.fade { opacity: 0; transition: opacity 1.2s; }
+  @keyframes slidein { from { transform: translateX(-30px); opacity: 0; } }
+  .toast-head { font-weight: 700; color: var(--accent); display: flex; justify-content: space-between; margin-bottom: 3px; }
+  .toast-x { cursor: pointer; color: var(--dim); padding: 0 2px; }
+  .toast-body { font-size: 12.5px; }
+
+  #infobox { position: absolute; left: 12px; top: 90px; z-index: 10; width: 300px; display: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px); }
+
+  #tooltip { position: absolute; z-index: 20; display: none; width: 300px;
+    background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; font-size: 12px; pointer-events: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="topbar">
+    <span id="money">€600k</span>
+    <span class="sep"></span>
+    <span id="clock">Day 1 08:00</span>
+    <span id="speeds">
+      <button data-s="0">⏸</button><button data-s="1" class="on">▶</button><button data-s="3">▶▶</button><button data-s="10">▶▶▶</button>
+    </span>
+    <span class="sep"></span>
+    <span id="gridstat" class="good">⚡ 0 / 0 MW</span>
+    <span id="storemini" class="small"></span>
+    <span class="sep"></span>
+    <span id="weather" class="small"></span>
+    <span class="sep"></span>
+    <span id="pop" class="small"></span>
+    <span id="co2" class="small good"></span>
+  </div>
+  <div id="toolhint"></div>
+
+  <div id="tabbtns">
+    <button data-tab="dashboard" title="Dashboard">📊</button>
+    <button data-tab="research" title="Research">🔬</button>
+    <button data-tab="routes" title="Routes & Vehicles">🚌</button>
+    <button data-tab="learn" title="Energy Encyclopedia">📚</button>
+  </div>
+
+  <div id="sidepanel">
+    <div class="tabpage" id="tab-dashboard">
+      <h3>📊 Grid Dashboard <span class="dim small">(last 48 h)</span></h3>
+      <canvas id="powerchart" class="chart" width="336" height="170"></canvas>
+      <div id="chartlegend"></div>
+      <canvas id="battbar" class="chart" width="336" height="22"></canvas>
+      <canvas id="h2bar" class="chart" width="336" height="22"></canvas>
+      <div id="kpis"></div>
+      <h3 style="margin-top:8px">💰 Finances</h3>
+      <canvas id="moneychart" class="chart" width="336" height="70"></canvas>
+      <div id="finrows"></div>
+    </div>
+    <div class="tabpage" id="tab-research" style="display:none"></div>
+    <div class="tabpage" id="tab-routes" style="display:none"></div>
+    <div class="tabpage" id="tab-learn" style="display:none"></div>
+  </div>
+
+  <div id="infobox"></div>
+  <div id="advisor"></div>
+  <div id="toolbar"></div>
+  <div id="tooltip"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
