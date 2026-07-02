@@ -1,26 +1,29 @@
 // Save / load the game to localStorage. The world is procedurally generated
 // from a fixed seed, so we only persist the player's changes and the economy —
-// on load everything is rebuilt through the normal place()/buyVehicle() paths.
+// on restore everything is rebuilt through the normal place()/buyVehicle()
+// paths (which re-emit the events the renderer listens to).
+// snapshot()/restore() are pure of browser APIs and unit-tested in Node.
 import { G } from './state.js';
 import { TECHS } from './data.js';
-import { place, canPlace } from './world.js';
+import { place, canPlace } from './grid.js';
 import { createRoute, buyVehicle, addWagon } from './transport.js';
 
 const KEY = 'transport-eco-tycoon-save-v1';
+const storage = () => (typeof localStorage === 'undefined' ? null : localStorage);
 
 export function hasSave() {
-  try { return !!localStorage.getItem(KEY); } catch { return false; }
+  try { return !!storage()?.getItem(KEY); } catch { return false; }
 }
 let saveDisabled = false;
 export function clearSave() {
   saveDisabled = true; // block the pagehide autosave from resurrecting the save
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  try { storage()?.removeItem(KEY); } catch { /* ignore */ }
 }
 
-export function saveGame() {
-  if (saveDisabled) return;
+// the serializable snapshot of everything the player changed
+export function snapshot() {
   const stIx = st => G.stations.indexOf(st);
-  const data = {
+  return {
     v: 1,
     minutes: G.minutes, day: G.day, money: G.money, co2: G.co2SavedTons,
     wind: G.wind, cloud: G.cloud, dunkelflaute: G.dunkelflaute,
@@ -47,13 +50,10 @@ export function saveGame() {
       })),
     })),
   };
-  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* storage full / blocked */ }
 }
 
-// returns true when a save was found and restored
-export function loadGame() {
-  let d;
-  try { d = JSON.parse(localStorage.getItem(KEY)); } catch { return false; }
+// apply a snapshot onto a freshly generated world; returns true on success
+export function restore(d) {
   if (!d || d.v !== 1) return false;
 
   G.minutes = d.minutes; G.day = d.day; G.money = d.money;
@@ -112,6 +112,18 @@ export function loadGame() {
   G.batteryMWh = Math.min(d.batteryMWh || 0, G.batteryCapMWh);
   G.h2MWh = Math.min(d.h2MWh || 0, G.h2CapMWh);
   return true;
+}
+
+export function saveGame() {
+  if (saveDisabled) return;
+  try { storage()?.setItem(KEY, JSON.stringify(snapshot())); } catch { /* storage full / blocked */ }
+}
+
+// returns true when a save was found and restored
+export function loadGame() {
+  let d;
+  try { d = JSON.parse(storage()?.getItem(KEY)); } catch { return false; }
+  return restore(d);
 }
 
 export function initAutosave() {

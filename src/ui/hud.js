@@ -1,8 +1,11 @@
-import { G, on, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from './state.js';
-import { BUILDINGS, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from './data.js';
-import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor } from './transport.js';
-import { solarFactor, POWER_PRICE } from './energy.js';
-import { clearSave } from './save.js';
+// DOM HUD: topbar, toolbar, side-panel tabs (dashboard charts, research,
+// routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
+// Reads sim state each tick; never contains game rules.
+import { G, on, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
+import { BUILDINGS, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor } from '../sim/transport.js';
+import { solarFactor, POWER_PRICE } from '../sim/energy.js';
+import { clearSave } from '../sim/save.js';
 
 const $ = id => document.getElementById(id);
 let activeTab = null;
@@ -11,6 +14,7 @@ export function initUI() {
   buildToolbar();
   buildTabs();
   on('tip', showTip);
+  on('toast', t => showTipText(t.title, t.text));
   on('plantBuilt', p => {
     const map = { solar: 'firstSolar', wind: 'firstWind', battery: 'firstBattery', electrolyzer: 'firstElectrolyzer', fuelcell: 'firstFuelcell' };
     if (map[p.type]) showTip(map[p.type]);
@@ -157,6 +161,15 @@ function showTip(id) {
   el.querySelector('.toast-x').onclick = () => el.remove();
   $('advisor').appendChild(el);
   setTimeout(() => { el.classList.add('fade'); setTimeout(() => el.remove(), 1200); }, 26000);
+}
+
+export function showTipText(title, text) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `<div class="toast-head">💡 ${title}<span class="toast-x">✕</span></div><div class="toast-body">${text}</div>`;
+  el.querySelector('.toast-x').onclick = () => el.remove();
+  $('advisor').appendChild(el);
+  setTimeout(() => el.remove(), 9000);
 }
 
 // ---------- side panel tabs ----------
@@ -375,16 +388,8 @@ function renderResearchLive() {
   if (bar) bar.style.width = (G.research.progress * 100).toFixed(0) + '%';
   else renderResearch();
 }
-export function showTipText(title, text) {
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.innerHTML = `<div class="toast-head">💡 ${title}<span class="toast-x">✕</span></div><div class="toast-body">${text}</div>`;
-  el.querySelector('.toast-x').onclick = () => el.remove();
-  $('advisor').appendChild(el);
-  setTimeout(() => el.remove(), 9000);
-}
 
-// research progression, called daily-ish from main loop
+// research progression, called from the main loop
 export function tickResearch(gameHours) {
   if (!G.research) return;
   G.research.progress += gameHours / (G.research.days * 24);

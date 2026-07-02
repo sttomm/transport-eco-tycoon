@@ -1,0 +1,152 @@
+/* Transport Eco Tycoon — all UI styling. The 3D canvas fills #app; every
+   other element is an absolutely-positioned HUD panel on top of it. */
+:root {
+    --panel: rgba(16, 22, 30, 0.88);
+    --panel2: rgba(28, 36, 48, 0.9);
+    --line: rgba(255, 255, 255, 0.08);
+    --txt: #e8edf2;
+    --dim: #93a0ad;
+    --accent: #4fc3f7;
+    --good: #7ed87e;
+    --warn: #f0c64a;
+    --bad: #ff6b5e;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font: 13px/1.45 'Segoe UI', system-ui, sans-serif; color: var(--txt); background: #0b0f14; }
+  #app, #app canvas { position: absolute; inset: 0; }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .dim { color: var(--dim); }
+  .small { font-size: 12px; }
+  .blink { animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.35; } }
+  button { font: inherit; color: var(--txt); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: #04141f; font-weight: 600; }
+
+  /* top bar */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 7px 14px; backdrop-filter: blur(6px);
+  }
+  #topbar .sep { width: 1px; height: 18px; background: var(--line); }
+  #money { font-size: 16px; font-weight: 700; color: #f0d264; }
+  #speeds button { padding: 2px 8px; }
+  #toolhint { position: absolute; top: 46px; left: 50%; transform: translateX(-50%); z-index: 9;
+    background: var(--panel); padding: 4px 14px; border-radius: 0 0 8px 8px; color: var(--warn); }
+  #toolhint:empty { display: none; }
+
+  /* bottom toolbar */
+  #toolbar {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); z-index: 10;
+    display: flex; gap: 14px; padding: 8px 14px 10px;
+    background: var(--panel); border: 1px solid var(--line); border-bottom: none;
+    border-radius: 12px 12px 0 0; backdrop-filter: blur(6px);
+  }
+  .toolgroup-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 4px; text-align: center; }
+  .toolrow { display: flex; gap: 6px; }
+  .tool { display: flex; flex-direction: column; align-items: center; width: 74px; padding: 5px 2px; gap: 1px; }
+  .ticon { font-size: 19px; } .tname { font-size: 10.5px; line-height: 1.15; text-align: center; } .tcost { font-size: 10px; color: #f0d264; }
+
+  /* right tab buttons + panel */
+  #tabbtns { position: absolute; top: 52px; right: 10px; z-index: 11; display: flex; flex-direction: column; gap: 6px; }
+  #tabbtns button { padding: 8px 10px; font-size: 17px; }
+  #sidepanel {
+    position: absolute; top: 52px; right: 58px; bottom: 70px; width: 360px; z-index: 10;
+    display: none; flex-direction: column; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; backdrop-filter: blur(8px);
+  }
+  #sidepanel h3 { margin-bottom: 6px; }
+  canvas.chart { width: 100%; border-radius: 6px; background: rgba(10, 14, 20, 0.7); margin: 6px 0; }
+  #chartlegend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--dim); margin-bottom: 8px; }
+  #chartlegend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 3px; }
+  #kpis { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 8px 0; }
+  .kpi { background: var(--panel2); border-radius: 6px; padding: 6px; text-align: center; }
+  .kpi-v { font-size: 15px; font-weight: 700; color: var(--accent); }
+  .kpi-n { font-size: 10px; color: var(--dim); }
+  .finrow { display: flex; justify-content: space-between; padding: 3px 2px; border-bottom: 1px solid var(--line); }
+
+  .tech { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 7px 0; }
+  .tech.done { opacity: 0.65; border-color: var(--good); }
+  .tech.locked { opacity: 0.5; }
+  .tech-head { display: flex; justify-content: space-between; }
+  .tech-foot { margin-top: 5px; }
+  .prog { height: 10px; background: #1a222c; border-radius: 5px; overflow: hidden; }
+  .prog div { height: 100%; background: linear-gradient(90deg, #4fc3f7, #7ed87e); transition: width 0.4s; }
+
+  .route { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 7px 0; }
+  .route.editing { border-color: var(--warn); box-shadow: 0 0 8px rgba(240, 198, 74, 0.3); }
+  .route-head { display: flex; gap: 6px; align-items: center; }
+  .route-head b { flex: 1; }
+  .route-veh { margin-top: 5px; display: flex; gap: 6px; }
+  .veh { padding: 2px 0; border-top: 1px dashed var(--line); }
+  button.big { width: 100%; padding: 7px; margin: 8px 0 2px; }
+
+  details.learn { background: var(--panel2); border-radius: 7px; padding: 7px 10px; margin: 5px 0; }
+  details.learn summary { cursor: pointer; font-weight: 600; }
+  details.learn div { margin-top: 5px; color: var(--dim); }
+
+  /* advisor toasts */
+  #advisor { position: absolute; left: 12px; bottom: 14px; z-index: 12; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+  .toast { background: var(--panel); border: 1px solid rgba(79, 195, 247, 0.4); border-radius: 10px; padding: 10px 12px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); animation: slidein 0.35s ease; }
+  .toast.fade { opacity: 0; transition: opacity 1.2s; }
+  @keyframes slidein { from { transform: translateX(-30px); opacity: 0; } }
+  .toast-head { font-weight: 700; color: var(--accent); display: flex; justify-content: space-between; margin-bottom: 3px; }
+  .toast-x { cursor: pointer; color: var(--dim); padding: 0 2px; }
+  .toast-body { font-size: 12.5px; }
+
+  #leftcol { position: absolute; left: 12px; top: 90px; z-index: 10; width: 300px;
+    display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 200px); }
+  #infobox { display: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px); }
+
+  /* quest panel */
+  #quests { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; backdrop-filter: blur(6px); overflow-y: auto; }
+  #quest-head { font-weight: 700; cursor: pointer; display: flex; justify-content: space-between; }
+  .quest { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 8px; margin-top: 6px; cursor: pointer; }
+  .quest-title { font-weight: 600; font-size: 12.5px; display: flex; justify-content: space-between; gap: 6px; }
+  .quest-reward { color: #f0d264; font-weight: 700; white-space: nowrap; }
+  .quest-desc { display: none; margin: 4px 0; }
+  .quest.open .quest-desc { display: block; }
+  .quest-prog { height: 7px; background: #1a222c; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+  .quest-prog div { height: 100%; background: linear-gradient(90deg, #4fc3f7, #7ed87e); transition: width 0.4s; }
+  .quest-nums { color: var(--dim); margin-top: 2px; }
+
+  #tooltip { position: absolute; z-index: 20; display: none; width: 300px;
+    background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; font-size: 12px; pointer-events: none; }
+  #topbar > span[id] { cursor: help; }
+
+  /* quest jump button */
+  .quest-spacer { flex: 1; }
+  .quest-jump { padding: 0 5px; font-size: 12px; line-height: 1.4; border-radius: 5px; }
+
+  /* finance drill-down */
+  details.findet summary { cursor: pointer; list-style: none; }
+  details.findet summary::-webkit-details-marker { display: none; }
+  details.findet[open] > summary span:first-child { color: var(--accent); }
+  .finsub { padding-left: 16px; }
+  .finsub2 { padding-left: 32px; font-size: 12px; }
+  .rdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+
+  /* city happiness factors */
+  .hfact { font-size: 12px; padding: 1.5px 0 1.5px 4px; }
+
+  /* welcome screen */
+  #welcome { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    background: rgba(5, 9, 14, 0.72); backdrop-filter: blur(5px); }
+  #welcome-card { width: 660px; max-width: 94vw; max-height: 92vh; overflow-y: auto;
+    background: var(--panel); border: 1px solid rgba(79, 195, 247, 0.45); border-radius: 14px; padding: 16px 20px 18px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6); }
+  #welcome-card h1 { font-size: 22px; margin: 12px 0 4px; }
+  .wlead { font-size: 14px; margin-bottom: 10px; }
+  .wgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; font-size: 12.5px; margin-bottom: 10px; }
+  .wgrid div { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .wcontrols { font-size: 11.5px; margin-bottom: 12px; }
+  .wbtns { display: flex; gap: 10px; }
+  .wbtns button { padding: 9px 18px; font-size: 14px; border-radius: 8px; }
+  .wbtns .wprimary { background: var(--accent); color: #04141f; font-weight: 700; }

@@ -1,0 +1,10 @@
+{
+  "name": "transport-eco-tycoon",
+  "private": true,
+  "type": "module",
+  "description": "Browser transport tycoon with a 100% renewable power grid. No build step, no dependencies \u2014 the game runs from static files; the simulation (src/sim/) is unit-tested with Node's built-in test runner.",
+  "scripts": {
+    "test": "node --test 'test/**/*.test.js'",
+    "serve": "python3 serve.py 8741"
+  }
+}
