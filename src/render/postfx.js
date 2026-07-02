@@ -62,7 +62,7 @@ export function initPostFX(r, s, cam, ctl) {
     distanceExponent: 1,
     thickness: 1,
     scale: 1.2,
-    samples: 16,
+    samples: 8, // 16 halves the frame rate; the denoise pass hides the difference
     distanceFallOff: 1,
     screenSpaceRadius: false,
   });

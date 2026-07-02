@@ -13,7 +13,9 @@ export let renderer, scene, camera, controls;
 export function initScene() {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // 1.5 instead of full retina 2.0: the post stack (GTAO especially) scales
+  // with pixel count and halves the frame rate at 2.0 for no visible gain
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoft is deprecated in r185+ and its lazy fallback breaks shadow compilation
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -121,7 +123,7 @@ function updateSky(elev, az) {
   // clouds mirror the sim's weather: an overcast sky is WHY solar is low
   sky.material.uniforms.cloudCoverage.value = 0.1 + G.cloud * 0.6;
   sky.material.uniforms.time.value = G.minutes * 0.02; // game time, keeps saves deterministic
-  if (Math.abs(elev - lastEnvElev) > 0.04) {
+  if (Math.abs(elev - lastEnvElev) > 0.08) { // ~1 bake per few real seconds; tighter thresholds cause visible hitches
     lastEnvElev = elev;
     for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG'])
       envSky.material.uniforms[k].value = sky.material.uniforms[k].value;
