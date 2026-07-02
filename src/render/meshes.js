@@ -184,7 +184,7 @@ export function buildPlantMesh(type) {
     g.add(box(1.3, 1.1, 0.9, M('#dfe3e7'), 4.6, 0, 5.0));   // inverter cabinet
     g.add(box(1.2, 0.12, 0.8, M('#9aa2a8'), 4.6, 1.1, 5.0));
   } else if (type === 'wind') {
-    const towerMat = M('#e8eaec', { roughness: 0.35, metalness: 0.15 });
+    const towerMat = M('#e8eaec', { roughness: 0.55, metalness: 0.1 }); // matte paint — glossier whites spike past the bloom threshold in full sun
     g.add(cyl(0.55, 14, towerMat, 0, 0, 0, 0.3));
     g.add(cyl(0.6, 0.25, M('#c9cdd1'), 0, 0, 0));                                  // base flange
     const nac = box(1.7, 0.95, 0.95, M('#dfe2e5', { metalness: 0.25 }), 0, 13.55, 0); g.add(nac);
@@ -195,7 +195,7 @@ export function buildPlantMesh(type) {
     hub.rotation.z = -Math.PI / 2; hub.position.x = 0.25; hub.castShadow = true;
     rotor.add(hub);
     for (let b = 0; b < 3; b++) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.14, 6.0, 0.55), M('#f2f4f6', { roughness: 0.3 }));
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.14, 6.0, 0.55), M('#f2f4f6', { roughness: 0.55 }));
       blade.geometry.translate(0, 3.2, 0);
       blade.rotation.x = b * Math.PI * 2 / 3;
       blade.castShadow = true;

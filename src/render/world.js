@@ -168,6 +168,15 @@ function buildWater() {
   mesh.position.y = WATER_Y;
   mesh.receiveShadow = true;
   scene.add(mesh);
+
+  // ocean to the horizon: grounds the island and hides the sky dome below
+  // the horizon line (the Sky shader produces garbage values down there)
+  const ocean = new THREE.Mesh(
+    new THREE.CircleGeometry(3500, 48).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: '#255e88', roughness: 0.55 }), // matte-ish: glossy water mirrors the bright horizon into a white sheet
+  );
+  ocean.position.y = WATER_Y - 0.06;
+  scene.add(ocean);
 }
 
 // tileable ripple normal map from a sum of integer-wavenumber sinusoids
@@ -339,7 +348,7 @@ function makeFacadeTexture(style) {
 }
 
 export function setNightAmount(n) { // 0 = day, 1 = night
-  for (const m of facadeMats) m.emissiveIntensity = n * 1.6;
+  for (const m of facadeMats) m.emissiveIntensity = n * 4.5; // well above the bloom threshold so lit windows glow
 }
 
 // ---------- industries ----------

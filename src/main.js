@@ -10,6 +10,7 @@ import {
 } from './sim/transport.js';
 import { loadGame, saveGame, initAutosave } from './sim/save.js';
 import { initScene, updateDayNight, tickCamTween, keyboardPan, scene, camera, controls, renderer } from './render/scene.js';
+import { initPostFX, renderPostFX, setPostFX, PFX } from './render/postfx.js';
 import { initWorldRender, updateWorldRender } from './render/world.js';
 import { initVehicleRender, updateVehicleRender } from './render/vehicles.js';
 import { initUI, updateUI, tickResearch, showWelcome } from './ui/hud.js';
@@ -20,6 +21,7 @@ import { initInput } from './ui/input.js';
 // the save file / starter grid replays place() calls) ----------
 initGrid();
 initScene();
+initPostFX(renderer, scene, camera, controls);
 initWorldRender(scene);
 initVehicleRender(scene);
 const loadedSave = loadGame();   // restore player progress before the UI reads it
@@ -85,10 +87,10 @@ function frame(now) {
   tickCamTween(dt);
   controls.update();
   updateUI(dt);
-  renderer.render(scene, camera);
+  renderPostFX();
 }
 requestAnimationFrame(frame);
 
 // expose for debugging & programmatic play-testing (see the playtest-game skill)
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, scene, camera, controls, renderer };
+window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, scene, camera, controls, renderer, setPostFX, PFX };

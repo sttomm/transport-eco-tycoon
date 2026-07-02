@@ -30,7 +30,7 @@ can serve a stale old/new mix.** Always force-refresh first:
   const files = ['index.html','styles.css','src/main.js',
     'src/sim/state.js','src/sim/data.js','src/sim/noise.js','src/sim/grid.js',
     'src/sim/energy.js','src/sim/transport.js','src/sim/quests.js','src/sim/save.js',
-    'src/render/meshes.js','src/render/world.js','src/render/vehicles.js','src/render/scene.js',
+    'src/render/meshes.js','src/render/world.js','src/render/vehicles.js','src/render/scene.js','src/render/postfx.js',
     'src/ui/hud.js','src/ui/quests.js','src/ui/input.js'];
   for (const f of files) await fetch('/' + f, { cache: 'reload' });
   location.reload();

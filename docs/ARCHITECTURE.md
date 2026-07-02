@@ -16,7 +16,8 @@ flowchart TB
     subgraph browser["Browser only"]
         MAIN["main.js\ncomposition root + game loop"]
         subgraph render["src/render/ — Three.js views"]
-            SCENE["scene.js\nrenderer · camera · lights\nday/night · fly-to"]
+            SCENE["scene.js\nrenderer · camera · lights\nsky+IBL · day/night · fly-to"]
+            POSTFX["postfx.js\nGTAO · bloom · tilt-shift"]
             RWORLD["world.js\nterrain · water · cities\nroads/rails · ambient life"]
             RVEH["vehicles.js\nvehicle meshes · +€ FX\ndemand overlay · route highlight"]
             MESHES["meshes.js\nmesh & texture library"]
@@ -196,6 +197,25 @@ play session. Winter (short days, high demand) is the argument for hydrogen.
 `"type": "module"` — there are still no dependencies to install.
 **Why:** The no-build philosophy extends to testing: cloning the repo and
 running `npm test` must always work offline in under a second.
+
+### 15. Rendering pipeline: physical sky, IBL, post-processing
+**Decision:** `render/scene.js` renders a physical `Sky` dome (three.js addon,
+r185+) whose sun tracks the game clock and whose procedural cloud cover is
+driven by the sim's `G.cloud` — an overcast sky *is* the reason solar output
+is low. A second, sun-disc-less Sky instance is baked into a PMREM environment
+map (re-baked whenever the sun has moved enough) so PBR materials get sky
+bounce light. `render/postfx.js` owns the frame composition: render →
+GTAO → bloom (HDR, threshold above sun-lit whites so only emissives glow) →
+tone map → screen-space tilt-shift whose strength scales with zoom-out.
+`DEBUG.setPostFX(false)` falls back to a plain render for weak GPUs.
+**Why:** IBL + ambient occlusion + the "miniature" tilt-shift are what make a
+low-poly city read as a modern city-builder; all of it is post/lighting, so
+the sim and content layers are untouched.
+**Traps:** the bloom threshold (3.4) must stay above the HDR luminance of
+sun-lit white surfaces (~2.8) or the whole city glows; night window emissive
+(4.5) must stay above it. r185 removed `PCFSoftShadowMap` — its lazy fallback
+leaves compiled materials without shadow lookups, so the renderer must be
+configured with `PCFShadowMap` explicitly.
 
 ## Persistence
 

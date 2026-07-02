@@ -1,7 +1,9 @@
 # Transport Eco Tycoon — Renewable Grid Edition
 
 A browser-based transport tycoon in the spirit of OpenTTD, rendered in modern 3D
-(Three.js: real-time shadows, day/night cycle, living cities) — with a twist:
+(Three.js: atmospheric sky with weather-driven clouds, ambient occlusion, glowing
+night cities, tilt-shift "miniature" look, real-time shadows, day/night cycle,
+living cities) — with a twist:
 **you also run the region's 100% renewable power grid**, and everything in the
 world runs on your electricity.
 

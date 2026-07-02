@@ -3,6 +3,7 @@
 // 'flyTo'). Build-tool pointer input lives in src/ui/input.js.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { G, hourOfDay, on, season } from '../sim/state.js';
 import { worldXZ } from '../sim/grid.js';
 import { setNightAmount } from './world.js';
@@ -14,7 +15,7 @@ export function initScene() {
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoft is deprecated in r185+ and its lazy fallback breaks shadow compilation
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   document.getElementById('app').appendChild(renderer.domElement);
@@ -22,7 +23,7 @@ export function initScene() {
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog('#bcd6e8', 220, 520);
 
-  camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 1200);
+  camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 4000);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(-110, 0, -110);
@@ -37,6 +38,7 @@ export function initScene() {
   controls.screenSpacePanning = false;
 
   initLights();
+  initSky();
   initKeyboardPan();
   initFlyTo();
 
@@ -59,15 +61,76 @@ const skyCol = new THREE.Color();
 function initLights() {
   sun = new THREE.DirectionalLight('#ffffff', 2.6);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.camera.left = sun.shadow.camera.bottom = -190;
   sun.shadow.camera.right = sun.shadow.camera.top = 190;
   sun.shadow.camera.far = 600;
   sun.shadow.bias = -0.0004;
   scene.add(sun, sun.target);
 
-  hemi = new THREE.HemisphereLight('#cfe8ff', '#5a6b4a', 0.7);
+  // env map (below) carries most of the ambient now; hemi is a readability floor
+  hemi = new THREE.HemisphereLight('#cfe8ff', '#5a6b4a', 0.35);
   scene.add(hemi);
+}
+
+// ---------- atmospheric sky + image-based lighting ----------
+// A physical Sky dome renders the visible sky; a second Sky instance is baked
+// into a PMREM environment map whenever the sun has moved enough, so PBR
+// materials pick up sky/sun bounce light (this is what keeps them from
+// looking flat under pure analytic lights).
+let sky, envSky, envScene, pmrem, envRT;
+let lastEnvElev = Infinity;
+const sunDir = new THREE.Vector3();
+
+// the Sky shader is calibrated for the three.js example's exposure (~0.5);
+// at this scene's exposure its horizon blows out to white, so halve its output
+const dimSky = s => {
+  s.material.fragmentShader = s.material.fragmentShader
+    .replace('gl_FragColor = vec4( texColor, 1.0 );', 'gl_FragColor = vec4( texColor * 0.5, 1.0 );');
+};
+
+function initSky() {
+  sky = new Sky();
+  sky.scale.setScalar(3000);
+  dimSky(sky);
+  scene.add(sky);
+  const u = sky.material.uniforms;
+  u.turbidity.value = 4;
+  u.rayleigh.value = 1.6;
+  u.mieCoefficient.value = 0.004;
+  u.mieDirectionalG.value = 0.85;
+  u.cloudDensity.value = 0.55;
+
+  envSky = new Sky();
+  dimSky(envSky);
+  // no sun disc in the env bake — its extreme luminance would torch every
+  // glossy surface via specular; the directional light already is the sun.
+  // No clouds either: the ambient bake should stay smooth.
+  envSky.material.uniforms.showSunDisc.value = 0;
+  envSky.material.uniforms.cloudCoverage.value = 0;
+  envScene = new THREE.Scene();
+  envScene.add(envSky);
+  pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environmentIntensity = 0.55;
+}
+
+function updateSky(elev, az) {
+  // true elevation (may be below horizon) so nights actually darken the dome
+  sunDir.set(Math.cos(az) * 0.6, elev, Math.sin(az) * 0.6).normalize();
+  sky.material.uniforms.sunPosition.value.copy(sunDir);
+  // clouds mirror the sim's weather: an overcast sky is WHY solar is low
+  sky.material.uniforms.cloudCoverage.value = 0.1 + G.cloud * 0.6;
+  sky.material.uniforms.time.value = G.minutes * 0.02; // game time, keeps saves deterministic
+  if (Math.abs(elev - lastEnvElev) > 0.04) {
+    lastEnvElev = elev;
+    for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG'])
+      envSky.material.uniforms[k].value = sky.material.uniforms[k].value;
+    envSky.material.uniforms.sunPosition.value.copy(sunDir);
+    const rt = pmrem.fromScene(envScene);
+    scene.environment = rt.texture;
+    envRT?.dispose();
+    envRT = rt;
+  }
 }
 
 export function updateDayNight() {
@@ -82,10 +145,13 @@ export function updateDayNight() {
   sun.target.position.copy(controls.target);
   const dayAmount = THREE.MathUtils.clamp(elev * 2.2 + 0.15, 0, 1);
   // night keeps a generous moonlight floor so the map stays readable
-  sun.intensity = 0.75 + dayAmount * 2.0;
+  sun.intensity = 0.85 + dayAmount * 1.75;
   sun.color.set(elev < -0.05 ? '#aabdff' : elev < 0.25 ? '#ffb070' : '#fff6e8');
-  hemi.intensity = 0.58 + dayAmount * 0.4;
-  // sky color blending
+  // at day the env map carries the ambient; at night hemi is the moonlight
+  // floor that keeps the map readable (teaching mission > realism)
+  hemi.intensity = 0.55;
+  updateSky(elev, az);
+  // fog color follows the horizon mood (the visible sky itself is the Sky dome)
   if (elev < -0.18) skyCol.copy(SKY.night);
   else if (elev < 0.12) {
     const f = (elev + 0.18) / 0.3;
@@ -94,7 +160,6 @@ export function updateDayNight() {
     const f = Math.min(1, (elev - 0.12) / 0.5);
     skyCol.lerpColors(h < 12 ? SKY.dawn : SKY.dusk, SKY.day, f);
   }
-  scene.background = skyCol;
   scene.fog.color.copy(skyCol);
   setNightAmount(1 - dayAmount);
 }

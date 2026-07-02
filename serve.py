@@ -7,6 +7,7 @@ broken imports kill main.js and the game area stays blank. no-cache forces
 revalidation on every request; unchanged files still answer 304, so it
 stays fast.
 """
+import os
 import sys
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
@@ -18,6 +19,6 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8741
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 8741))
     print(f'Serving on http://localhost:{port} (no-cache)')
     ThreadingHTTPServer(('', port), NoCacheHandler).serve_forever()
