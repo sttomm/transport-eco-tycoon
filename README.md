@@ -32,8 +32,8 @@ need internet on first load.)
 2. **Energy** — every home, factory and charging vehicle pays you €85 per MWh
    served. Blackouts cost you revenue, halt industry and shrink your cities.
 
-**Controls:** left-drag pan · right-drag rotate · wheel zoom · Space pause ·
-1/2/3 speed · ESC cancel tool.
+**Controls:** right-drag pan · middle-drag rotate · WASD/arrows pan · wheel
+zoom · Space pause · 1/2/3 speed · V passenger demand · ESC cancel tool.
 
 ## The energy game (and what it teaches)
 
@@ -64,13 +64,27 @@ levels, curtailment, renewable share, CO₂ avoided, finances.
 
 ## Tech
 
-Plain ES modules, no framework, no build. `src/`:
+Plain ES modules, no framework, no build, no dependencies. Three layers
+(see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture):
 
-- `world.js` — procedural terrain/river/cities/industries, ambient cars & pedestrians
-- `energy.js` — weather + grid dispatch (merit order: renewables → battery → electrolyzer → curtail / battery → fuel cell → blackout)
-- `transport.js` — A* pathfinding, stations, routes, EV fleet with battery & charging
-- `ui.js` — HUD, dashboard charts, research, routes, advisor
-- `main.js` — renderer, day/night lighting, input, game loop
+- `src/sim/` — the whole game logic, browser-free and unit-tested in Node:
+  world grid & placement rules, weather + grid dispatch (merit order:
+  renewables → battery → electrolyzer → curtail / battery → fuel cell →
+  blackout), A* pathfinding, vehicles, industries, passengers, quests, saves
+- `src/render/` — Three.js views of the sim state (terrain, cities, vehicles,
+  overlays), kept in sync via sim events
+- `src/ui/` — DOM panels: HUD, dashboard charts, research, routes, advisor
+- `src/main.js` — composition root + game loop
+
+## Testing
+
+```bash
+npm test        # Node's built-in runner, ~100 ms, zero dependencies
+```
+
+61 tests pin the simulation: dispatch merit order, storage efficiencies,
+placement rules, pathfinding, freight & passenger economics, quests, and the
+save round trip. New features extend the suite (see [CLAUDE.md](CLAUDE.md)).
 
 ## Documentation
 
@@ -78,6 +92,7 @@ Plain ES modules, no framework, no build. `src/`:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module map + design decisions (ADRs)
 - [docs/ENERGY-MODEL.md](docs/ENERGY-MODEL.md) — every game number and its real-world anchor
 
+[CLAUDE.md](CLAUDE.md) holds the working rules (layering, definition of done).
 For Claude Code users, three project skills live in `.claude/skills/`:
 
 - **playtest-game** — run/debug the game, programmatic play-testing via the in-browser `DEBUG` API
@@ -86,8 +101,6 @@ For Claude Code users, three project skills live in `.claude/skills/`:
 
 ## Roadmap ideas
 
-- Save/load (localStorage)
-- Rail & electric trains, ships
 - Transmission constraints (regional grids instead of one copper plate)
-- Demand response & dynamic pricing
-- Seasons (winter solar droop — the real argument for H₂)
+- Demand response & dynamic electricity pricing
+- Ships & waterways

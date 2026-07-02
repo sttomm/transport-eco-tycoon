@@ -5,11 +5,13 @@ description: Modify the renewable energy simulation of Transport Eco Tycoon — 
 
 # Tuning the energy model
 
-The model lives in `src/energy.js` (dispatch + weather + curves) with all
-capacities/efficiencies in `src/data.js`. **Realism is a feature**: every
+The model lives in `src/sim/energy.js` (dispatch + weather + curves) with all
+capacities/efficiencies in `src/sim/data.js` — pure Node-testable code. **Realism is a feature**: every
 number has a real-world anchor documented in `docs/ENERGY-MODEL.md` — update
 that file in the same change, and check whether an advisor tip in
 `data.js → TIPS` or an encyclopedia entry in `LEARN` states the old number.
+The merit order and every efficiency are **pinned by `test/energy.test.js`** —
+change model and tests together, and `npm test` before any browser check.
 
 ## Invariants to preserve
 
@@ -26,7 +28,7 @@ that file in the same change, and check whether an advisor tip in
    "fix" these frustrations; they are the curriculum.
 5. Rates are read fresh each tick from `G.mult` so research applies instantly;
    capacities (`batteryCapMWh` etc.) are registered at place/bulldoze time in
-   `world.js` — a retroactive capacity tech must walk `G.plants`.
+   `src/sim/grid.js` — a retroactive capacity tech must walk `G.plants`.
 
 ## Shape reference
 
@@ -40,7 +42,8 @@ that file in the same change, and check whether an advisor tip in
 
 ## Verification recipe
 
-Use the `playtest-game` skill. The fast assertions:
+`npm test` first (`test/energy.test.js` covers the dispatch branches).
+Then the `playtest-game` skill for live behavior. The fast assertions:
 
 ```js
 // instant: is the balance sane right now?
@@ -65,5 +68,5 @@ grid blackout nightly or never stresses storage at all, rebalance.
 - Dividing by `gameHours` when it can be ~0 on a paused/first frame — guard rates.
 - Forgetting `G.batteryMWh`/`G.h2MWh` clamps after a new flow.
 - New supply/demand component not added to `sampleHistory` → invisible in the
-  dashboard chart (`ui.js#SERIES` for colors/legend) — the "insights"
+  dashboard chart (`src/ui/hud.js#SERIES` for colors/legend) — the "insights"
   requirement says every flow must be visible.
