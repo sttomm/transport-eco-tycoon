@@ -8,6 +8,7 @@ BLENDER="${BLENDER:-/opt/homebrew/bin/blender}"
 
 for script in tools/models/*.py; do
   name=$(basename "$script" .py)
+  [ "$name" = "common" ] && continue
   echo "== $name"
   "$BLENDER" --background --python "$script" -- "assets/models/$name.glb" | grep -Ev '^(Blender|Read prefs)' || true
 done

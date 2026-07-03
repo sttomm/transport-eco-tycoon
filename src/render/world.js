@@ -11,6 +11,7 @@ import {
   M, Mtex, box, cyl, noCull, canvasTex,
   makeBallastTexture, buildPlantMesh, buildIndustryMesh,
 } from './meshes.js';
+import { buildingSet } from './assets.js';
 
 // Cosmetic randomness only (building heights, tree scatter, water ripples).
 // Same seed as the sim so the terrain fbm matches, but a separate rand stream —
@@ -235,8 +236,60 @@ function updateWater(dt) {
 }
 
 // ---------- city buildings ----------
-const facadeMats = []; // emissive (lit windows) facade materials, dimmed by day
+const facadeMats = []; // emissive (lit windows) materials, dimmed by day
 function buildCityMeshes() {
+  const lib = buildingSet();
+  if (lib) return buildCityMeshesGLTF(lib);
+  buildCityMeshesProcedural();
+}
+
+// glTF building set (ADR 16): one InstancedMesh per (city, model). Tier by
+// distance from the center — towers downtown, low blocks at the edge — with
+// jitter; scale/rotation/tint jitter hides the 9-model repetition.
+function buildCityMeshesGLTF(lib) {
+  facadeMats.push(lib.windowMat); // setNightAmount lights the window cells
+  const byTier = { low: [], mid: [], high: [] };
+  for (const model of lib.models) byTier[model.tier].push(model);
+  const R = 8;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(),
+    p = new THREE.Vector3(), e = new THREE.Euler();
+  const col = new THREE.Color();
+  for (const city of G.cities) {
+    const lists = new Map(); // model -> tiles
+    for (const t of city.blockTiles) {
+      const dist = Math.hypot(t.i - city.ci, t.j - city.cj) / R;
+      let tier = dist < 0.34 ? 'high' : dist < 0.72 ? 'mid' : 'low';
+      if (rand() < 0.18) tier = tier === 'high' ? 'mid' : 'low'; // break the rings up
+      const options = byTier[tier];
+      const model = options[Math.floor(rand() * options.length)];
+      if (!lists.has(model)) lists.set(model, []);
+      lists.get(model).push(t);
+    }
+    for (const [model, tiles] of lists) {
+      const inst = new THREE.InstancedMesh(model.geometry, lib.materials, tiles.length);
+      inst.frustumCulled = false;
+      inst.castShadow = inst.receiveShadow = true;
+      tiles.forEach((t, k) => {
+        const [x, z] = worldXZ(t.i, t.j);
+        p.set(x, tileY(t.i, t.j) - 0.15, z);
+        e.set(0, Math.floor(rand() * 4) * Math.PI / 2, 0);
+        q.setFromEuler(e);
+        const w = 0.88 + rand() * 0.2;
+        s.set(w, 0.94 + rand() * 0.14, w); // near-uniform: y-stretch would smear the windows
+        m.compose(p, q, s);
+        inst.setMatrixAt(k, m);
+        const tone = 0.82 + rand() * 0.18;
+        col.setRGB(tone, tone * (0.96 + rand() * 0.06), tone * (0.92 + rand() * 0.1));
+        inst.setColorAt(k, col);
+      });
+      inst.instanceColor.needsUpdate = true;
+      scene.add(inst);
+    }
+  }
+}
+
+// procedural fallback (pre-phase-2 look) — kept while types migrate
+function buildCityMeshesProcedural() {
   // four facade styles, each [sideMat...roofMat] for the box faces
   const styles = ['concrete', 'brick', 'glass', 'plaster'].map(style => {
     const { map, emi, rough, metal } = makeFacadeTexture(style);

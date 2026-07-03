@@ -57,10 +57,15 @@ by scripted Blender.
    instancing into the existing `placed` event flow, rotor animation, shadows,
    scale (tower ≈ 14 units tall; note `G.TILE` is 4 units, not 2 as first
    drafted). Verified: save replay, spin rate, noon/night look, 102 fps orbit.
-2. **Building set.** 3 styles (brick, plaster, glass) × 3 height tiers,
-   modular floors so Blender scripts generate variants; baked AO in a small
-   atlas; emissive window map for night. Wire into world.js instancing +
-   `setNightAmount`. This is the biggest visual win.
+2. **Building set.** ✅ *done* — 3 styles (brick, plaster, glass) × 3 height
+   tiers from `tools/models/buildings.py`, modular floors. *Deviation:* no
+   baked-AO atlas — window reveals are real geometry and GTAO covers contact
+   shading; instead the small atlas is the *night-lights* map: every window's
+   UVs collapse onto one cell of an 8×8 canvas texture (rows 0–1 = dim cells
+   for large glazing so floor bands can't bloom, rows 2–7 = window cells with
+   varied brightness). Facade colors bake into vertex colors at load so each
+   building instances as ONE geometry + 2 materials. Wired into world.js
+   instancing + `setNightAmount`; verified 121 fps at night.
 3. **Vehicles.** Bus, truck, train engine + 2 wagon types (matching
    `src/sim/data.js` vehicle list). Wheels/bogies as separate nodes if
    animating them is cheap.
