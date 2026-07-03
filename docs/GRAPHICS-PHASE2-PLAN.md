@@ -66,18 +66,30 @@ by scripted Blender.
    varied brightness). Facade colors bake into vertex colors at load so each
    building instances as ONE geometry + 2 materials. Wired into world.js
    instancing + `setNightAmount`; verified 121 fps at night.
-3. **Vehicles.** Bus, truck, train engine + 2 wagon types (matching
-   `src/sim/data.js` vehicle list). Wheels/bogies as separate nodes if
-   animating them is cheap.
-4. **Power & industry.** Solar table, battery container, hydro dam,
-   electrolyzer/H₂ tank, and the industry buildings — keep each one's
-   readable silhouette (players identify plants at a glance from far zoom;
-   check every asset at max zoom-out before committing).
-5. **Trees & props.** Instanced low-poly trees (2–3 species), bus stops,
-   street props. Cheap, big atmosphere gain.
-6. **Optimization pass.** gltf-transform everything, verify total asset
-   weight (target < 5 MB), re-run the fps recipe, consider a far-zoom LOD
-   only if the budget fails.
+3. **Vehicles.** ✅ *done* — bus, truck, train engine + 2 wagon types
+   (`tools/models/vehicles.py`, one library GLB, nodes registered by name).
+   Wheels stay joined — nothing animates them today. Paints need metalness
+   ≤ ~0.1 or the IBL sky washes them to pastel.
+4. **Power & industry.** ✅ *done* — `plants.py` + `industries.py`. Steel
+   keeps its `glow` child node (material cloned per instance in assets.js).
+   Hard-won material rules, now baked into the scripts: metalness ≤ ~0.25 on
+   painted surfaces (it greys out albedo), whites/glass matte (specular sun
+   glints cross the bloom threshold — PV tables, silos and panel frames all
+   flared), albedos darker than the target look (noon ACES bleaches
+   mid-tones to cream).
+5. **Trees & props.** ✅ *done* — conifer/oak/poplar (`trees.py`, one
+   InstancedMesh per species via vertex-color bake), stations
+   (`stations.py`: busStop/truckStop/trainStation through the plant seam),
+   instanced street lamps with emissive heads on the `setNightAmount` hook.
+   Blender trap: object names must not end in long float strings —
+   name-uniquing crashes on `stoi("249999…")`; use integer suffixes.
+6. **Optimization pass.** ✅ *done* — `build-models.sh` runs gltf-transform
+   per asset with conservative flags (`--join false --palette false
+   --flatten false --simplify false --compress quantize`): anything more
+   aggressive merges nodes and destroys the load-bearing names (`rotor`,
+   `glow`, `<style>_<tier>`); quantize is the only compression GLTFLoader
+   decodes without an extra runtime decoder. Total asset weight 336 KB
+   (budget was 5 MB); 120 fps orbiting the city center. No LOD needed.
 
 ## Traps
 

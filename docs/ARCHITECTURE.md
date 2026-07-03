@@ -236,7 +236,16 @@ export with identity rotation (world.js animates `rotation.x` directly);
 `tools/models/wind_turbine.py` documents how. Node/material names are API:
 `assets.js` looks nodes up by name (`rotor`), so keep them stable across
 regenerations. glTF materials arrive as `MeshStandardMaterial` — don't
-re-wrap; keep roughness ≥ ~0.5 on whites (bloom threshold, ADR 15).
+re-wrap; keep roughness ≥ ~0.5 on whites (bloom threshold, ADR 15), keep
+metalness ≤ ~0.25 on painted surfaces (metalness greys out albedo), and pick
+albedos darker than the target look (noon ACES bleaches mid-tones).
+`build-models.sh` finishes each asset with gltf-transform using conservative
+flags — join/flatten/palette would merge nodes and destroy those names, and
+`quantize` is the only compression GLTFLoader decodes without an extra
+runtime decoder. City buildings and trees don't clone scene graphs: assets.js
+merges them into instancing-ready geometries (flat material colors baked into
+vertex colors; building windows keep a second material group whose emissive
+map is the runtime-generated night-lights atlas).
 
 ## Persistence
 
