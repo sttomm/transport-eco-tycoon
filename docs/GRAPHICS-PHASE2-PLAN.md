@@ -93,6 +93,17 @@ by scripted Blender.
    building/tree preps that read raw geometry (city shrank to toy size).
    Total asset weight 604 KB (budget was 5 MB); 120 fps orbiting the city
    center. No LOD needed.
+7. **Textures.** ✅ *done (ADR 17)* — Blender scripts project world-space UVs
+   (`common.py box_uv/cyl_uv`, 1 UV unit = 1 world unit); `render/textures.js`
+   generates tileable canvas textures at load and attaches them to materials
+   by name (brick, stucco, planks, corrugated/rusty metal, concrete,
+   shingles, PV cells, paving, gravel, soil + bump maps). Buildings merged
+   per texture category (flat/brick/plaster/window) with per-model material
+   arrays. GLBs stay imageless: 604 KB → 768 KB (UVs only), 121 fps.
+   *Found in passing:* gltf-transform's prune had been stripping TEXCOORD_0
+   as unused, so the WP2 window-light atlas sampled one cell for the whole
+   city — fixed with `--prune-attributes false`, and the atlas retuned
+   (fewer, dimmer lit windows) now that it actually works.
 
 ## Traps
 

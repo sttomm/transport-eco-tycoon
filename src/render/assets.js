@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { applyTexture, facadeTexture, grainTexture } from './textures.js';
 
 // building/vehicle type -> asset file; add entries as types are migrated
 const MODEL_FILES = {
@@ -28,7 +29,7 @@ const LIBRARY_FILES = [
 const TREES_FILE = 'assets/models/trees.glb';
 
 const models = {}; // name -> prepared THREE.Group (the shared original, never in-scene)
-let buildingLib = null; // { models: [{name, style, tier, geometry}], materials: [facade, window], windowMat }
+let buildingLib = null; // { models: [{name, style, tier, geometry, materials}], windowMat }
 let treeLib = null; // { models: [{name, geometry}], material }
 
 // Called from main.js before initWorldRender — the render layer's 'placed'
@@ -41,7 +42,10 @@ export async function loadModels() {
       try {
         const gltf = await loader.loadAsync(url);
         gltf.scene.traverse(o => {
-          if (o.isMesh) o.castShadow = o.receiveShadow = true;
+          if (o.isMesh) {
+            o.castShadow = o.receiveShadow = true;
+            applyTexture(o.material);
+          }
         });
         models[name] = gltf.scene;
       } catch (err) {
@@ -54,7 +58,10 @@ export async function loadModels() {
         for (const node of [...gltf.scene.children]) {
           node.position.set(0, 0, 0);
           node.traverse(o => {
-            if (o.isMesh) o.castShadow = o.receiveShadow = true;
+            if (o.isMesh) {
+              o.castShadow = o.receiveShadow = true;
+              applyTexture(o.material);
+            }
           });
           models[node.name] = node;
         }
@@ -103,12 +110,16 @@ export function treeSet() { return treeLib; }
 // ---------- city building set ----------
 // buildings.glb holds 9 buildings named <style>_<tier>, each authored at the
 // ground center (node translations are layout-only). For instancing, each
-// building is merged into ONE geometry with two material groups:
-//   0 facade — flat Blender colors baked into vertex colors, one shared material
-//   1 windows ("bldg_window" faces) — shared glass material whose emissiveMap
-//     is an 8x8 cell atlas of randomly lit windows; every window's UVs sit on
-//     one cell, so it is uniformly lit or dark. world.js drives the intensity
-//     via setNightAmount, same contract as the procedural facades.
+// building is merged into ONE geometry with a material group per texture
+// category (per-model `materials` array matches the group order):
+//   flat    — trims/roofs/doors: Blender colors baked into vertex colors,
+//             one shared material with a near-white grain detail map
+//   brick / plaster — wall faces: shared material whose canvas texture
+//             (textures.js facadeTexture) carries the color; verts are white
+//   window  — "bldg_window" faces: shared glass material whose emissiveMap
+//             is an 8x8 cell atlas of randomly lit windows; every window's
+//             UVs sit on one cell, so it is uniformly lit or dark. world.js
+//             drives the intensity via setNightAmount.
 async function prepareBuildings(loader) {
   let gltf;
   try {
@@ -121,24 +132,45 @@ async function prepareBuildings(loader) {
     color: '#20303f', roughness: 0.18, metalness: 0.35,
     emissive: '#ffffff', emissiveMap: makeWindowLightsTexture(), emissiveIntensity: 0,
   });
-  const facadeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+  const flatMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, map: grainTexture(1.7) });
+  const wallMats = {}; // brick/plaster: lazily built from the loaded material's own color
+  const wallMat = (kind, src) => {
+    if (!wallMats[kind]) {
+      const { map, bump } = facadeTexture[kind === 'brick' ? 'brick' : 'stucco']('#' + src.color.getHexString());
+      const period = kind === 'brick' ? 1.8 : 2.4;
+      map.repeat.set(1 / period, 1 / period);
+      bump.repeat.set(1 / period, 1 / period);
+      wallMats[kind] = new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: src.roughness, map, bumpMap: bump,
+        bumpScale: kind === 'brick' ? 0.3 : 0.12,
+      });
+    }
+    return wallMats[kind];
+  };
   const libModels = [];
   for (const node of gltf.scene.children) {
-    const facade = [], windows = [];
+    const parts = { flat: [], brick: [], plaster: [], window: [] };
+    const mats = { flat: flatMat, window: windowMat };
     node.traverse(o => {
       if (!o.isMesh) return;
       const g = o.geometry; // transforms inside a building are identity — authored in place
-      const isWindow = o.material.name === 'bldg_window';
-      // windows get white vertex colors: their material ignores them, but the
-      // attribute must exist on every part for merging
-      bakeVertexColor(g, isWindow ? { r: 1, g: 1, b: 1 } : o.material.color);
-      (isWindow ? windows : facade).push(g);
+      const name = o.material.name;
+      const cat = name === 'bldg_window' ? 'window'
+        : name === 'bldg_brick' ? 'brick'
+          : name === 'bldg_plaster' ? 'plaster' : 'flat';
+      if (cat === 'brick' || cat === 'plaster') mats[cat] = wallMat(cat, o.material);
+      // walls & windows get white vertex colors (texture/glass carries the
+      // look); flat parts keep their Blender color. The attribute must exist
+      // on every part for merging.
+      bakeVertexColor(g, cat === 'flat' ? o.material.color : { r: 1, g: 1, b: 1 });
+      parts[cat].push(g);
     });
-    const geometry = mergeGeometries([mergeGeometries(facade), mergeGeometries(windows)], true);
+    const cats = ['flat', 'brick', 'plaster', 'window'].filter(c => parts[c].length);
+    const geometry = mergeGeometries(cats.map(c => mergeGeometries(parts[c])), true);
     const [style, tier] = node.name.split('_');
-    libModels.push({ name: node.name, style, tier, geometry });
+    libModels.push({ name: node.name, style, tier, geometry, materials: cats.map(c => mats[c]) });
   }
-  buildingLib = { models: libModels, materials: [facadeMat, windowMat], windowMat };
+  buildingLib = { models: libModels, windowMat };
 }
 
 // 8x8 atlas: each cell is one window's night state. UV rows 0-1 are the dim
@@ -159,8 +191,10 @@ function makeWindowLightsTexture() {
     if (j < 2) {
       if (Math.random() < 0.35) cx.fillStyle = paint(255, 214, 140, 0.28 + Math.random() * 0.14);
       else continue;
-    } else if (Math.random() < 0.42) {
-      const k = 0.5 + Math.random() * 0.5;
+    } else if (Math.random() < 0.32) {
+      // mostly warm interior light below the bloom threshold; only the
+      // brightest ~quarter of lit windows glow (threshold 3.4 / intensity 4.5)
+      const k = 0.4 + Math.random() * 0.45;
       cx.fillStyle = Math.random() < 0.8 ? paint(255, 220, 142, k) : paint(191, 227, 255, k);
     } else continue;
     cx.fillRect(i * C, y, C, C);

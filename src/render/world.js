@@ -267,7 +267,7 @@ function buildCityMeshesGLTF(lib) {
       lists.get(model).push(t);
     }
     for (const [model, tiles] of lists) {
-      const inst = new THREE.InstancedMesh(model.geometry, lib.materials, tiles.length);
+      const inst = new THREE.InstancedMesh(model.geometry, model.materials, tiles.length);
       inst.frustumCulled = false;
       inst.castShadow = inst.receiveShadow = true;
       tiles.forEach((t, k) => {

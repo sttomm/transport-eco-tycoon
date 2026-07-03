@@ -68,6 +68,8 @@ def cube(name, sx, sy, sz, x, y, z, mat, cell=None, rot=None):
     set_mat(o, mat)
     if cell is not None:
         set_uv_cell(o, cell)
+    else:
+        box_uv(o)
     return o
 
 
@@ -83,6 +85,10 @@ def cyl(name, r, h, x, y, z, mat, verts=16, rx=0, ry=0, r2=None, shade=True):
     o.name = name
     apply_all()
     set_mat(o, mat)
+    if rx or ry:  # tipped-over cylinder (pipe/wheel): axis isn't +Z, box-project
+        box_uv(o)
+    else:
+        cyl_uv(o)
     if shade:
         smooth(o)
     return o
@@ -102,7 +108,59 @@ def gable(name, sx, sy, sz, x, y, z, mat):
     o.location = (x, y, z)
     apply_all()
     set_mat(o, mat)
+    box_uv(o)
     return o
+
+
+def box_uv(obj, scale=1.0):
+    """World-space box projection: every face is mapped along its dominant
+    normal axis, 1 UV unit = `scale` world units. Gives every part the same
+    texel density regardless of size, so the runtime can attach tileable
+    canvas textures by material name (src/render/textures.js). Apply
+    transforms first — vert coords must be world space."""
+    me = obj.data
+    layer = me.uv_layers.active or me.uv_layers.new(name='UVMap')
+    inv = 1.0 / scale
+    for poly in me.polygons:
+        n = poly.normal
+        ax = max(range(3), key=lambda k: abs(n[k]))
+        for li in poly.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            if ax == 0:
+                uv = (co.y, co.z)
+            elif ax == 1:
+                uv = (co.x, co.z)
+            else:
+                uv = (co.x, co.y)
+            layer.data[li].uv = (uv[0] * inv, uv[1] * inv)
+
+
+def cyl_uv(obj, scale=1.0):
+    """World-space cylindrical projection for +Z cylinders/cones: u follows
+    the circumference (arc length at the mean radius), v is world z. Caps
+    fall back to planar top-down mapping. Same 1 UV unit = `scale` world
+    units contract as box_uv."""
+    me = obj.data
+    layer = me.uv_layers.active or me.uv_layers.new(name='UVMap')
+    inv = 1.0 / scale
+    verts = me.vertices
+    cx = sum(v.co.x for v in verts) / len(verts)
+    cy = sum(v.co.y for v in verts) / len(verts)
+    r = sum(math.hypot(v.co.x - cx, v.co.y - cy) for v in verts) / len(verts)
+    tau = 2 * math.pi
+    for poly in me.polygons:
+        if abs(poly.normal.z) > 0.7:  # cap: planar from above
+            for li in poly.loop_indices:
+                co = verts[me.loops[li].vertex_index].co
+                layer.data[li].uv = (co.x * inv, co.y * inv)
+            continue
+        fc = poly.center
+        th0 = math.atan2(fc.y - cy, fc.x - cx)
+        for li in poly.loop_indices:
+            co = verts[me.loops[li].vertex_index].co
+            th = math.atan2(co.y - cy, co.x - cx)
+            th = th0 + math.remainder(th - th0, tau)  # keep the face on one branch of the seam
+            layer.data[li].uv = (th * r * inv, co.z * inv)
 
 
 def set_uv_cell(obj, cell, grid=8):

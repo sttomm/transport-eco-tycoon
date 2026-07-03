@@ -248,6 +248,29 @@ merges them into instancing-ready geometries (flat material colors baked into
 vertex colors; building windows keep a second material group whose emissive
 map is the runtime-generated night-lights atlas).
 
+### 17. Runtime canvas textures over world-space UVs (graphics phase 2)
+**Decision:** The GLBs carry no image textures. Instead the Blender scripts
+box/cylinder-project UVs in *world space* (1 UV unit = 1 world unit,
+`common.py box_uv/cyl_uv`), and `render/textures.js` generates small tileable
+canvas textures (brick, stucco, planks, corrugated metal, concrete, shingles,
+PV cells, paving…) at load and attaches them to loaded materials **by
+material name**. Each generator paints around the material's own base color
+and the color then moves into the map (material.color becomes white) — the
+authored palette (ADR 15/16 bloom/ACES tuning) is preserved exactly, and
+per-instance tints keep working. City buildings merge into a material group
+per texture category (flat/brick/plaster/window) with a per-model materials
+array. World-space UVs mean texel density is uniform across parts of any
+size, so one 128px texture serves every wall.
+**Why:** keeps GLBs tiny and diffable (no binary image churn), matches the
+existing runtime-canvas pattern (terrain, roads, window lights), and lets
+textures be tuned in JS without a Blender round-trip.
+**Traps:** all HSL color math in textures.js happens explicitly in sRGB —
+three's linear working space makes dark colors' lightness tiny, and offsets
+computed there blow the albedo far past the authored palette. And
+`build-models.sh` must pass `--prune-attributes false`: gltf-transform
+otherwise strips TEXCOORD_0 as "unused" (no material references an image),
+which silently broke the building window-light atlas once before.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

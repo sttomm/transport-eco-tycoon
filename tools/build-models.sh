@@ -16,8 +16,12 @@ for script in tools/models/*.py; do
   # quantization either: it re-centers vertex data and shifts the pivot into
   # the node transform — the rotor stops spinning around the hub, and the
   # building/tree preps read raw geometry so they lose their scale entirely.
+  # keep TEXCOORD_0 even though no material has an image: the runtime attaches
+  # canvas textures by material name (src/render/textures.js) and the window
+  # emissive atlas samples UV cells — pruning "unused" UVs breaks both.
   npx --yes @gltf-transform/cli optimize "assets/models/$name.glb" "assets/models/$name.glb" \
     --join false --palette false --flatten false --simplify false \
+    --prune-attributes false \
     --compress false --texture-compress webp 2>&1 | grep -E 'info:' || true
 done
 echo "done."
