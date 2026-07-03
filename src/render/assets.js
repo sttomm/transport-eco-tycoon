@@ -23,10 +23,13 @@ const LIBRARY_FILES = [
   'assets/models/vehicles.glb',
   'assets/models/plants.glb',
   'assets/models/industries.glb',
+  'assets/models/stations.glb',
 ];
+const TREES_FILE = 'assets/models/trees.glb';
 
 const models = {}; // name -> prepared THREE.Group (the shared original, never in-scene)
 let buildingLib = null; // { models: [{name, style, tier, geometry}], materials: [facade, window], windowMat }
+let treeLib = null; // { models: [{name, geometry}], material }
 
 // Called from main.js before initWorldRender — the render layer's 'placed'
 // listeners must not run before models are ready (save replay fires place()
@@ -60,8 +63,42 @@ export async function loadModels() {
       }
     }),
     prepareBuildings(loader),
+    prepareTrees(loader),
   ]);
 }
+
+// bake a mesh's flat material color into a vertex-color attribute (lets many
+// materials collapse into one vertexColors material for instancing)
+function bakeVertexColor(geometry, color) {
+  const n = geometry.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) { col[k * 3] = color.r; col[k * 3 + 1] = color.g; col[k * 3 + 2] = color.b; }
+  geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geometry;
+}
+
+// tree species merge into one geometry each — the forest is a single
+// InstancedMesh per species (world.js buildTrees)
+async function prepareTrees(loader) {
+  let gltf;
+  try {
+    gltf = await loader.loadAsync(TREES_FILE);
+  } catch (err) {
+    console.warn('assets: trees.glb failed to load — procedural tree fallback', err);
+    return;
+  }
+  const models = [];
+  for (const node of gltf.scene.children) {
+    const parts = [];
+    node.traverse(o => {
+      if (o.isMesh) parts.push(bakeVertexColor(o.geometry, o.material.color));
+    });
+    models.push({ name: node.name, geometry: mergeGeometries(parts) });
+  }
+  treeLib = { models, material: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }) };
+}
+
+export function treeSet() { return treeLib; }
 
 // ---------- city building set ----------
 // buildings.glb holds 9 buildings named <style>_<tier>, each authored at the
@@ -92,13 +129,9 @@ async function prepareBuildings(loader) {
       if (!o.isMesh) return;
       const g = o.geometry; // transforms inside a building are identity — authored in place
       const isWindow = o.material.name === 'bldg_window';
-      // bake the part color into vertex colors (windows white: attribute must
-      // exist for merging but their material ignores it)
-      const c = isWindow ? { r: 1, g: 1, b: 1 } : o.material.color;
-      const n = g.attributes.position.count;
-      const col = new Float32Array(n * 3);
-      for (let k = 0; k < n; k++) { col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b; }
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      // windows get white vertex colors: their material ignores them, but the
+      // attribute must exist on every part for merging
+      bakeVertexColor(g, isWindow ? { r: 1, g: 1, b: 1 } : o.material.color);
       (isWindow ? windows : facade).push(g);
     });
     const geometry = mergeGeometries([mergeGeometries(facade), mergeGeometries(windows)], true);

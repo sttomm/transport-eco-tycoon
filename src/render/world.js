@@ -11,7 +11,7 @@ import {
   M, Mtex, box, cyl, noCull, canvasTex,
   makeBallastTexture, buildPlantMesh, buildIndustryMesh,
 } from './meshes.js';
-import { buildingSet } from './assets.js';
+import { buildingSet, treeSet } from './assets.js';
 
 // Cosmetic randomness only (building heights, tree scatter, water ripples).
 // Same seed as the sim so the terrain fbm matches, but a separate rand stream —
@@ -34,6 +34,7 @@ export function initWorldRender(sc) {
   buildCityMeshes();
   buildIndustryMeshes();
   buildTrees();
+  initLamps();
   initRoadMesh();
   initRailMesh();
   initAmbient();
@@ -423,6 +424,48 @@ function buildTrees() {
     if (t.t !== 'grass' || t.occ) continue;
     if (fbm(i * 0.11 + 40, j * 0.11, 3) > 0.58 && rand() < 0.5) spots.push(t);
   }
+  const lib = treeSet();
+  if (lib) return buildTreesGLTF(lib, spots);
+  buildTreesProcedural(spots);
+}
+
+// glTF species (ADR 16): whole forest = one InstancedMesh per species.
+// Conifers cluster on high ground, oaks in the lowlands, poplars sprinkled.
+function buildTreesGLTF(lib, spots) {
+  const byName = Object.fromEntries(lib.models.map(m => [m.name, m]));
+  const lists = new Map(lib.models.map(m => [m, []]));
+  for (const t of spots) {
+    const r = rand();
+    const conifer = t.h > 1.9 ? 0.75 : 0.35; // altitude bias
+    const m = r < conifer ? byName.tree_conifer : r < 0.9 ? byName.tree_oak : byName.tree_poplar;
+    lists.get(m).push(t);
+  }
+  const m4 = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(),
+    s = new THREE.Vector3(), e = new THREE.Euler();
+  const col = new THREE.Color();
+  for (const [model, tiles] of lists) {
+    if (!tiles.length) continue;
+    const inst = noCull(new THREE.InstancedMesh(model.geometry, lib.material, tiles.length));
+    inst.castShadow = true;
+    tiles.forEach((t, k) => {
+      const [x, z] = worldXZ(t.i, t.j);
+      p.set(x + (rand() - 0.5) * 2.4, t.h, z + (rand() - 0.5) * 2.4);
+      e.set(0, rand() * Math.PI * 2, 0);
+      q.setFromEuler(e);
+      const sc = 0.75 + rand() * 0.6;
+      s.set(sc, sc * (0.9 + rand() * 0.25), sc);
+      m4.compose(p, q, s);
+      inst.setMatrixAt(k, m4);
+      const tone = 0.8 + rand() * 0.35;
+      col.setRGB(tone, tone * (0.95 + rand() * 0.1), tone * 0.95);
+      inst.setColorAt(k, col);
+    });
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    scene.add(inst);
+  }
+}
+
+function buildTreesProcedural(spots) {
   const trunkG = new THREE.CylinderGeometry(0.12, 0.18, 1, 5);
   const crownG = new THREE.ConeGeometry(0.9, 2.2, 7);
   const trunks = noCull(new THREE.InstancedMesh(trunkG, M('#6b4a32'), spots.length));
@@ -441,6 +484,37 @@ function buildTrees() {
   });
   if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
   scene.add(trunks, crowns);
+}
+
+// ---------- street lamps (city sidewalks, lit at night) ----------
+function initLamps() {
+  const spots = [];
+  for (const city of G.cities) {
+    for (const t of city.roadTiles) {
+      if (rand() > 0.3) continue;
+      const [x, z] = worldXZ(t.i, t.j);
+      const sx = rand() < 0.5 ? 1 : -1, sz = rand() < 0.5 ? 1 : -1;
+      spots.push([x + sx * (G.TILE / 2 - SIDEWALK_W / 2), tileY(t.i, t.j), z + sz * (G.TILE / 2 - SIDEWALK_W / 2)]);
+    }
+  }
+  if (!spots.length) return;
+  const pole = new THREE.CylinderGeometry(0.045, 0.06, 3.0, 6);
+  pole.translate(0, 1.5, 0);
+  const head = new THREE.SphereGeometry(0.14, 8, 6);
+  head.translate(0, 3.05, 0);
+  const geo = mergeGeometries([pole, head], true); // 2 groups -> [pole, head] materials
+  const headMat = new THREE.MeshStandardMaterial({
+    color: '#f5efdf', roughness: 0.4, emissive: '#ffd9a0', emissiveIntensity: 0,
+  });
+  facadeMats.push(headMat); // setNightAmount switches the lamps on
+  const inst = noCull(new THREE.InstancedMesh(geo, [M('#3a4046'), headMat], spots.length));
+  const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1);
+  spots.forEach(([x, y, z], k) => {
+    p.set(x, y, z);
+    m.compose(p, q, s);
+    inst.setMatrixAt(k, m);
+  });
+  scene.add(inst);
 }
 
 // ---------- roads (dynamic instanced mesh) ----------

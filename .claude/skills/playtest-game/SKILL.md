@@ -32,6 +32,8 @@ can serve a stale old/new mix.** Always force-refresh first:
     'src/sim/energy.js','src/sim/transport.js','src/sim/quests.js','src/sim/save.js',
     'src/render/meshes.js','src/render/world.js','src/render/vehicles.js','src/render/scene.js','src/render/postfx.js',
     'src/render/assets.js','assets/models/wind_turbine.glb','assets/models/buildings.glb',
+    'assets/models/vehicles.glb','assets/models/plants.glb','assets/models/industries.glb',
+    'assets/models/trees.glb','assets/models/stations.glb',
     'src/ui/hud.js','src/ui/quests.js','src/ui/input.js'];
   for (const f of files) await fetch('/' + f, { cache: 'reload' });
   location.reload();
