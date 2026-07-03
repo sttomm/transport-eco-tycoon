@@ -88,6 +88,23 @@ def cyl(name, r, h, x, y, z, mat, verts=16, rx=0, ry=0, r2=None, shade=True):
     return o
 
 
+def gable(name, sx, sy, sz, x, y, z, mat):
+    """Triangular prism (gabled roof): ridge along local X at the top,
+    base sx × sy, height sz, base center at (x, y, z)."""
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.5))
+    o = bpy.context.object
+    o.name = name
+    apply_all()
+    for v in o.data.vertices:
+        if v.co.z > 0.5:
+            v.co.y = 0
+    o.scale = (sx, sy, sz)
+    o.location = (x, y, z)
+    apply_all()
+    set_mat(o, mat)
+    return o
+
+
 def set_uv_cell(obj, cell, grid=8):
     """Collapse the whole mesh's UVs onto one cell center of a grid×grid
     atlas — the runtime samples one flat value per part (window lit/unlit)."""

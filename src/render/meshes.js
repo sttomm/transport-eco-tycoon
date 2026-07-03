@@ -256,6 +256,8 @@ export function buildPlantMesh(type) {
 
 // ---------- industries ----------
 export function buildIndustryMesh(type) {
+  const gltf = modelInstance('ind_' + type);
+  if (gltf) return gltf;
   const g = new THREE.Group();
   if (type === 'mine') {
     const rust = Mtex(makeStripeTexture('#7d6a58', '#6a5a4a', 18), { roughness: 0.8, metalness: 0.25 });

@@ -19,7 +19,11 @@ const MODEL_FILES = {
 const BUILDINGS_FILE = 'assets/models/buildings.glb';
 // library files: every top-level node registers as a model under its own
 // name (node translations are layout-only and get zeroed)
-const LIBRARY_FILES = ['assets/models/vehicles.glb'];
+const LIBRARY_FILES = [
+  'assets/models/vehicles.glb',
+  'assets/models/plants.glb',
+  'assets/models/industries.glb',
+];
 
 const models = {}; // name -> prepared THREE.Group (the shared original, never in-scene)
 let buildingLib = null; // { models: [{name, style, tier, geometry}], materials: [facade, window], windowMat }
@@ -141,5 +145,7 @@ export function modelInstance(name) {
   const g = src.clone(true);
   const rotor = g.getObjectByName('rotor');
   if (rotor) g.userData.rotor = rotor;
+  const glow = g.getObjectByName('glow');
+  if (glow) glow.material = glow.material.clone(); // per-instance emissive drive
   return g;
 }
