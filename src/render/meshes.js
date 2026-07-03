@@ -2,6 +2,7 @@
 // and the procedural canvas textures they use. Pure "asset" code — no game
 // logic, no scene management (that's src/render/world.js / vehicles.js).
 import * as THREE from 'three';
+import { modelInstance } from './assets.js';
 
 // ---------- material / primitive helpers ----------
 export const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
@@ -163,6 +164,10 @@ export function makeTextSprite(lines, { color = '#ffffff', size = 2.4, bg = 'rgb
 // Returns a group with origin at ground center. Wind turbines expose their
 // spinning part as group.userData.rotor.
 export function buildPlantMesh(type) {
+  // migrated types come from the glTF library; the procedural code below is
+  // the fallback (and the source of truth for un-migrated types)
+  const gltf = modelInstance(type);
+  if (gltf) return gltf;
   const g = new THREE.Group();
   if (type === 'solar') {
     // three long panel tables on steel piles, PV-cell texture, repeated along the row

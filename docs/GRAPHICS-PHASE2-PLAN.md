@@ -51,11 +51,12 @@ by scripted Blender.
 
 ## Work packages, in order (each: tests → playtest → docs → commit)
 
-1. **Pilot: loader + one asset end-to-end.** `assets.js`, async init in
-   `main.js`, and a Blender-built wind turbine (tower, nacelle, 3-blade
-   rotor as a named node → `userData.rotor`). Proves: loading, instancing
-   into the existing `placed` event flow, rotor animation, shadows, scale
-   (tower ≈ 14 units tall, tile = 2 units). Judge the look before continuing.
+1. **Pilot: loader + one asset end-to-end.** ✅ *done (ADR 16)* — `assets.js`,
+   async init in `main.js`, and a Blender-built wind turbine (tower, nacelle,
+   3-blade rotor as a named node → `userData.rotor`). Proves: loading,
+   instancing into the existing `placed` event flow, rotor animation, shadows,
+   scale (tower ≈ 14 units tall; note `G.TILE` is 4 units, not 2 as first
+   drafted). Verified: save replay, spin rate, noon/night look, 102 fps orbit.
 2. **Building set.** 3 styles (brick, plaster, glass) × 3 height tiers,
    modular floors so Blender scripts generate variants; baked AO in a small
    atlas; emissive window map for night. Wire into world.js instancing +

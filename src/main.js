@@ -11,6 +11,7 @@ import {
 import { loadGame, saveGame, initAutosave } from './sim/save.js';
 import { initScene, updateDayNight, tickCamTween, keyboardPan, scene, camera, controls, renderer } from './render/scene.js';
 import { initPostFX, renderPostFX, setPostFX, PFX } from './render/postfx.js';
+import { loadModels } from './render/assets.js';
 import { initWorldRender, updateWorldRender } from './render/world.js';
 import { initVehicleRender, updateVehicleRender } from './render/vehicles.js';
 import { initUI, updateUI, tickResearch, showWelcome } from './ui/hud.js';
@@ -22,6 +23,7 @@ import { initInput } from './ui/input.js';
 initGrid();
 initScene();
 initPostFX(renderer, scene, camera, controls);
+await loadModels();   // top-level await: 'placed' listeners need models before the save replays
 initWorldRender(scene);
 initVehicleRender(scene);
 const loadedSave = loadGame();   // restore player progress before the UI reads it
