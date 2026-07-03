@@ -17,6 +17,9 @@ const MODEL_FILES = {
   wind: 'assets/models/wind_turbine.glb',
 };
 const BUILDINGS_FILE = 'assets/models/buildings.glb';
+// library files: every top-level node registers as a model under its own
+// name (node translations are layout-only and get zeroed)
+const LIBRARY_FILES = ['assets/models/vehicles.glb'];
 
 const models = {}; // name -> prepared THREE.Group (the shared original, never in-scene)
 let buildingLib = null; // { models: [{name, style, tier, geometry}], materials: [facade, window], windowMat }
@@ -36,6 +39,20 @@ export async function loadModels() {
         models[name] = gltf.scene;
       } catch (err) {
         console.warn(`assets: ${url} failed to load — procedural fallback for '${name}'`, err);
+      }
+    }),
+    ...LIBRARY_FILES.map(async url => {
+      try {
+        const gltf = await loader.loadAsync(url);
+        for (const node of [...gltf.scene.children]) {
+          node.position.set(0, 0, 0);
+          node.traverse(o => {
+            if (o.isMesh) o.castShadow = o.receiveShadow = true;
+          });
+          models[node.name] = node;
+        }
+      } catch (err) {
+        console.warn(`assets: ${url} failed to load — procedural fallback`, err);
       }
     }),
     prepareBuildings(loader),

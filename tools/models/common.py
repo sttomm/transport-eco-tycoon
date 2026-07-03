@@ -56,12 +56,14 @@ def apply_all(obj=None):
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
 
-def cube(name, sx, sy, sz, x, y, z, mat, cell=None):
-    """Axis-aligned box: dimensions (sx, sy, sz), center (x, y, z)."""
+def cube(name, sx, sy, sz, x, y, z, mat, cell=None, rot=None):
+    """Box: dimensions (sx, sy, sz), center (x, y, z), optional euler degrees."""
     bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, z))
     o = bpy.context.object
     o.name = name
     o.scale = (sx, sy, sz)
+    if rot:
+        o.rotation_euler = tuple(math.radians(a) for a in rot)
     apply_all()
     set_mat(o, mat)
     if cell is not None:

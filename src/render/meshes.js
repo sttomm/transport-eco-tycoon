@@ -315,6 +315,8 @@ export function buildIndustryMesh(type) {
 
 // ---------- vehicles ----------
 export function buildVehicleMesh(kind) {
+  const gltf = modelInstance('veh_' + kind);
+  if (gltf) return gltf;
   const g = new THREE.Group();
   const Mv = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.4, metalness: 0.4, ...o });
   const glassM = Mv('#18242f', { roughness: 0.12, metalness: 0.3 });
@@ -372,6 +374,8 @@ export function buildVehicleMesh(kind) {
 }
 
 export function buildWagonMesh(type) {
+  const gltf = modelInstance('wagon_' + (type === 'pax' ? 'pax' : 'freight'));
+  if (gltf) return gltf;
   const g = new THREE.Group();
   const Mw = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.5, metalness: 0.35, ...o });
   const wheel = (x, z) => {
