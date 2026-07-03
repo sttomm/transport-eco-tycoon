@@ -10,6 +10,7 @@
 #   - hub faces +X (same convention as the old procedural mesh)
 #   - matte paint (roughness ≥ 0.55): glossy whites bloom in full sun (ADR 15)
 import bpy
+import bmesh
 import math
 import sys
 
@@ -54,16 +55,48 @@ def deselect():
     bpy.ops.object.select_all(action='DESELECT')
 
 
+def bisect_z(obj, zs):
+    """Cut horizontal edge loops so paint bands get their own faces."""
+    me = obj.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    for zc in zs:
+        bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
+                               plane_co=(0, 0, zc), plane_no=(0, 0, 1))
+    bm.to_mesh(me)
+    bm.free()
+
+
+def band_material(obj, mat, bands):
+    """Assign mat to every face whose center z falls inside one of the bands."""
+    me = obj.data
+    me.materials.append(mat)
+    idx = len(me.materials) - 1
+    for poly in me.polygons:
+        if any(z0 <= poly.center.z <= z1 for z0, z1 in bands):
+            poly.material_index = idx
+
+
 MAT_PAINT = material('turbine_paint', '#e8eaec', 0.55, 0.10)   # matte tower/nacelle white
 MAT_BLADE = material('turbine_blade', '#f2f4f6', 0.55, 0.05)
 MAT_ACCENT = material('turbine_accent', '#c2c7cc', 0.45, 0.30)  # flange, spinner
 MAT_DARK = material('turbine_dark', '#3a4046', 0.60, 0.20)      # door, grille
+MAT_RED = material('turbine_red', '#c5382e', 0.55, 0.05)        # blade tip bands
+MAT_GREEN_D = material('turbine_green_dark', '#3f7d4a', 0.60, 0.05)   # tower base rings
+MAT_GREEN_L = material('turbine_green_light', '#74ac6f', 0.60, 0.05)
 
 # ---------- tower ----------
 bpy.ops.mesh.primitive_cone_add(vertices=24, radius1=0.55, radius2=0.30, depth=14, location=(0, 0, 7))
 tower = bpy.context.object
 tower.name = 'tower'
 set_mat(tower, MAT_PAINT)
+# bake location so mesh z == world z (cone data is centered, -7..+7) — the
+# band cuts below are in world heights
+bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+# base rings: dark green, white gap, light green (Enercon-style)
+bisect_z(tower, (0.35, 1.05, 1.65, 2.35))
+band_material(tower, MAT_GREEN_D, [(0.35, 1.05)])
+band_material(tower, MAT_GREEN_L, [(1.65, 2.35)])
 smooth(tower)
 
 bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=0.64, depth=0.35, location=(0, 0, 0.175))
@@ -137,6 +170,9 @@ for k in range(3):
     bpy.ops.object.modifier_apply(modifier='taper')
     bpy.ops.object.modifier_apply(modifier='twist')
     set_mat(blade, MAT_BLADE)
+    # aviation marking: two red bands at the tip, white between
+    bisect_z(blade, (5.25, 5.65, 6.05))
+    band_material(blade, MAT_RED, [(5.25, 5.65), (6.05, 6.60)])
 
     bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=0.15, depth=0.55, location=(0, 0, 0.42))
     fairing = bpy.context.object
