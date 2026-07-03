@@ -19,6 +19,23 @@ test('world generation: 8 named cities, 9 industries, a river, street grids', ()
   const byType = {};
   for (const d of G.industries) byType[d.type] = (byType[d.type] || 0) + 1;
   assert.deepEqual(byType, { mine: 2, steel: 2, farm: 3, food: 2 });
+});
+
+test('city neighbour graph: symmetric, connected, and sparse', () => {
+  const edges = G.cities.reduce((a, c) => a + c.neighbors.length, 0) / 2;
+  assert.ok(Number.isInteger(edges), 'symmetric (every edge counted from both ends)');
+  for (const c of G.cities) {
+    for (const oi of c.neighbors) {
+      assert.ok(G.cities[oi].neighbors.includes(c.idx), `${c.name} ↔ ${G.cities[oi].name} is mutual`);
+    }
+  }
+  // sparse: real neighbourhoods, not the complete graph
+  const all = G.cities.length * (G.cities.length - 1) / 2;
+  assert.ok(edges < all, `${edges} edges < ${all} all-pairs`);
+  // connected: every city reachable via neighbour hops (RNG ⊇ MST)
+  const seen = new Set([0]), q = [0];
+  while (q.length) for (const n of G.cities[q.shift()].neighbors) if (!seen.has(n)) { seen.add(n); q.push(n); }
+  assert.equal(seen.size, G.cities.length);
   assert.ok(G.tiles.some(t => t.t === 'water'), 'river exists');
   for (const c of G.cities) {
     assert.ok(c.roadTiles.length > 10, `${c.name} has streets`);

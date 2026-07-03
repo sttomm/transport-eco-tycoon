@@ -441,8 +441,8 @@ export function happinessFactors(c) {
   f.push({ label: 'Goods (steel)', max: 5, got: Math.round(5 * Math.min(1, c.goodsLevel || 0)), hint: 'deliver Green Steel to this city' });
   const svc = transitServices(c);
   f.push({ label: 'Local transit', max: 10, got: svc.local ? 10 : 0, hint: 'route with 2 stops in this city ≥5 tiles apart + a bus/train' });
-  for (const o of G.cities) {
-    if (o === c) continue;
+  for (const oi of c.neighbors) {
+    const o = G.cities[oi];
     f.push({ label: 'Link to ' + o.name, max: 5, got: svc.inter.has(o) ? 5 : 0, hint: 'passenger route connecting this city with ' + o.name });
   }
   const stuck = c.paxLocal + c.paxTo.reduce((a, b) => a + b, 0);
@@ -465,17 +465,21 @@ export function tickCities(gameHours) {
     // travel demand: ~0.5% of population per (daytime) hour wants to go somewhere
     const want = c.pop * 0.005 * tod * gameHours;
     c.paxLocal = Math.min(c.paxLocal + want * 0.55, Math.min(90, 25 + c.pop * 0.02));
-    // intercity demand follows a gravity model: bigger and closer cities
-    // attract more travellers, and each pair has its own cap — so the numbers
-    // differ per connection instead of all saturating at the same value
-    const totalPop = G.cities.reduce((a, o) => a + (o === c ? 0 : o.pop), 0) || 1;
-    G.cities.forEach((o, oi) => {
-      if (o === c) return;
+    // intercity demand: people only travel to NEIGHBOURING cities (see
+    // buildCityNeighbors in grid.js) — remote trips happen via the towns in
+    // between. Within the neighbourhood a gravity model applies: bigger and
+    // closer cities attract more travellers, each pair with its own cap.
+    // non-neighbour pools stay empty — also drains pools restored from saves
+    // made when the pair was (or graph rules were) different
+    c.paxTo.forEach((n, oi) => { if (n && !c.neighbors.includes(oi)) c.paxTo[oi] = 0; });
+    const totalPop = c.neighbors.reduce((a, oi) => a + G.cities[oi].pop, 0) || 1;
+    for (const oi of c.neighbors) {
+      const o = G.cities[oi];
       const dist = Math.hypot(o.ci - c.ci, o.cj - c.cj);
       const attract = (o.pop / totalPop) * (1.4 - Math.min(0.8, dist / 110));
       const cap = 12 + o.pop * 0.012;
       c.paxTo[oi] = Math.min(c.paxTo[oi] + want * 0.45 * attract, cap);
-    });
+    }
     // supply levels decay — cities need a steady stream, not one delivery
     c.foodLevel = Math.max(0, (c.foodLevel || 0) - 0.014 * gameHours);
     c.goodsLevel = Math.max(0, (c.goodsLevel || 0) - 0.010 * gameHours);

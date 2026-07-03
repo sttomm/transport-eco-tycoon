@@ -32,9 +32,10 @@ need internet on first load.)
    Freight Depots / Bus Stops next to roads, create routes (🚌 tab → New Route →
    click stations on the map), buy electric trucks & buses.
    Cargo chains: Iron Ore Mine → Green Steel Works → city, Farm → Food Plant → city,
-   plus passengers between the eight cities. Every chain has several producers
-   and processors spread across the region — both mines lie east of the river,
-   so western steel routes need a bridge.
+   plus passengers between neighbouring cities (press V to see who wants to go
+   where — central towns make natural transfer hubs). Every cargo chain has
+   several producers and processors spread across the region — both mines lie
+   east of the river, so western steel routes need a bridge.
 2. **Energy** — every home, factory and charging vehicle pays you €85 per MWh
    served. Blackouts cost you revenue, halt industry and shrink your cities.
 

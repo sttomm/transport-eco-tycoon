@@ -79,6 +79,24 @@ function buildCities() {
     }
     G.cities.push(city);
   });
+  buildCityNeighbors();
+}
+
+// Neighbour graph (relative neighbourhood graph): two cities are neighbours
+// unless a third city sits between them — closer to both than they are to
+// each other. Travellers only stream between neighbours (transport.js), so
+// remote pairs route via the towns in between. The RNG contains the minimum
+// spanning tree, so every city is reachable through neighbour hops.
+function buildCityNeighbors() {
+  const cs = G.cities;
+  const dist = (a, b) => Math.hypot(a.ci - b.ci, a.cj - b.cj);
+  for (const c of cs) c.neighbors = [];
+  for (let a = 0; a < cs.length; a++) for (let b = a + 1; b < cs.length; b++) {
+    const dab = dist(cs[a], cs[b]);
+    const between = cs.some(m =>
+      m !== cs[a] && m !== cs[b] && Math.max(dist(m, cs[a]), dist(m, cs[b])) < dab);
+    if (!between) { cs[a].neighbors.push(b); cs[b].neighbors.push(a); }
+  }
 }
 
 function buildIndustries() {

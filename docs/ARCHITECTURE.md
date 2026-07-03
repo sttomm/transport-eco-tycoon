@@ -162,11 +162,20 @@ hundreds of moving entities at negligible cost.
 
 ### 10. Passengers are demand pools with destinations
 **Decision:** each city accumulates travellers (local + gravity-model split to
-other cities); they walk to a stop only if a vehicle-staffed route through
-that stop can actually deliver them (local = 2nd stop ≥5 tiles away in the
-same city; intercity = a stop near the destination). Vehicles carry typed
-groups and get paid per delivered passenger (€9 local / €24 intercity,
-distance bonus).
+*neighbouring* cities only — the relative neighbourhood graph built in
+`grid.js buildCityNeighbors`, where two cities are neighbours unless a third
+sits between them); they walk to a stop only if a vehicle-staffed route
+through that stop can actually deliver them (local = 2nd stop ≥5 tiles away
+in the same city; intercity = a stop near the destination). Vehicles carry
+typed groups and get paid per delivered passenger (€9 local / €24 intercity,
+distance bonus). Happiness likewise only asks for links to neighbours.
+**Why neighbours only:** on the 8-city map, all-pairs demand meant every city
+wanted direct lines to seven others — unreadable overlay, unwinnable
+happiness, and no reason for a hub-and-spoke network. The RNG graph contains
+the minimum spanning tree, so the whole region is still reachable via
+neighbour hops, and central cities naturally become transfer hubs. Non-
+neighbour pools are actively drained each tick so stale saves can't strand
+phantom travellers.
 **Why:** "carry pax between two cities" alone made intra-city lines useless
 and demand invisible. Pools + the 👥 demand overlay (V) turn passenger work
 into a read-the-map puzzle, and the no-clogging rule keeps stops from filling
