@@ -23,13 +23,20 @@ def srgb(hexstr):
     return tuple(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in v)
 
 
-def material(name, hexcol, rough, metal=0.0):
+def material(name, hexcol, rough, metal=0.0, emit=None, emit_str=0.0):
+    """Principled material. `emit` (hex) + `emit_str` add an emission color and
+    strength — exported as glTF emissiveFactor / KHR_materials_emissive_strength,
+    which the runtime keeps as material.emissive/emissiveIntensity (head/tail
+    lights). Keep emit_str below the bloom threshold (~3.4) or lights flare."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     bsdf = m.node_tree.nodes['Principled BSDF']
     bsdf.inputs['Base Color'].default_value = (*srgb(hexcol), 1.0)
     bsdf.inputs['Roughness'].default_value = rough
     bsdf.inputs['Metallic'].default_value = metal
+    if emit:
+        bsdf.inputs['Emission Color'].default_value = (*srgb(emit), 1.0)
+        bsdf.inputs['Emission Strength'].default_value = emit_str
     return m
 
 
@@ -54,6 +61,26 @@ def smooth(obj, angle_deg=35):
 
 def apply_all(obj=None):
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+
+def bevel(obj, width=0.03, segments=2, angle_deg=40):
+    """Round sharp edges — the single biggest realism win on boxy vehicle
+    bodies. Applies a Bevel modifier (angle-limited so only hard edges round),
+    then re-projects box UVs since new bevel faces need coords. Box-projected
+    parts only (cubes); call before joining. Also smooth-shades the result."""
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    mod = obj.modifiers.new('bev', 'BEVEL')
+    mod.width = width
+    mod.segments = segments
+    mod.limit_method = 'ANGLE'
+    mod.angle_limit = math.radians(angle_deg)
+    mod.harden_normals = True
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    obj.select_set(False)
+    box_uv(obj)
+    smooth(obj, 55)
+    return obj
 
 
 def cube(name, sx, sy, sz, x, y, z, mat, cell=None, rot=None):

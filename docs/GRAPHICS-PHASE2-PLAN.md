@@ -105,6 +105,18 @@ by scripted Blender.
    city — fixed with `--prune-attributes false`, and the atlas retuned
    (fewer, dimmer lit windows) now that it actually works.
 
+9. **Detailed vehicles & citizens.** ✅ *done (ADR 19)* — reworked
+   `vehicles.py`: edge-beveled bodies (`common.py bevel()`), two-part wheels
+   (tyre + alloy rim), emissive head/tail lamps (`material(emit=…, emit_str=…)`
+   → glTF `KHR_materials_emissive_strength`), mirrors, grille/destination sign,
+   window pillars. New `textures.js` generators `vehiclePaint` (matte metallic
+   flake) and `tyre` (tread), wired by material name. Ambient `world.js` cars
+   gained a greenhouse + glass + four wheels, pedestrians a torso + trousers +
+   skin head — still one `InstancedMesh` each via per-part vertex-color
+   multipliers under `setColorAt`. vehicles.glb 228→236 KB; 121 fps orbiting.
+   Trap: `bevel()` runs before `join_parts` and reprojects box UVs; keep
+   `emit_str` and paint sheen below the bloom threshold or lamps/bodies flare.
+
 ## Traps
 
 - **Async init:** save replay (`place()` events) fires during init — the

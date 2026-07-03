@@ -762,24 +762,36 @@ function rebuildRails() {
 
 // ---------- ambient life: cars & pedestrians ----------
 function initAmbient() {
-  // car = body + darker cabin, merged with vertex tints so instance colors only tint the body
-  const carBody = new THREE.BoxGeometry(1.5, 0.42, 0.78);
-  carBody.translate(0, 0.3, 0);
-  const carCab = new THREE.BoxGeometry(0.82, 0.34, 0.72);
-  carCab.translate(-0.08, 0.66, 0);
-  const tint = (geom, v) => {
-    const n = geom.attributes.position.count;
-    geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(v), 3));
+  // Vertex-color convention for both instanced meshes: the RGB attribute is a
+  // per-part MULTIPLIER, and InstancedMesh.setColorAt tints the whole agent on
+  // top. So parts tinted to a fixed gray (glass, tyres, trousers) stay dark
+  // whatever the instance color; parts tinted white take the full body color.
+  const tintRGB = (geom, r, g = r, b = r) => {
+    const n = geom.attributes.position.count, a = new Float32Array(n * 3);
+    for (let k = 0; k < n; k++) { a[k * 3] = r; a[k * 3 + 1] = g; a[k * 3 + 2] = b; }
+    geom.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    return geom;
   };
-  tint(carBody, 1); tint(carCab, 0.3);
-  const carGeo = mergeGeometries([carBody, carCab]);
-  const carMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, vertexColors: true });
+  // car = lower body + greenhouse cabin + tinted glass band + 4 tyres
+  const carParts = [];
+  carParts.push(tintRGB(new THREE.BoxGeometry(1.55, 0.34, 0.8).translate(0, 0.26, 0), 1));       // body
+  carParts.push(tintRGB(new THREE.BoxGeometry(0.86, 0.3, 0.72).translate(-0.05, 0.56, 0), 0.82)); // cabin
+  carParts.push(tintRGB(new THREE.BoxGeometry(0.9, 0.2, 0.74).translate(-0.05, 0.55, 0), 0.14));  // glass
+  carParts.push(tintRGB(new THREE.BoxGeometry(0.42, 0.14, 0.84).translate(0.5, 0.42, 0), 0.9));   // hood step
+  const wheelG = () => new THREE.CylinderGeometry(0.17, 0.17, 0.12, 8).rotateX(Math.PI / 2);
+  for (const wx of [0.5, -0.5]) for (const wz of [0.36, -0.36]) carParts.push(tintRGB(wheelG().translate(wx, 0.16, wz), 0.08));
+  const carGeo = mergeGeometries(carParts);
+  const carMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.45, vertexColors: true });
   ambient.cars = noCull(new THREE.InstancedMesh(carGeo, carMat, 160));
   ambient.cars.castShadow = true;
 
-  const pedGeo = new THREE.CapsuleGeometry(0.13, 0.42, 2, 6);
-  pedGeo.translate(0, 0.34, 0);
-  ambient.peds = noCull(new THREE.InstancedMesh(pedGeo, new THREE.MeshStandardMaterial({ roughness: 0.8 }), 240));
+  // pedestrian = trousers (dark) + torso (shirt = instance color) + skin head
+  const pedParts = [];
+  pedParts.push(tintRGB(new THREE.BoxGeometry(0.2, 0.36, 0.16).translate(0, 0.18, 0), 0.34));      // legs/trousers
+  pedParts.push(tintRGB(new THREE.BoxGeometry(0.24, 0.34, 0.18).translate(0, 0.5, 0), 1));          // torso/shirt
+  pedParts.push(tintRGB(new THREE.SphereGeometry(0.12, 7, 6).translate(0, 0.76, 0), 1.0, 0.82, 0.66)); // head (skin)
+  const pedGeo = mergeGeometries(pedParts);
+  ambient.peds = noCull(new THREE.InstancedMesh(pedGeo, new THREE.MeshStandardMaterial({ roughness: 0.75, vertexColors: true }), 240));
 
   const carCols = ['#d8dadc', '#2f3338', '#b33a3a', '#3a6fb3', '#c9c94a', '#e0e3e6', '#587158'];
   const pedCols = ['#caa', '#8aa', '#a98', '#99b', '#b89', '#789', '#ba9', '#a89'];

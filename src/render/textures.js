@@ -338,6 +338,53 @@ function crop(hex) {
   return p.done();
 }
 
+// automotive paint: smooth base + fine metallic flake + a faint clear-coat
+// micro-speckle. Stays matte (small lightness spread, near-flat bump) so
+// painted bodies keep their authored albedo and never bloom in full sun.
+function vehiclePaint(hex) {
+  const p = pair(64), { S, cx, bx } = p;
+  cx.fillStyle = tone(hex);
+  cx.fillRect(0, 0, S, S);
+  // metallic flake: dense sub-pixel sparkle, half lighter / half darker
+  for (let k = 0; k < 900; k++) {
+    const up = Math.random() < 0.5;
+    cx.fillStyle = toneA(hex, (up ? 1 : -1) * (0.03 + Math.random() * 0.06), 0.18);
+    cx.fillRect(Math.random() * S, Math.random() * S, 1, 1);
+  }
+  // faint horizontal body crease + a soft top sheen band
+  cx.fillStyle = toneA(hex, -0.05, 0.4);
+  cx.fillRect(0, S * 0.62, S, 1);
+  const g = cx.createLinearGradient(0, 0, 0, S * 0.5);
+  g.addColorStop(0, toneA(hex, 0.05, 0.10));
+  g.addColorStop(1, toneA(hex, 0.05, 0));
+  cx.fillStyle = g;
+  cx.fillRect(0, 0, S, S * 0.5);
+  bx.fillStyle = gray(128); bx.fillRect(0, 0, S, S); // effectively flat
+  return p.done();
+}
+
+// tyre rubber: circumferential grooves + angled tread lugs, raised in bump
+function tyre(hex) {
+  const p = pair(64), { S, cx, bx } = p;
+  cx.fillStyle = tone(hex);
+  cx.fillRect(0, 0, S, S);
+  bx.fillStyle = gray(90); bx.fillRect(0, 0, S, S);
+  for (let x = 0; x < S; x += 6) {          // tread lugs across the tread
+    const on = (x / 6) % 2 === 0;
+    cx.fillStyle = toneA(hex, on ? 0.06 : -0.05, 0.6);
+    cx.fillRect(x, 0, 4, S);
+    bx.fillStyle = gray(on ? 175 : 70);
+    bx.fillRect(x, 0, 4, S);
+  }
+  for (const y of [S * 0.28, S * 0.72]) {   // two circumferential grooves
+    cx.fillStyle = toneA(hex, -0.1, 0.8);
+    cx.fillRect(0, y, S, 3);
+    bx.fillStyle = gray(30);
+    bx.fillRect(0, y, S, 3);
+  }
+  return p.done();
+}
+
 // near-white multiplicative grain — detail for vertex-colored facade parts
 export function grainTexture(period = 1.6) {
   const S = 128, cv = makeCanvas(S), cx = cv.getContext('2d');
@@ -389,7 +436,13 @@ const SPECS = {
   sta_depot_orange: [corrugated, 1.0, 0.3],
   sta_shelter: [metalPanel, 1.2, 0.05],
   sta_canopy: [metalPanel, 1.2, 0.05],
-  // vehicles (subtle: painted bodies stay clean, cargo surfaces get relief)
+  // vehicles: painted bodies get a subtle metallic-flake paint, tyres a
+  // tread, cargo surfaces keep their coarse relief
+  veh_bus_blue: [vehiclePaint, 0.6, 0],
+  veh_truck_green: [vehiclePaint, 0.6, 0],
+  veh_train_red: [vehiclePaint, 0.6, 0],
+  veh_wagon_blue: [vehiclePaint, 0.6, 0],
+  veh_tire: [tyre, 0.32, 0.12],
   veh_box_white: [c => corrugated(c, 0.10), 0.55, 0.1],
   veh_wagon_brown: [planks, 0.7, 0.15],
   veh_load: [gravel, 0.9, 0.3],

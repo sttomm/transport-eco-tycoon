@@ -291,6 +291,38 @@ centered on gray 128 — the shader multiplies `detail × 2`, so a mean of 0.5
 leaves overall brightness unchanged. Per-map `repeat` on the normal map only
 works because three r152+ gives every texture its own UV transform.
 
+### 19. Detailed vehicles & citizens (graphics phase 2)
+**Decision:** The glTF vehicles (`tools/models/vehicles.py`) and the instanced
+ambient life (`world.js`) get real detail instead of flat-colored boxes.
+Vehicle bodies are edge-beveled (a new `common.py bevel()` — angle-limited
+modifier + box-UV reprojection + smooth shading), wheels are two parts (dark
+tyre + a bright alloy rim that pokes through both sides), and each vehicle
+gains headlights/taillights, side mirrors, a grille/destination sign and
+window pillars that break the glass band into panes. Head/tail lamps are
+*emissive*: `common.material()` now takes `emit`/`emit_str`, exported as glTF
+`emissiveFactor` + `KHR_materials_emissive_strength` and kept verbatim by the
+loader (they read as lit lamps at night, tuned below the bloom threshold).
+Painted panels and tyres pick up subtle runtime textures by material name
+(`textures.js` `vehiclePaint` — metallic flake + clear-coat sheen, matte; and
+`tyre` — tread lugs + circumferential grooves). Ambient cars go from body+cab
+to body + greenhouse + tinted glass + four wheels; pedestrians go from a
+single capsule to trousers + torso + skin head. Both stay ONE `InstancedMesh`
+each: a per-part vertex-color multiplier gives fixed-dark parts (glass, tyres,
+trousers) while `setColorAt` still tints the body/shirt per instance.
+**Why:** vehicles and citizens are what the eye tracks, so they gained the
+most from box → real geometry; keeping ambient life single-instanced preserves
+the ADR 9 "cosmetic and instanced" budget (still 121 fps orbiting, 160 cars +
+240 peds). Emissive lamps reuse the existing material path rather than a new
+night hook — vehicles have no `setNightAmount` wiring and modest emission looks
+right day and night.
+**Traps:** `bevel()` must run *before* `join_parts` (per-object modifier) and
+re-project box UVs (new bevel faces have no coords); it only fits box-projected
+parts. Keep `emit_str` below the bloom threshold (~3.4) or lamps flare in sun.
+The vehicle-paint texture must stay near-flat (tiny lightness spread, no bump)
+or painted bodies bloom — same rule as ADR 16. Ambient vertex colors are
+*multipliers*, not final colors: a part tinted white takes the instance color,
+a part tinted gray stays that gray whatever the body color.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.
