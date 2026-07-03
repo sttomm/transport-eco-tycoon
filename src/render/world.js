@@ -71,6 +71,7 @@ function buildTerrainMesh() {
   for (let k = 0; k < pos.count; k++) pos.setY(k, heightAt(pos.getX(k), pos.getZ(k)));
   geo.computeVertexNormals();
   const mat = new THREE.MeshStandardMaterial({ map: bakeTerrainTexture(), roughness: 0.95, metalness: 0 });
+  attachGroundDetail(mat);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
@@ -87,7 +88,7 @@ function hash2(x, y) {
 // Bake a biome texture over the whole map: river bed, wet/dry sand banks,
 // mottled grass with dirt patches, striated rock — plus slope shading.
 function bakeTerrainTexture() {
-  const PX = 1024, S = G.N * G.TILE;
+  const PX = 2048, S = G.N * G.TILE;
   const cv = document.createElement('canvas');
   cv.width = cv.height = PX;
   const cx = cv.getContext('2d');
@@ -145,8 +146,116 @@ function bakeTerrainTexture() {
   cx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = 16;
   return tex;
+}
+
+// ---------- ground detail (close-up crispness) ----------
+// The biome bake covers the whole island in one texture, so at street level it
+// blurs no matter its resolution. A small tiling detail layer fixes that:
+// a hue-neutral grain multiplied into the albedo (reads as grass blades on
+// grass, granules on sand) plus a matching normal map for micro-relief.
+// It fades out with camera distance so the repeat never shows as a pattern.
+const DETAIL_REPEAT = 96;                          // one repeat per tile (4 wu)
+
+function attachGroundDetail(mat) {
+  const { albedo, normal } = makeGroundDetailMaps();
+  mat.normalMap = normal;
+  mat.normalScale = new THREE.Vector2(0.45, 0.45);
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uGroundDetail = { value: albedo };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <map_pars_fragment>',
+        '#include <map_pars_fragment>\nuniform sampler2D uGroundDetail;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+      {
+        float fade = 1.0 - smoothstep(60.0, 170.0, length(vViewPosition));
+        if (fade > 0.001) {
+          vec3 dA = texture2D(uGroundDetail, vMapUv * ${DETAIL_REPEAT}.0).rgb;
+          vec3 dB = texture2D(uGroundDetail, vMapUv * ${DETAIL_REPEAT / 4}.0 + 0.37).rgb;
+          diffuseColor.rgb *= mix(vec3(1.0), dA * dB * 4.0, 0.55 * fade);
+        }
+      }`);
+  };
+}
+
+// Tiling detail maps, generated once: a value-noise heightfield on wrapped
+// lattices (so the texture tiles seamlessly), rendered as neutral-gray albedo
+// grain with short blade strokes, plus a normal map derived from the same
+// heightfield.
+function makeGroundDetailMaps() {
+  const S = 256;
+  const lattice = (freq, seed) => {
+    const L = new Float32Array(freq * freq);
+    for (let i = 0; i < freq * freq; i++) L[i] = hash2((i % freq) + seed * 131, (i / freq | 0) + seed * 57);
+    return (u, v) => {                             // smoothed bilinear, wrapped
+      const x = u * freq, y = v * freq, x0 = Math.floor(x), y0 = Math.floor(y);
+      let fx = x - x0, fy = y - y0;
+      fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+      const X0 = x0 % freq, X1 = (x0 + 1) % freq, Y0 = y0 % freq, Y1 = (y0 + 1) % freq;
+      const a = L[Y0 * freq + X0], b = L[Y0 * freq + X1], c = L[Y1 * freq + X0], e = L[Y1 * freq + X1];
+      return a + (b - a) * fx + (c - a) * fy + (a - b - c + e) * fx * fy;
+    };
+  };
+  const octs = [[lattice(11, 1), 0.45], [lattice(23, 2), 0.28], [lattice(47, 3), 0.17], [lattice(97, 4), 0.10]];
+  const H = new Float32Array(S * S);
+  for (let py = 0; py < S; py++)
+    for (let px = 0; px < S; px++) {
+      const u = px / S, v = py / S;
+      let h = 0;
+      for (const [n, amp] of octs) h += n(u, v) * amp;
+      H[py * S + px] = h;
+    }
+
+  // albedo: gray centered on 128 (multiplied ×2 in the shader → mean 1)
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const cx = cv.getContext('2d');
+  const img = cx.createImageData(S, S);
+  for (let k = 0; k < S * S; k++) {
+    const g = 128 + (H[k] - 0.5) * 110 + (hash2(k, 7) - 0.5) * 40;
+    img.data[k * 4] = img.data[k * 4 + 1] = img.data[k * 4 + 2] = g;
+    img.data[k * 4 + 3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+  // short near-vertical strokes: blade hints on grass, drift marks on sand.
+  // Each is drawn at 4 wrapped offsets so the texture still tiles.
+  for (let s = 0; s < 900; s++) {
+    const x = rand() * S, y = rand() * S, len = 2 + rand() * 3, tilt = (rand() - 0.5) * 1.6;
+    cx.strokeStyle = rand() < 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.14)';
+    for (const [ox, oy] of [[0, 0], [-S, 0], [0, -S], [-S, -S]]) {
+      cx.beginPath();
+      cx.moveTo(x + ox, y + oy);
+      cx.lineTo(x + ox + tilt, y + oy + len);
+      cx.stroke();
+    }
+  }
+  const albedo = new THREE.CanvasTexture(cv);
+  albedo.wrapS = albedo.wrapT = THREE.RepeatWrapping;
+  albedo.anisotropy = 8;
+
+  // normal map from the heightfield gradient (wrapped central differences)
+  const nv = document.createElement('canvas');
+  nv.width = nv.height = S;
+  const nx = nv.getContext('2d');
+  const nimg = nx.createImageData(S, S);
+  const K = 2.2;                                   // bump strength
+  for (let py = 0; py < S; py++)
+    for (let px = 0; px < S; px++) {
+      const dx = (H[py * S + (px + 1) % S] - H[py * S + (px + S - 1) % S]) * K;
+      const dy = (H[((py + 1) % S) * S + px] - H[((py + S - 1) % S) * S + px]) * K;
+      const il = 1 / Math.hypot(dx, dy, 1);
+      const k = (py * S + px) * 4;
+      nimg.data[k] = (-dx * il * 0.5 + 0.5) * 255;
+      nimg.data[k + 1] = (-dy * il * 0.5 + 0.5) * 255;
+      nimg.data[k + 2] = (il * 0.5 + 0.5) * 255;
+      nimg.data[k + 3] = 255;
+    }
+  nx.putImageData(nimg, 0, 0);
+  const normal = new THREE.CanvasTexture(nv);
+  normal.wrapS = normal.wrapT = THREE.RepeatWrapping;
+  normal.repeat.set(DETAIL_REPEAT, DETAIL_REPEAT);
+  return { albedo, normal };
 }
 
 // ---------- water ----------

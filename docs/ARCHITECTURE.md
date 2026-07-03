@@ -271,6 +271,26 @@ computed there blow the albedo far past the authored palette. And
 otherwise strips TEXCOORD_0 as "unused" (no material references an image),
 which silently broke the building window-light atlas once before.
 
+### 18. Terrain: baked biome map + tiling detail layer (graphics phase 2)
+**Decision:** The ground keeps its single baked biome texture (2048px canvas,
+`world.js bakeTerrainTexture`) for the macro look — river bed, sand banks,
+grass patches, rocky highland. Close-up crispness comes from a separate
+256px *tiling* detail layer (`makeGroundDetailMaps`): a hue-neutral grain
+multiplied into the albedo via `onBeforeCompile` (reads as grass blades on
+grass, granules on sand) plus a normal map from the same heightfield for
+micro-relief. The detail repeats once per tile and fades out between 60 and
+170 units of camera distance, so the repeat never shows as a pattern from
+above.
+**Why:** one all-island texture can never hold street-level detail (2048px ≈
+5 texels per world unit); scaling it further costs quadratic bake time and
+memory, while a small repeating layer is sharp at any zoom for free. The
+detail noise is value noise on wrapped lattices so the texture tiles
+seamlessly without mirroring artifacts.
+**Traps:** the detail albedo is deliberately *linear* (no sRGB flag) and
+centered on gray 128 — the shader multiplies `detail × 2`, so a mean of 0.5
+leaves overall brightness unchanged. Per-map `repeat` on the normal map only
+works because three r152+ gives every texture its own UV transform.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.
