@@ -84,12 +84,15 @@ by scripted Blender.
    Blender trap: object names must not end in long float strings —
    name-uniquing crashes on `stoi("249999…")`; use integer suffixes.
 6. **Optimization pass.** ✅ *done* — `build-models.sh` runs gltf-transform
-   per asset with conservative flags (`--join false --palette false
-   --flatten false --simplify false --compress quantize`): anything more
-   aggressive merges nodes and destroys the load-bearing names (`rotor`,
-   `glow`, `<style>_<tier>`); quantize is the only compression GLTFLoader
-   decodes without an extra runtime decoder. Total asset weight 336 KB
-   (budget was 5 MB); 120 fps orbiting the city center. No LOD needed.
+   per asset with dedup+weld only (`--join false --palette false
+   --flatten false --simplify false --compress false`). Join/flatten/palette
+   merge nodes and destroy the load-bearing names (`rotor`, `glow`,
+   `<style>_<tier>`). **Quantization is also off**: it re-centers vertex
+   data and moves the compensation into node transforms, which broke both
+   pivot contracts (rotor no longer spun around the hub) and the
+   building/tree preps that read raw geometry (city shrank to toy size).
+   Total asset weight 604 KB (budget was 5 MB); 120 fps orbiting the city
+   center. No LOD needed.
 
 ## Traps
 
