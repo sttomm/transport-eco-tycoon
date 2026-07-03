@@ -23,20 +23,20 @@ export function initScene() {
   document.getElementById('app').appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.Fog('#bcd6e8', 220, 520);
+  scene.fog = new THREE.Fog('#bcd6e8', 380, 1500); // pushed out with the 2× map so the full-map zoom stays readable
 
   camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 4000);
 
   controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(-110, 0, -110);
-  camera.position.set(-110 - 50, 65, -110 + 55);
+  controls.target.set(-198, 0, -134); // Solhaven, the starting city
+  camera.position.set(-198 - 50, 65, -134 + 55);
   // left button is reserved for building/selecting; camera: right = pan, middle = rotate
   controls.mouseButtons = { MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = 1.42;
   controls.minDistance = 18;
-  controls.maxDistance = 380;
+  controls.maxDistance = 720; // enough to overview the 768-wu map
   controls.screenSpacePanning = false;
 
   initLights();

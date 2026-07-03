@@ -69,8 +69,8 @@ export const QUESTS = [
   },
   // --- energy chain
   {
-    id: 'storagePlay', where: plants('battery', 'solar'), title: '🔋 Store the sun', target: 40, reward: 25000,
-    desc: 'Solar peaks at noon, demand peaks in the evening. Reach 40 MWh of battery capacity to shift the surplus (build batteries or research LFP).',
+    id: 'storagePlay', where: plants('battery', 'solar'), title: '🔋 Store the sun', target: 80, reward: 25000,
+    desc: 'Solar peaks at noon, demand peaks in the evening. Reach 80 MWh of battery capacity to shift the surplus (build batteries or research LFP).',
     value: () => G.batteryCapMWh, fmt: MWh,
   },
   {

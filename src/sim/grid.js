@@ -52,8 +52,8 @@ export function initGrid() {
   buildIndustries();
 }
 
-const CITY_NAMES = ['Solhaven', 'Windburg', 'Hydrovale'];
-const CITY_SITES = [[22, 22], [24, 72], [62, 40]];
+const CITY_NAMES = ['Solhaven', 'Windburg', 'Hydrovale', 'Voltfurt', 'Gridholm', 'Ampfeld', 'Wattstad', 'Ohmsberg'];
+const CITY_SITES = [[46, 62], [14, 50], [90, 134], [106, 14], [98, 90], [22, 104], [166, 106], [178, 18]];
 
 function buildCities() {
   CITY_SITES.forEach(([ci, cj], idx) => {
@@ -61,7 +61,7 @@ function buildCities() {
       name: CITY_NAMES[idx], ci, cj, idx, pop: 2200 + Math.floor(rand() * 800),
       happiness: 0.7, roadTiles: [], blockTiles: [], food: 0, goods: 0, paxTimer: 0,
       foodLevel: 0, goodsLevel: 0,   // recent supply levels (0..1+), decay over days
-      paxLocal: 6, paxTo: [0, 0, 0],   // waiting travellers: within town / to each other city
+      paxLocal: 6, paxTo: CITY_SITES.map(() => 0),   // waiting travellers: within town / to each other city
     };
     const R = 8;
     for (let j = cj - R; j <= cj + R; j++) for (let i = ci - R; i <= ci + R; i++) {
@@ -82,8 +82,13 @@ function buildCities() {
 }
 
 function buildIndustries() {
+  // both mines sit east of the river (i≈134) so ore chains to a west-bank
+  // steel works need a bridge — the oreChain quest teaches exactly that
   const spots = {
-    mine: [[78, 14]], steel: [[70, 60]], farm: [[10, 48]], food: [[40, 10]],
+    mine: [[150, 40], [156, 132]],
+    steel: [[118, 70], [172, 120]],
+    farm: [[12, 30], [44, 96], [150, 148]],
+    food: [[56, 40], [76, 128]],
   };
   for (const [type, list] of Object.entries(spots)) {
     for (const [i, j] of list) {

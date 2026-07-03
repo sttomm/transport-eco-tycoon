@@ -18,7 +18,7 @@ function initialState() {
     dunkelflaute: 0,          // remaining hours of low-wind overcast event
     // world
     tiles: null,              // Int/obj grid
-    N: 96,
+    N: 192,
     TILE: 4,
     cities: [],
     industries: [],

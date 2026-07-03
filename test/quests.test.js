@@ -37,7 +37,7 @@ test('a completed quest never pays twice', () => {
 });
 
 test('live-value quests read grid state (battery capacity)', () => {
-  G.batteryCapMWh = 40;
+  G.batteryCapMWh = 80;
   checkQuests();
   assert.equal(G.questsDone.storagePlay, true);
 });

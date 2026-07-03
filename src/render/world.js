@@ -88,7 +88,7 @@ function hash2(x, y) {
 // Bake a biome texture over the whole map: river bed, wet/dry sand banks,
 // mottled grass with dirt patches, striated rock — plus slope shading.
 function bakeTerrainTexture() {
-  const PX = 2048, S = G.N * G.TILE;
+  const PX = 3072, S = G.N * G.TILE; // 4× map area: 3072² keeps ~⅔ of the old texel density without quadrupling the bake time
   const cv = document.createElement('canvas');
   cv.width = cv.height = PX;
   const cx = cv.getContext('2d');
@@ -156,7 +156,7 @@ function bakeTerrainTexture() {
 // a hue-neutral grain multiplied into the albedo (reads as grass blades on
 // grass, granules on sand) plus a matching normal map for micro-relief.
 // It fades out with camera distance so the repeat never shows as a pattern.
-const DETAIL_REPEAT = 96;                          // one repeat per tile (4 wu)
+const DETAIL_REPEAT = G.N;                         // one repeat per tile (4 wu)
 
 function attachGroundDetail(mat) {
   const { albedo, normal } = makeGroundDetailMaps();

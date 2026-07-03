@@ -8,10 +8,17 @@ import { freshWorld, findSpot, findGrass, findWater } from './helpers.js';
 
 beforeEach(() => freshWorld());
 
-test('world generation: 3 named cities, 4 industries, a river, street grids', () => {
-  assert.equal(G.cities.length, 3);
-  assert.deepEqual(G.cities.map(c => c.name), ['Solhaven', 'Windburg', 'Hydrovale']);
-  assert.equal(G.industries.length, 4);
+test('world generation: 8 named cities, 9 industries, a river, street grids', () => {
+  assert.equal(G.cities.length, 8);
+  assert.deepEqual(
+    G.cities.map(c => c.name),
+    ['Solhaven', 'Windburg', 'Hydrovale', 'Voltfurt', 'Gridholm', 'Ampfeld', 'Wattstad', 'Ohmsberg'],
+  );
+  assert.equal(G.industries.length, 9);
+  // every cargo chain has at least two producers/processors to connect
+  const byType = {};
+  for (const d of G.industries) byType[d.type] = (byType[d.type] || 0) + 1;
+  assert.deepEqual(byType, { mine: 2, steel: 2, farm: 3, food: 2 });
   assert.ok(G.tiles.some(t => t.t === 'water'), 'river exists');
   for (const c of G.cities) {
     assert.ok(c.roadTiles.length > 10, `${c.name} has streets`);

@@ -8,7 +8,9 @@ import { TECHS } from './data.js';
 import { place, canPlace } from './grid.js';
 import { createRoute, buyVehicle, addWagon } from './transport.js';
 
-const KEY = 'transport-eco-tycoon-save-v1';
+// v2: 192×192 world with 8 cities — v1 saves store tile coords of the old
+// 96×96 map and would silently mis-restore, so they are left under their old key
+const KEY = 'transport-eco-tycoon-save-v2';
 const storage = () => (typeof localStorage === 'undefined' ? null : localStorage);
 
 export function hasSave() {
@@ -24,7 +26,7 @@ export function clearSave() {
 export function snapshot() {
   const stIx = st => G.stations.indexOf(st);
   return {
-    v: 1,
+    v: 2,
     minutes: G.minutes, day: G.day, money: G.money, co2: G.co2SavedTons,
     wind: G.wind, cloud: G.cloud, dunkelflaute: G.dunkelflaute,
     batteryMWh: G.batteryMWh, h2MWh: G.h2MWh,
@@ -54,7 +56,7 @@ export function snapshot() {
 
 // apply a snapshot onto a freshly generated world; returns true on success
 export function restore(d) {
-  if (!d || d.v !== 1) return false;
+  if (!d || d.v !== 2) return false;
 
   G.minutes = d.minutes; G.day = d.day; G.money = d.money;
   G.co2SavedTons = d.co2 || 0;

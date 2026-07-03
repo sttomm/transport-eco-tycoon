@@ -41,11 +41,21 @@ function placeStarter(type, ni, nj) {
 if (!loadedSave) {
   // suppress build-tips while placing the legacy grid, then re-arm them for the player's own builds
   for (const id of ['firstSolar', 'firstWind', 'firstBattery']) G.firedTips[id] = true;
-  placeStarter('hydro', 66, 22);     // at the river
-  placeStarter('wind', 30, 14);
-  placeStarter('wind', 33, 14);
-  placeStarter('solar', 12, 28);
-  placeStarter('battery', 14, 34);
+  // sized for the 8-city region (~23 MW evening peak): same rated-capacity
+  // margin as the original 3-city starter grid
+  placeStarter('hydro', 22, 42);     // at the pond north of Windburg
+  placeStarter('wind', 34, 50);
+  placeStarter('wind', 37, 50);
+  placeStarter('wind', 40, 48);
+  placeStarter('wind', 56, 56);
+  placeStarter('wind', 59, 56);
+  placeStarter('wind', 62, 54);
+  placeStarter('solar', 30, 70);
+  placeStarter('solar', 36, 72);
+  placeStarter('solar', 24, 66);
+  placeStarter('solar', 20, 60);
+  placeStarter('battery', 34, 66);
+  placeStarter('battery', 38, 66);
   G.batteryMWh = G.batteryCapMWh * 0.5;
   for (const id of ['firstSolar', 'firstWind', 'firstBattery']) delete G.firedTips[id];
 }

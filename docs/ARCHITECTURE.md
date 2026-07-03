@@ -140,7 +140,7 @@ makes the energy game a first-class economic loop instead of a chore, and
 naturally rewards reliability — exactly the real-world incentive.
 
 ### 8. Tile world + graph roads, full 3D rendering
-**Decision:** 96×96 logical tile grid (placement, A*, occupancy) under a
+**Decision:** 192×192 logical tile grid (placement, A*, occupancy) under a
 continuous displaced-plane terrain; cities generate their own street grids
 which player roads connect to; rivers crossable via bridges (5× cost).
 Rail is a *flag* on tiles, not a tile type, so roads and rails cross at level
@@ -272,7 +272,7 @@ otherwise strips TEXCOORD_0 as "unused" (no material references an image),
 which silently broke the building window-light atlas once before.
 
 ### 18. Terrain: baked biome map + tiling detail layer (graphics phase 2)
-**Decision:** The ground keeps its single baked biome texture (2048px canvas,
+**Decision:** The ground keeps its single baked biome texture (3072px canvas,
 `world.js bakeTerrainTexture`) for the macro look — river bed, sand banks,
 grass patches, rocky highland. Close-up crispness comes from a separate
 256px *tiling* detail layer (`makeGroundDetailMaps`): a hue-neutral grain
@@ -281,8 +281,8 @@ grass, granules on sand) plus a normal map from the same heightfield for
 micro-relief. The detail repeats once per tile and fades out between 60 and
 170 units of camera distance, so the repeat never shows as a pattern from
 above.
-**Why:** one all-island texture can never hold street-level detail (2048px ≈
-5 texels per world unit); scaling it further costs quadratic bake time and
+**Why:** one all-island texture can never hold street-level detail (3072px ≈
+4 texels per world unit on the 768-unit map); scaling it further costs quadratic bake time and
 memory, while a small repeating layer is sharp at any zoom for free. The
 detail noise is value noise on wrapped lattices so the texture tiles
 seamlessly without mirroring artifacts.
@@ -322,6 +322,26 @@ The vehicle-paint texture must stay near-flat (tiny lightness spread, no bump)
 or painted bodies bloom — same rule as ADR 16. Ambient vertex colors are
 *multipliers*, not final colors: a part tinted white takes the instance color,
 a part tinted gray stays that gray whatever the body color.
+
+### 20. 4× world: 192×192 tiles, 8 cities, multi-producer chains
+**Decision:** the map grew from 96×96 to 192×192 tiles (4× area) with 8 cities
+and 9 industries (2 mines, 2 steel works, 3 farms, 2 food plants), so every
+cargo chain has alternative producers and intercity routes have real length.
+City density is deliberately *below* the old map's (8 instead of a
+proportional 12) — distance is the point. Both mines sit east of the river so
+west-bank steel keeps the bridge lesson. The starter grid and the storagePlay
+quest target scaled with regional demand (~23 MW evening peak) to keep the
+same early-game margins. Save version bumped to v2 (new localStorage key):
+v1 saves store tile coords of the old world and would silently mis-restore;
+the old key is left untouched rather than deleted.
+**Why 8 cities / 9 industries:** enough that route choice becomes a decision
+(which farm feeds which food plant, rail vs truck over 60-tile hauls) without
+multiplying early-game demand beyond what a teaching-sized starter grid can
+serve.
+**Traps:** anything that scales per-tile (terrain bake, tree scatter, detail
+repeat) must derive from `G.N`, not literals — the terrain texture and
+`DETAIL_REPEAT` both bit on this. Tests keep synthetic road/rail fixtures in
+the empty south-west (i 1–21, j 84–92); new cities must stay clear of it.
 
 ## Persistence
 
