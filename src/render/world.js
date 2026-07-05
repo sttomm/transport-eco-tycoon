@@ -20,7 +20,7 @@ const noise = makeNoise(WORLD_SEED);
 const { fbm, rand } = noise;
 
 let scene;
-let roadMesh, roadDirty = true;
+let roadDirty = true;
 let railBallast, railSegs, railDirty = true;
 const ambient = { cars: null, peds: null, carList: [], pedList: [] };
 const turbineRotors = [];
@@ -601,8 +601,16 @@ function initLamps() {
   for (const city of G.cities) {
     for (const t of city.roadTiles) {
       if (rand() > 0.3) continue;
+      // only corners that actually carry a sidewalk (edges without a road neighbour)
+      const swE = !isRoad(t.i + 1, t.j), swW = !isRoad(t.i - 1, t.j);
+      const swN = !isRoad(t.i, t.j + 1), swS = !isRoad(t.i, t.j - 1);
+      const corners = [];
+      for (const sx of [1, -1]) for (const sz of [1, -1]) {
+        if ((sx > 0 ? swE : swW) || (sz > 0 ? swN : swS)) corners.push([sx, sz]);
+      }
+      if (!corners.length) continue; // junction tile, all asphalt
       const [x, z] = worldXZ(t.i, t.j);
-      const sx = rand() < 0.5 ? 1 : -1, sz = rand() < 0.5 ? 1 : -1;
+      const [sx, sz] = corners[Math.floor(rand() * corners.length)];
       spots.push([x + sx * (G.TILE / 2 - SIDEWALK_W / 2), tileY(t.i, t.j), z + sz * (G.TILE / 2 - SIDEWALK_W / 2)]);
     }
   }
@@ -626,59 +634,108 @@ function initLamps() {
   scene.add(inst);
 }
 
-// ---------- roads (dynamic instanced mesh) ----------
-// sidewalk band (light) around the tile edge, asphalt in the middle
+// ---------- roads (dynamic instanced meshes, one per connection mask) ----------
+// asphalt spans the whole tile so connected streets read as one seamless
+// surface; the sidewalk band is only drawn along edges that don't border
+// another road tile. 16 texture variants keyed by the neighbour bitmask
+// (bit0 = +x, bit1 = -x, bit2 = +z, bit3 = -z road neighbour).
 export const SIDEWALK_W = 0.5;                    // world units, matches the texture border
-function makeAsphaltTexture() {
-  return canvasTex(64, (cx, S) => {
-    const B = Math.round(S * SIDEWALK_W / G.TILE); // border px
-    // sidewalk base with paving grain
-    cx.fillStyle = '#8f959b'; cx.fillRect(0, 0, S, S);
-    for (let k = 0; k < 250; k++) {
-      const v = 125 + Math.random() * 40 | 0;
-      cx.fillStyle = `rgba(${v},${v + 3},${v + 5},0.6)`;
-      cx.fillRect(Math.random() * S, Math.random() * S, 2, 2);
+const roadMeshes = [];                            // index = connection mask
+
+// canvas orientation on the box top face: right = +x, top = +z (flipY)
+function makeAsphaltTexture(mask) {
+  return canvasTex(128, (cx, S) => {
+    const B = Math.round(S * SIDEWALK_W / G.TILE); // sidewalk band px
+    // asphalt base over the whole tile
+    cx.fillStyle = '#3c4043'; cx.fillRect(0, 0, S, S);
+    // large-scale mottling: repair patches and tar stains
+    for (let k = 0; k < 7; k++) {
+      const v = 42 + Math.random() * 28 | 0;
+      cx.fillStyle = `rgba(${v},${v + 3},${v + 5},0.35)`;
+      cx.beginPath();
+      cx.ellipse(Math.random() * S, Math.random() * S, 8 + Math.random() * 22, 8 + Math.random() * 22, Math.random() * Math.PI, 0, Math.PI * 2);
+      cx.fill();
     }
-    // paving slab joints along the border
-    cx.strokeStyle = 'rgba(60,64,68,0.4)'; cx.lineWidth = 1;
-    for (let k = 0; k < S; k += 8) {
-      cx.strokeRect(k, 0, 8, B); cx.strokeRect(k, S - B, 8, B);
-      cx.strokeRect(0, k, B, 8); cx.strokeRect(S - B, k, B, 8);
+    // dense aggregate speckle, two grain sizes
+    for (let k = 0; k < 2600; k++) {
+      const v = 46 + Math.random() * 46 | 0;
+      cx.fillStyle = `rgba(${v},${v + 4},${v + 6},0.55)`;
+      cx.fillRect(Math.random() * S, Math.random() * S, 1.5, 1.5);
     }
-    // asphalt middle
-    cx.fillStyle = '#3c4043'; cx.fillRect(B, B, S - 2 * B, S - 2 * B);
-    for (let k = 0; k < 500; k++) {
-      const v = 50 + Math.random() * 40 | 0;
-      cx.fillStyle = `rgba(${v},${v + 4},${v + 6},0.5)`;
-      cx.fillRect(B + Math.random() * (S - 2 * B), B + Math.random() * (S - 2 * B), 1.5, 1.5);
+    for (let k = 0; k < 350; k++) {
+      const v = 60 + Math.random() * 55 | 0;
+      cx.fillStyle = `rgba(${v},${v + 4},${v + 6},0.4)`;
+      cx.fillRect(Math.random() * S, Math.random() * S, 2.5, 2.5);
     }
-    cx.strokeStyle = 'rgba(20,22,24,0.6)'; // curb line
-    cx.lineWidth = 1.5;
-    cx.strokeRect(B, B, S - 2 * B, S - 2 * B);
+    // hairline cracks — kept faint: same-mask tiles share one texture, so
+    // bold cracks read as an obvious repeat on straight stretches
+    cx.strokeStyle = 'rgba(22,24,26,0.3)'; cx.lineWidth = 1;
+    for (let k = 0; k < 3; k++) {
+      let x = Math.random() * S, y = Math.random() * S;
+      cx.beginPath();
+      cx.moveTo(x, y);
+      for (let sgm = 0; sgm < 5; sgm++) { x += (Math.random() - 0.5) * 22; y += Math.random() * 14; cx.lineTo(x, y); }
+      cx.stroke();
+    }
+    // sidewalk bands on unconnected edges: [x, y, w, h] in canvas px
+    const bands = [];
+    if (!(mask & 1)) bands.push([S - B, 0, B, S]);  // +x → canvas right
+    if (!(mask & 2)) bands.push([0, 0, B, S]);      // -x → canvas left
+    if (!(mask & 4)) bands.push([0, 0, S, B]);      // +z → canvas top
+    if (!(mask & 8)) bands.push([0, S - B, S, B]);  // -z → canvas bottom
+    // corner patches where two connected edges meet (junction mouths, inner
+    // bend corners) — they join the neighbours' sidewalk bands around the turn
+    if ((mask & 1) && (mask & 4)) bands.push([S - B, 0, B, B]);
+    if ((mask & 1) && (mask & 8)) bands.push([S - B, S - B, B, B]);
+    if ((mask & 2) && (mask & 4)) bands.push([0, 0, B, B]);
+    if ((mask & 2) && (mask & 8)) bands.push([0, S - B, B, B]);
+    for (const [bx, by, bw, bh] of bands) {
+      cx.fillStyle = '#8f959b'; cx.fillRect(bx, by, bw, bh);
+      const grain = Math.max(12, 140 * (bw * bh) / (S * B) | 0);
+      for (let k = 0; k < grain; k++) { // paving grain
+        const v = 125 + Math.random() * 40 | 0;
+        cx.fillStyle = `rgba(${v},${v + 3},${v + 5},0.6)`;
+        cx.fillRect(bx + Math.random() * bw, by + Math.random() * bh, 2, 2);
+      }
+      cx.strokeStyle = 'rgba(60,64,68,0.4)'; cx.lineWidth = 1; // slab joints
+      if (bw > bh) for (let k = bx; k < bx + bw; k += 16) cx.strokeRect(k, by, 16, bh);
+      else if (bh > bw) for (let k = by; k < by + bh; k += 16) cx.strokeRect(bx, k, bw, 16);
+      // curb lines along the asphalt-facing edges (tile-border edges get none)
+      cx.strokeStyle = 'rgba(20,22,24,0.7)'; cx.lineWidth = 2;
+      cx.beginPath();
+      if (bw < S) { const cxx = bx === 0 ? B : bx; cx.moveTo(cxx, by); cx.lineTo(cxx, by + bh); }
+      if (bh < S) { const cy = by === 0 ? B : by; cx.moveTo(bx, cy); cx.lineTo(bx + bw, cy); }
+      cx.stroke();
+    }
   });
 }
 
 function initRoadMesh() {
   const geo = new THREE.BoxGeometry(G.TILE, 0.12, G.TILE);
-  const mat = new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), roughness: 0.9 });
-  roadMesh = noCull(new THREE.InstancedMesh(geo, mat, 4500));
-  roadMesh.receiveShadow = true;
-  roadMesh.count = 0;
-  scene.add(roadMesh);
+  for (let mask = 0; mask < 16; mask++) {
+    const mat = new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(mask), roughness: 0.95 });
+    const mesh = noCull(new THREE.InstancedMesh(geo, mat, 4500));
+    mesh.receiveShadow = true;
+    mesh.count = 0;
+    roadMeshes[mask] = mesh;
+    scene.add(mesh);
+  }
   roadDirty = true;
 }
 function rebuildRoads() {
   const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1);
-  let k = 0;
+  for (const mesh of roadMeshes) mesh.count = 0;
   for (const t of G.tiles) {
     if (t.t !== 'road') continue;
+    const mask = (isRoad(t.i + 1, t.j) ? 1 : 0) | (isRoad(t.i - 1, t.j) ? 2 : 0)
+      | (isRoad(t.i, t.j + 1) ? 4 : 0) | (isRoad(t.i, t.j - 1) ? 8 : 0);
     const [x, z] = worldXZ(t.i, t.j);
     p.set(x, t.h + 0.05, z);
     m.compose(p, q, s);
-    roadMesh.setMatrixAt(k++, m);
+    const mesh = roadMeshes[mask];
+    mesh.setMatrixAt(mesh.count++, m);
   }
-  roadMesh.count = k;
-  roadMesh.instanceMatrix.needsUpdate = true;
+  for (const mesh of roadMeshes) mesh.instanceMatrix.needsUpdate = true;
   roadDirty = false;
 }
 
