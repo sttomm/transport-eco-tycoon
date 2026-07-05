@@ -35,6 +35,8 @@ flowchart TB
         ENERGY["energy.js\nweather · grid dispatch"]
         TRANS["transport.js\nA* · stations · vehicles\nindustries · passengers · happiness"]
         QUESTS["quests.js\nobjective chains"]
+        CONTRACTS["contracts.js\nspecial transport offers"]
+        LOANS["loans.js\nbank loan · daily interest"]
         SAVE["save.js\nsnapshot / restore"]
         NOISE["noise.js\nseeded value-noise"]
     end
@@ -51,7 +53,7 @@ Per-frame data flow (`main.js#frame`):
 ```
 real dt → game minutes (8 min/s × speed)
   sim:    updateWeather → tickGrid → tickIndustries → tickVehicles
-          → tickCities → tickResearch → sampleHistory
+          → tickCities → tickContracts → tickResearch → sampleHistory
   render: updateWorldRender (roads/rails dirty-rebuild, water, ambient life)
           → updateVehicleRender (mesh poses, FX, overlays) → updateDayNight
   ui:     updateQuestPanel → updateUI → render
@@ -69,7 +71,8 @@ happened; renderers and UI decide what that looks like. The important events:
 | `vehicleBought` / `wagonAdded` / `vehicleSold` | transport.js | render/vehicles.js (mesh lifecycle) |
 | `moneyFx` | transport.js | render/vehicles.js (floating +€ text) |
 | `tip` | sim (various) | ui/hud.js (one-shot advisor toast) |
-| `toast` | quests.js | ui/hud.js (generic toast) |
+| `toast` | quests.js, contracts.js | ui/hud.js (generic toast) |
+| `contractsChanged` | contracts.js | ui/hud.js (re-render 📜 tab) |
 | `plantBuilt` / `stationBuilt` | grid.js | ui/hud.js (teaching tips) |
 | `flyTo` | ui/quests.js | render/scene.js (camera tween) |
 

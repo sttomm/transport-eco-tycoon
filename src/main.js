@@ -8,6 +8,8 @@ import {
   tickIndustries, tickVehicles, tickCities,
   createRoute, buyVehicle, addWagon, findPath, nameStation,
 } from './sim/transport.js';
+import { tickContracts, signContract } from './sim/contracts.js';
+import { takeLoan, repayLoan, dailyLoanInterest } from './sim/loans.js';
 import { loadGame, saveGame, initAutosave } from './sim/save.js';
 import { initScene, updateDayNight, tickCamTween, keyboardPan, scene, camera, controls, renderer } from './render/scene.js';
 import { initPostFX, renderPostFX, setPostFX, PFX } from './render/postfx.js';
@@ -82,12 +84,14 @@ function frame(now) {
       G.finance.prev = G.finance.today;   // keep yesterday for the finance drill-down
       G.finance.today = { bus: 0, truck: 0, train: 0, routes: {} };
       dailyUpkeep(); // after the reset, so upkeep shows in today's expenses
+      dailyLoanInterest();
     }
     updateWeather(gh);
     tickGrid(gh);
     tickIndustries(gh);
     tickVehicles(dt, gh);
     tickCities(gh);
+    tickContracts(gh);
     tickResearch(gh);
     sampleHistory(gm);
   }
@@ -105,4 +109,4 @@ requestAnimationFrame(frame);
 
 // expose for debugging & programmatic play-testing (see the playtest-game skill)
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, scene, camera, controls, renderer, setPostFX, PFX };
+window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, signContract, tickContracts, takeLoan, repayLoan, scene, camera, controls, renderer, setPostFX, PFX };

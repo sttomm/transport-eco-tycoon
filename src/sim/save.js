@@ -28,6 +28,7 @@ export function snapshot() {
   return {
     v: 2,
     minutes: G.minutes, day: G.day, money: G.money, co2: G.co2SavedTons,
+    loan: G.loan, contracts: G.contracts, // contracts hold only indices → plain JSON
     wind: G.wind, cloud: G.cloud, dunkelflaute: G.dunkelflaute,
     batteryMWh: G.batteryMWh, h2MWh: G.h2MWh,
     incomeT: G.incomeTransportToday, incomeE: G.incomeEnergyToday,
@@ -60,6 +61,8 @@ export function restore(d) {
 
   G.minutes = d.minutes; G.day = d.day; G.money = d.money;
   G.co2SavedTons = d.co2 || 0;
+  G.loan = d.loan || 0;
+  if (d.contracts) G.contracts = d.contracts; // pre-contract saves keep the fresh default
   G.wind = d.wind; G.cloud = d.cloud; G.dunkelflaute = d.dunkelflaute || 0;
   G.incomeTransportToday = d.incomeT || 0; G.incomeEnergyToday = d.incomeE || 0;
   G.expensesToday = d.expenses || 0; G.curtailedTodayMWh = d.curtailed || 0;

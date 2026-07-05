@@ -6,6 +6,7 @@
 import { G, emit, hourOfDay } from './state.js';
 import { VEHICLES, WAGONS, CARGO } from './data.js';
 import { tile, isRoad, isRail, worldXZ } from './grid.js';
+import { contractDelivery } from './contracts.js';
 
 export const STATION_RADIUS = 7;
 export const LOCAL_MIN_DIST = 5; // min tiles between stops for a "local" trip
@@ -343,6 +344,10 @@ function arriveAtStation(v) {
         const rate = grp.type === 'local' ? CARGO.pax.payLocal : CARGO.pax.pay;
         const pay = rate * grp.n * (1 + ride / 50);
         credit(v, pay); paidHere += pay;
+        if (grp.type === 'inter') {
+          const extra = contractDelivery('pax', { fromCity: grp.from.idx, toCity: grp.dest.idx }, grp.n, pay);
+          if (extra) { credit(v, extra); paidHere += extra; }
+        }
         G.stats[grp.type === 'local' ? 'paxLocal' : 'paxInter'] += grp.n;
         if (v.kind === 'train') G.stats.railUnits += grp.n;
         if (grp.type === 'inter') grp.dest.pop += Math.floor(grp.n * 0.08);
@@ -368,26 +373,30 @@ function arriveAtStation(v) {
     // --- unload: anything accepted here
     for (const [cid, amt] of Object.entries(v.cargo)) {
       if (amt <= 0) continue;
-      let accepted = false;
+      let accepted = false, destCity = null, destInd = null;
       if (cid === 'food' || cid === 'steel') {
         if (cities.length) {
           accepted = true;
+          destCity = cities[0].idx;
           const lvl = cid === 'food' ? 'foodLevel' : 'goodsLevel';
           cities[0][lvl] = Math.min(1.5, (cities[0][lvl] || 0) + amt * 0.02);
           G.stats[cid + 'ToCity'] += amt;
         }
         const acc = acceptors.find(a => a.def.accepts === cid);
-        if (acc) { acc.inStock += amt; accepted = true; }
+        if (acc) { acc.inStock += amt; accepted = true; destInd = G.industries.indexOf(acc); }
       } else {
         const acc = acceptors.find(a => a.def.accepts === cid);
         if (acc) {
-          acc.inStock += amt; accepted = true;
+          acc.inStock += amt; accepted = true; destInd = G.industries.indexOf(acc);
           if (cid === 'grain') G.stats.grainToFood += amt;
           if (cid === 'ore') G.stats.oreToSteel += amt;
         }
       }
       if (accepted) {
-        paidHere += payDelivery(v, cid, amt, dist);
+        const pay = payDelivery(v, cid, amt, dist);
+        paidHere += pay;
+        const extra = contractDelivery(cid, { toCity: destCity, toInd: destInd }, amt, pay);
+        if (extra) { credit(v, extra); paidHere += extra; }
         if (v.kind === 'train') G.stats.railUnits += amt;
         v.cargo[cid] = 0;
       }

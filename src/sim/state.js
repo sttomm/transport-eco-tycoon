@@ -12,6 +12,9 @@ function initialState() {
     incomeEnergyToday: 0,
     expensesToday: 0,
     co2SavedTons: 0,
+    loan: 0,                  // outstanding bank loan (see sim/loans.js)
+    // special transport offers & signed contracts (see sim/contracts.js)
+    contracts: { offers: [], active: [], completed: 0, failed: 0, offerTimer: 0, seq: 1 },
     // weather (0..1)
     wind: 0.5,
     cloud: 0.25,

@@ -222,6 +222,14 @@ export const TIPS = {
     title: 'Vehicle charging hits the grid',
     text: 'Your electric fleet charges at stations — see the "Charging" slice in the Dashboard. Smart timing matters: in reality, fleets charge at midday (solar surplus) or at night (cheap wind), not during the evening peak.',
   },
+  firstContract: {
+    title: 'Special contracts on offer',
+    text: 'Cities and industries post time-limited transport contracts — check the 📜 Contracts tab. Sign one and every matching delivery pays a +50% premium, plus a cash bonus if you hit the target before the deadline. Unsigned offers rotate out after a while, and a missed deadline costs nothing but the bonus.',
+  },
+  firstLoan: {
+    title: 'Debt: leverage with a price tag',
+    text: 'Renewables are capital-intensive: nearly all the cost is upfront and the "fuel" is free — so the cost of capital matters. Your loan charges 1% interest per day on the outstanding amount (see Expenses). Borrow to build early, but repay from the Finances panel before the interest eats your margin.',
+  },
   research: {
     title: 'Research pays compound interest',
     text: 'Real-world solar got ~90% cheaper since 2010, batteries ~85%. The Research tab gives you the same curve: efficiency techs lower demand, generation techs raise output. Efficiency is the invisible power plant!',

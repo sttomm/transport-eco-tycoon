@@ -1,9 +1,11 @@
 // DOM HUD: topbar, toolbar, side-panel tabs (dashboard charts, research,
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
-import { G, on, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
+import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
 import { BUILDINGS, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor } from '../sim/transport.js';
+import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
+import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
 import { solarFactor, POWER_PRICE } from '../sim/energy.js';
 import { clearSave } from '../sim/save.js';
 
@@ -25,6 +27,8 @@ export function initUI() {
   });
   on('railBuilt', () => showTip('firstRail'));
   on('vehicleBought', v => { if (v.kind === 'train') showTip('firstTrain'); });
+  on('contractsChanged', () => { if (activeTab === 'contracts') renderContracts(); });
+  initLoanBox();
   initTopbarTooltips();
 
   $('speeds').addEventListener('click', e => {
@@ -182,6 +186,7 @@ function buildTabs() {
       document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
       $('sidepanel').style.display = activeTab ? 'flex' : 'none';
       document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
+      if (activeTab === 'contracts') renderContracts();
       if (activeTab === 'research') { renderResearch(); showTip('research'); }
       if (activeTab === 'routes') renderRoutes();
       if (activeTab === 'learn') renderLearn();
@@ -220,6 +225,7 @@ export function updateUI(dt) {
     renderInfobox();
     if (activeTab === 'routes') renderRoutesLive();
     if (activeTab === 'research') renderResearchLive();
+    if (activeTab === 'contracts') renderContractsLive();
     // rich-grid teaching moment
     if (G.incomeEnergyToday > 12000 && G.incomeEnergyToday > G.incomeTransportToday) showTip('richGrid');
   }
@@ -228,6 +234,7 @@ export function updateUI(dt) {
     chartTimer = 0;
     drawPowerChart();
     drawFinance();
+    updateLoanBox();
   }
 }
 const pct = (v, c) => c > 0 ? Math.round(v / c * 100) + '%' : '—';
@@ -401,6 +408,85 @@ export function tickResearch(gameHours) {
     showTipText('Research complete!', `${t.name} — ${t.desc}`);
     if (activeTab === 'research') renderResearch();
   }
+}
+
+// ---------- special contracts ----------
+const fmtDur = min => min >= 1440 ? (min / 1440).toFixed(1) + ' days' : Math.max(1, Math.ceil(min / 60)) + ' h';
+
+function contractCard(c, signed) {
+  const left = signed ? c.deadline - G.minutes : c.expires - G.minutes;
+  const pct = Math.min(100, c.progress / c.amount * 100);
+  const prem = Math.round((c.mult - 1) * 100);
+  return `<div class="tech">
+    <div class="tech-head"><b>${CARGO[c.cargoId].name === 'Passengers' ? '🧍' : '📦'} ${contractLabel(c)}</b>
+      <button class="quest-jump" data-cjump="${c.id}" title="Jump to destination">📍</button></div>
+    <div class="small">+${prem}% on matching deliveries · bonus <b class="good">${fmtMoney(c.bonus)}</b> on completion</div>
+    ${signed
+      ? `<div class="prog" style="margin-top:5px"><div style="width:${pct.toFixed(1)}%"></div></div>
+         <div class="small dim">${Math.floor(c.progress)} / ${c.amount} delivered · <span class="${left < 720 ? 'warn' : ''}">deadline in ${fmtDur(left)}</span></div>`
+      : `<div class="tech-foot"><button data-sign="${c.id}">✍️ Sign — ${fmtDur(left)} left to decide · ${c.days} days to deliver</button></div>`}
+  </div>`;
+}
+
+function renderContracts() {
+  const el = $('tab-contracts');
+  const cs = G.contracts;
+  el.innerHTML = `<h3>📜 Special Contracts</h3>
+    <div class="dim small">Cities and industries post time-limited offers. Sign one to earn a premium on every matching delivery, plus a bonus for hitting the target before the deadline. Unsigned offers expire and new ones appear over time.</div>
+    <h3 style="margin-top:8px">✍️ Signed <span class="dim small">(${cs.active.length}/${MAX_ACTIVE})</span></h3>
+    ${cs.active.map(c => contractCard(c, true)).join('') || '<div class="small dim">No signed contracts.</div>'}
+    <h3 style="margin-top:8px">Open offers <span class="dim small">(${cs.offers.length}/${MAX_OFFERS})</span></h3>
+    ${cs.offers.map(c => contractCard(c, false)).join('') || '<div class="small dim">Nothing on the board — new offers appear within a few hours.</div>'}
+    ${cs.completed + cs.failed ? `<div class="small dim" style="margin-top:6px">✅ ${cs.completed} fulfilled · ✖ ${cs.failed} expired</div>` : ''}`;
+  el.querySelectorAll('[data-sign]').forEach(b => b.onclick = () => {
+    const c = cs.offers.find(x => x.id === +b.dataset.sign);
+    if (!c) return;
+    if (cs.active.length >= MAX_ACTIVE) { showTipText('Portfolio full', `You can run at most ${MAX_ACTIVE} contracts at once — finish one first.`); return; }
+    signContract(c);
+  });
+  el.querySelectorAll('[data-cjump]').forEach(b => b.onclick = () => {
+    const c = cs.active.find(x => x.id === +b.dataset.cjump) || cs.offers.find(x => x.id === +b.dataset.cjump);
+    if (c) emit('flyTo', contractDest(c));
+  });
+}
+// re-render only when progress/countdowns visibly change (~hourly granularity)
+let lastContractSig = '';
+function renderContractsLive() {
+  const cs = G.contracts;
+  const sig = cs.active.map(c => `${c.id}:${Math.floor(c.progress)}:${Math.floor((c.deadline - G.minutes) / 60)}`).join() + '|' +
+    cs.offers.map(c => `${c.id}:${Math.floor((c.expires - G.minutes) / 60)}`).join();
+  if (sig === lastContractSig) return;
+  lastContractSig = sig;
+  renderContracts();
+}
+
+// ---------- bank loan (dashboard finances) ----------
+function initLoanBox() {
+  const el = $('loanbox');
+  el.innerHTML = `<div class="finrow"><span>🏦 Loan <span class="dim small">(${(LOAN_RATE * 100).toFixed(0)}%/day interest)</span></span><span id="loanstat"></span></div>
+    <div style="display:flex;gap:6px;margin-top:5px">
+      <button id="borrowbtn" style="flex:1">Borrow ${fmtMoney(LOAN_STEP)}</button>
+      <button id="repaybtn" style="flex:1">Repay ${fmtMoney(LOAN_STEP)}</button>
+    </div>`;
+  liveTip(el, () => `<b>🏦 Bank loan</b><br>Borrow up to ${fmtMoney(LOAN_MAX)} in ${fmtMoney(LOAN_STEP)} steps. Interest of ${(LOAN_RATE * 100).toFixed(0)}% per day on the outstanding amount is charged with the daily upkeep. Repay any time you have the cash.`);
+  $('borrowbtn').onclick = () => {
+    if (!takeLoan()) showTipText('Credit limit reached', `The bank lends at most ${fmtMoney(LOAN_MAX)}.`);
+    updateLoanBox();
+  };
+  $('repaybtn').onclick = () => {
+    if (!repayLoan()) showTipText('Nothing to repay', G.loan > 0 ? 'Not enough cash on hand.' : 'You have no outstanding loan.');
+    updateLoanBox();
+  };
+  updateLoanBox();
+}
+function updateLoanBox() {
+  const s = $('loanstat');
+  if (!s) return;
+  s.innerHTML = G.loan > 0
+    ? `<span class="bad">${fmtMoney(G.loan)}</span> <span class="dim small">−${fmtMoney(G.loan * LOAN_RATE)}/day</span>`
+    : '<span class="dim">debt-free</span>';
+  $('borrowbtn').disabled = G.loan >= LOAN_MAX;
+  $('repaybtn').disabled = G.loan <= 0;
 }
 
 // ---------- routes ----------

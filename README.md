@@ -39,6 +39,18 @@ need internet on first load.)
 2. **Energy** — every home, factory and charging vehicle pays you €85 per MWh
    served. Blackouts cost you revenue, halt industry and shrink your cities.
 
+**Special contracts (📜 tab):** cities and industries post up to three
+time-limited offers to move a specific cargo or passenger relation (à la
+Transport Tycoon subsidies). Sign one (max 3 at once) and every matching
+delivery pays a **+50% premium**, plus a cash bonus if the target amount
+arrives before the deadline. Unsigned offers expire and fresh ones appear over
+time; a missed deadline costs nothing but the bonus.
+
+**Bank loans (📊 tab → Finances):** borrow up to €500k in €50k steps at
+**1% interest per game day**, repay whenever you have the cash. Renewables are
+capital-intensive — all the cost is upfront and the fuel is free — so cheap
+early leverage can pay for itself, but standing debt eats your margin.
+
 **Controls:** right-drag pan · middle-drag rotate · WASD/arrows pan · wheel
 zoom · Space pause · 1/2/3 speed · V passenger demand · ESC cancel tool.
 
@@ -92,9 +104,10 @@ Plain ES modules, no framework, no build, no dependencies. Three layers
 npm test        # Node's built-in runner, ~100 ms, zero dependencies
 ```
 
-61 tests pin the simulation: dispatch merit order, storage efficiencies,
-placement rules, pathfinding, freight & passenger economics, quests, and the
-save round trip. New features extend the suite (see [CLAUDE.md](CLAUDE.md)).
+73 tests pin the simulation: dispatch merit order, storage efficiencies,
+placement rules, pathfinding, freight & passenger economics, quests, special
+contracts, loans, and the save round trip. New features extend the suite
+(see [CLAUDE.md](CLAUDE.md)).
 
 ## Documentation
 
