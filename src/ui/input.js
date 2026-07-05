@@ -69,7 +69,7 @@ function showRoadPreview(tiles, tool) {
     const ok = canPlace(tool, i, j) || (t && (tool === 'road' ? t.t === 'road' : t.rail));
     const m = new THREE.Mesh(new THREE.PlaneGeometry(G.TILE, G.TILE).rotateX(-Math.PI / 2), ok ? pvMat.ok : pvMat.bad);
     const [x, z] = worldXZ(i, j);
-    m.position.set(x, tileY(i, j) + 0.1, z);
+    m.position.set(x, tileY(i, j) + 0.3, z); // above the raised road deck (world.js ROAD_TOP)
     roadPreview.add(m);
   }
 }
@@ -106,12 +106,12 @@ function onPointerMove(ev) {
     if (ghost) ghost.position.set(cx, tileY(i, j) + 0.02, cz);
     hl.visible = true;
     hl.scale.set(fp, 1, fp);
-    hl.position.set(cx, tileY(i, j) + 0.08, cz);
+    hl.position.set(cx, tileY(i, j) + 0.3, cz);
     hl.material.color.set(ghostOK ? '#44ff66' : '#ff4444');
   } else if (G.tool) { // drag tools: road / rail
     hl.visible = true; hl.scale.set(1, 1, 1);
     const [x, z] = worldXZ(i, j);
-    hl.position.set(x, tileY(i, j) + 0.08, z);
+    hl.position.set(x, tileY(i, j) + 0.3, z);
     hl.material.color.set(canPlace(G.tool, i, j) ? '#44ff66' : '#ff4444');
   } else hl.visible = false;
 }

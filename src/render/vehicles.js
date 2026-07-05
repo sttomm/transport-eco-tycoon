@@ -9,7 +9,7 @@ import { pathPose, findPath, stationRoadTile, routeColor } from '../sim/transpor
 import { buildVehicleMesh, buildWagonMesh, makeTextSprite } from './meshes.js';
 
 // vehicles ride above the surface; trains higher, on top of the raised ballast bed
-const VEH_Y = 0.12, TRAIN_Y = 0.40;
+const VEH_Y = 0.25, TRAIN_Y = 0.40; // VEH_Y just above the road deck top (world.js ROAD_TOP)
 const vehY = v => v.kind === 'train' ? TRAIN_Y : VEH_Y;
 const WAGON_SPACING = 0.85;
 

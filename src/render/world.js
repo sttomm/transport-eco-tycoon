@@ -611,7 +611,7 @@ function initLamps() {
       if (!corners.length) continue; // junction tile, all asphalt
       const [x, z] = worldXZ(t.i, t.j);
       const [sx, sz] = corners[Math.floor(rand() * corners.length)];
-      spots.push([x + sx * (G.TILE / 2 - SIDEWALK_W / 2), tileY(t.i, t.j), z + sz * (G.TILE / 2 - SIDEWALK_W / 2)]);
+      spots.push([x + sx * (G.TILE / 2 - SIDEWALK_W / 2), tileY(t.i, t.j) + ROAD_TOP, z + sz * (G.TILE / 2 - SIDEWALK_W / 2)]);
     }
   }
   if (!spots.length) return;
@@ -640,9 +640,15 @@ function initLamps() {
 // another road tile. 16 texture variants keyed by the neighbour bitmask
 // (bit0 = +x, bit1 = -x, bit2 = +z, bit3 = -z road neighbour).
 export const SIDEWALK_W = 0.5;                    // world units, matches the texture border
+// like the rail ballast bed: terrain height varies within a tile, so a thin
+// slab at tile-center height clips into slopes. The deck top sits ROAD_TOP
+// above tile height (just below the rails of a level crossing at ~0.285).
+export const ROAD_TOP = 0.24;
+const ROAD_DECK_H = 0.4;                          // deck bottom h-0.16 hides dips
 const roadMeshes = [];                            // index = connection mask
 
-// canvas orientation on the box top face: right = +x, top = +z (flipY)
+// canvas orientation on the box top face: right = +x, top = -z (box UVs put
+// z=-T/2 at v=1, which is the canvas top after flipY)
 function makeAsphaltTexture(mask) {
   return canvasTex(128, (cx, S) => {
     const B = Math.round(S * SIDEWALK_W / G.TILE); // sidewalk band px
@@ -681,14 +687,14 @@ function makeAsphaltTexture(mask) {
     const bands = [];
     if (!(mask & 1)) bands.push([S - B, 0, B, S]);  // +x → canvas right
     if (!(mask & 2)) bands.push([0, 0, B, S]);      // -x → canvas left
-    if (!(mask & 4)) bands.push([0, 0, S, B]);      // +z → canvas top
-    if (!(mask & 8)) bands.push([0, S - B, S, B]);  // -z → canvas bottom
+    if (!(mask & 4)) bands.push([0, S - B, S, B]);  // +z → canvas bottom
+    if (!(mask & 8)) bands.push([0, 0, S, B]);      // -z → canvas top
     // corner patches where two connected edges meet (junction mouths, inner
     // bend corners) — they join the neighbours' sidewalk bands around the turn
-    if ((mask & 1) && (mask & 4)) bands.push([S - B, 0, B, B]);
-    if ((mask & 1) && (mask & 8)) bands.push([S - B, S - B, B, B]);
-    if ((mask & 2) && (mask & 4)) bands.push([0, 0, B, B]);
-    if ((mask & 2) && (mask & 8)) bands.push([0, S - B, B, B]);
+    if ((mask & 1) && (mask & 4)) bands.push([S - B, S - B, B, B]);
+    if ((mask & 1) && (mask & 8)) bands.push([S - B, 0, B, B]);
+    if ((mask & 2) && (mask & 4)) bands.push([0, S - B, B, B]);
+    if ((mask & 2) && (mask & 8)) bands.push([0, 0, B, B]);
     for (const [bx, by, bw, bh] of bands) {
       cx.fillStyle = '#8f959b'; cx.fillRect(bx, by, bw, bh);
       const grain = Math.max(12, 140 * (bw * bh) / (S * B) | 0);
@@ -711,7 +717,7 @@ function makeAsphaltTexture(mask) {
 }
 
 function initRoadMesh() {
-  const geo = new THREE.BoxGeometry(G.TILE, 0.12, G.TILE);
+  const geo = new THREE.BoxGeometry(G.TILE, ROAD_DECK_H, G.TILE);
   for (let mask = 0; mask < 16; mask++) {
     const mat = new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(mask), roughness: 0.95 });
     const mesh = noCull(new THREE.InstancedMesh(geo, mat, 4500));
@@ -730,7 +736,7 @@ function rebuildRoads() {
     const mask = (isRoad(t.i + 1, t.j) ? 1 : 0) | (isRoad(t.i - 1, t.j) ? 2 : 0)
       | (isRoad(t.i, t.j + 1) ? 4 : 0) | (isRoad(t.i, t.j - 1) ? 8 : 0);
     const [x, z] = worldXZ(t.i, t.j);
-    p.set(x, t.h + 0.05, z);
+    p.set(x, t.h + ROAD_TOP - ROAD_DECK_H / 2, z);
     m.compose(p, q, s);
     const mesh = roadMeshes[mask];
     mesh.setMatrixAt(mesh.count++, m);
@@ -913,7 +919,7 @@ export function updateWorldRender(dt) {
     const dirx = x1 - x0, dirz = z1 - z0;
     const lane = 0.9;
     const lx = dirz !== 0 ? Math.sign(dirz) * lane : 0, lz = dirx !== 0 ? -Math.sign(dirx) * lane : 0;
-    _p.set(x0 + dirx * c.prog + lx, tileY(c.i, c.j) + 0.12, z0 + dirz * c.prog + lz);
+    _p.set(x0 + dirx * c.prog + lx, tileY(c.i, c.j) + ROAD_TOP + 0.01, z0 + dirz * c.prog + lz);
     _e.set(0, Math.atan2(dirx, dirz) + Math.PI / 2, 0); _q.setFromEuler(_e);
     _m.compose(_p, _q, _s);
     ambient.cars.setMatrixAt(k, _m);
@@ -946,7 +952,7 @@ export function updateWorldRender(dt) {
     const len = Math.hypot(dirx, dirz);
     const lat = (G.TILE / 2 - SIDEWALK_W / 2 - 0.08) * (p.off > 0 ? 1 : -1) * (1 + Math.abs(p.off) * 0.05);
     const lx = len ? (dirz / len) * lat : lat, lz = len ? (-dirx / len) * lat : 0;
-    _p.set(x0 + dirx * p.prog + lx, tileY(p.i, p.j) + 0.13, z0 + dirz * p.prog + lz);
+    _p.set(x0 + dirx * p.prog + lx, tileY(p.i, p.j) + ROAD_TOP + 0.02, z0 + dirz * p.prog + lz);
     _q.identity();
     _m.compose(_p, _q, _s);
     ambient.peds.setMatrixAt(k, _m);
