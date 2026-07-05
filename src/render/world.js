@@ -683,6 +683,19 @@ function makeAsphaltTexture(mask) {
       for (let sgm = 0; sgm < 5; sgm++) { x += (Math.random() - 0.5) * 22; y += Math.random() * 14; cx.lineTo(x, y); }
       cx.stroke();
     }
+    // dashed centre line between the two directions — one arm per connected
+    // edge, meeting at the tile centre (an L on bends, a full line on straight
+    // tiles). Junction tiles (3+ arms) stay unmarked like real intersections.
+    // Dash phase starts with a half-gap at the edge so it tiles seamlessly.
+    const arms = [[1, S, S / 2], [2, 0, S / 2], [4, S / 2, S], [8, S / 2, 0]].filter(([b]) => mask & b);
+    if (arms.length && arms.length <= 2) {
+      cx.strokeStyle = 'rgba(225,222,206,0.75)'; cx.lineWidth = 3;
+      cx.setLineDash([10, 8]); cx.lineDashOffset = 14;
+      for (const [, ex, ey] of arms) {
+        cx.beginPath(); cx.moveTo(ex, ey); cx.lineTo(S / 2, S / 2); cx.stroke();
+      }
+      cx.setLineDash([]);
+    }
     // sidewalk bands on unconnected edges: [x, y, w, h] in canvas px
     const bands = [];
     if (!(mask & 1)) bands.push([S - B, 0, B, S]);  // +x → canvas right
