@@ -51,6 +51,12 @@ delivery pays a **+50% premium**, plus a cash bonus if the target amount
 arrives before the deadline. Unsigned offers expire and fresh ones appear over
 time; a missed deadline costs nothing but the bonus.
 
+**Daily report card:** at midnight a dismissible toast sums up the finished
+day — income, expenses, net, CO₂, blackout/curtailment — with one advisor
+sentence on the biggest issue (blackouts > gas losses > weather > curtailment).
+The 📊 dashboard keeps a "Yesterday" block with the full breakdown; the last
+7 days are stored in the save.
+
 **Bank loans (📊 tab → Finances):** borrow up to €500k in €50k steps at
 **1% interest per game day**, repay whenever you have the cash. Renewables are
 capital-intensive — all the cost is upfront and the fuel is free — so cheap

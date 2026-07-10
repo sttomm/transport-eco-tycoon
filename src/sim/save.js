@@ -42,6 +42,7 @@ export function snapshot() {
     batteryMWh: G.batteryMWh, h2MWh: G.h2MWh,
     incomeT: G.incomeTransportToday, incomeE: G.incomeEnergyToday,
     expenses: G.expensesToday, curtailed: G.curtailedTodayMWh,
+    blackoutH: G.blackoutHoursToday, flauteH: G.flauteHoursToday, stormH: G.stormHoursToday,
     techs: G.techs, research: G.research,
     questsDone: G.questsDone || {}, stats: G.stats, firedTips: G.firedTips,
     finance: G.finance,
@@ -84,6 +85,8 @@ export function restore(d) {
   G.wind = d.wind; G.cloud = d.cloud; G.dunkelflaute = d.dunkelflaute || 0;
   G.incomeTransportToday = d.incomeT || 0; G.incomeEnergyToday = d.incomeE || 0;
   G.expensesToday = d.expenses || 0; G.curtailedTodayMWh = d.curtailed || 0;
+  G.blackoutHoursToday = d.blackoutH || 0;
+  G.flauteHoursToday = d.flauteH || 0; G.stormHoursToday = d.stormH || 0;
   G.questsDone = d.questsDone || {};
   Object.assign(G.stats, d.stats);
   G.firedTips = d.firedTips || {};

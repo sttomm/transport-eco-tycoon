@@ -108,6 +108,13 @@
   .toast-x { cursor: pointer; color: var(--dim); padding: 0 2px; }
   .toast-body { font-size: 12.5px; }
 
+  /* daily report card (end-of-day toast + "Yesterday" dashboard block) */
+  .report-toast { min-width: 240px; }
+  .reportrow { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+  .report-advice { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); color: var(--dim); }
+  #yesterday { background: var(--panel2); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+  #yesterday h3 { margin: 0 0 4px; }
+
   #leftcol { position: absolute; left: 12px; top: 90px; z-index: 10; width: 300px;
     display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 200px); }
   #infobox { display: none;

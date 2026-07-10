@@ -29,6 +29,7 @@ export function initUI() {
   on('railBuilt', () => showTip('firstRail'));
   on('vehicleBought', v => { if (v.kind === 'train') showTip('firstTrain'); });
   on('contractsChanged', () => { if (activeTab === 'contracts') renderContracts(); });
+  on('dayReport', showDayReport);
   initLoanBox();
   initTopbarTooltips();
   // delegated: the infobox re-renders every 0.25 s, so a handler on the button
@@ -184,6 +185,69 @@ export function showTipText(title, text) {
   setTimeout(() => el.remove(), 9000);
 }
 
+// ---------- daily report card ----------
+// One advisor sentence per report, picked by priority (see docs/PLAN F7):
+// blackout > gas losses > weather recap > curtailment > all green.
+function reportAdvice(r) {
+  if (r.blackoutHours > 0.05)
+    return `⚠ ${r.blackoutHours.toFixed(1)} h of blackout — add generation or storage before the evening peak.`;
+  if (r.gasCost > 1000)
+    return `🏭 The gas plant burned ${fmtMoney(r.gasCost)} in fuel and carbon costs — every renewable MWh you add shrinks that bill.`;
+  if (r.flauteHours > 0.05 || r.stormHours > 0.05)
+    return r.flauteHours > 0.05
+      ? `🌫 A Dunkelflaute covered ${r.flauteHours.toFixed(0)} h of the day — hydrogen reserves are what carry you through these.`
+      : `🌪 Storm gusts forced turbine cut-outs for ${r.stormHours.toFixed(1)} h — batteries bridge those gaps.`;
+  if (r.curtailedMWh > 20)
+    return `♻ ${r.curtailedMWh.toFixed(0)} MWh of clean power was curtailed — batteries or electrolyzers could turn that surplus into money.`;
+  return '🌱 All green — the grid ran stable and clean. Keep it up!';
+}
+
+const reportRow = (n, v, cls = '') =>
+  `<div class="reportrow"><span>${n}</span><span class="${cls}">${v}</span></div>`;
+
+function reportRows(r) {
+  const co2 = (r.co2Emitted > 0.05 ? `<span class="bad">+${r.co2Emitted.toFixed(1)} t emitted</span> · ` : '') +
+    `<span class="good">${r.co2Saved.toFixed(1)} t avoided</span>`;
+  const grid = r.blackoutHours > 0.05
+    ? `<span class="bad">${r.blackoutHours.toFixed(1)} h blackout</span>`
+    : r.curtailedMWh > 0.5 ? `<span class="warn">${r.curtailedMWh.toFixed(0)} MWh curtailed</span>` : '<span class="good">stable</span>';
+  return reportRow('Income', fmtMoney(r.incomeEnergy + r.incomeTransport), 'good') +
+    reportRow('Expenses', '−' + fmtMoney(r.expenses), 'bad') +
+    reportRow('<b>Net</b>', `<b>${fmtMoney(r.net)}</b>`, r.net >= 0 ? 'good' : 'bad') +
+    reportRow('CO₂', co2) +
+    reportRow('Grid', grid);
+}
+
+// end-of-day toast: dismissible, auto-fades after ~8 s, never pauses the game
+function showDayReport(r) {
+  const el = document.createElement('div');
+  el.className = 'toast report-toast';
+  el.innerHTML = `<div class="toast-head">📋 Day ${r.day} report<span class="toast-x">✕</span></div>
+    <div class="toast-body">${reportRows(r)}
+      <div class="report-advice small">${reportAdvice(r)}</div></div>`;
+  el.querySelector('.toast-x').onclick = () => el.remove();
+  $('advisor').appendChild(el);
+  setTimeout(() => { el.classList.add('fade'); setTimeout(() => el.remove(), 1200); }, 8000);
+  renderYesterday(); // keep the dashboard block in sync
+}
+
+// "Yesterday" block at the top of the dashboard tab (hidden until day 2)
+function renderYesterday() {
+  const el = $('yesterday');
+  if (!el) return;
+  const r = G.reports[G.reports.length - 1];
+  if (!r) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const perKind = [['🚌', r.incomeBus], ['🚚', r.incomeTruck], ['🚆', r.incomeTrain]]
+    .map(([ic, v]) => `${ic} ${fmtMoney(v)}`).join(' · ');
+  el.innerHTML = `<h3>📋 Yesterday <span class="dim small">(day ${r.day})</span></h3>
+    ${reportRows(r)}
+    ${reportRow('<span class="dim">— transport by kind</span>', `<span class="dim small">${perKind}</span>`)}
+    ${reportRow('<span class="dim">— fixed costs</span>', `<span class="dim small">upkeep ${fmtMoney(r.upkeep)}${r.loanInterest > 0 ? ' · interest ' + fmtMoney(r.loanInterest) : ''}</span>`)}
+    ${r.gasMWh > 0.05 ? reportRow('<span class="dim">— gas</span>', `<span class="dim small">${r.gasMWh.toFixed(0)} MWh · ${fmtMoney(r.gasCost)}</span>`) : ''}
+    <div class="report-advice small">${reportAdvice(r)}</div>`;
+}
+
 // ---------- side panel tabs ----------
 function buildTabs() {
   document.querySelectorAll('#tabbtns button').forEach(b => {
@@ -194,6 +258,7 @@ function buildTabs() {
       document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
       $('sidepanel').style.display = activeTab ? 'flex' : 'none';
       document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
+      if (activeTab === 'dashboard') renderYesterday();
       if (activeTab === 'contracts') renderContracts();
       if (activeTab === 'research') { renderResearch(); showTip('research'); }
       if (activeTab === 'routes') renderRoutes();

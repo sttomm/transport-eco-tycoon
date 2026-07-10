@@ -52,6 +52,8 @@ function initialState() {
     batteryMWh: 0, batteryCapMWh: 0, batteryRateMW: 0,
     h2MWh: 0, h2CapMWh: 0, elecCapMW: 0, fcCapMW: 0,
     curtailedTodayMWh: 0,
+    blackoutHoursToday: 0,    // daily-report counters, owned by sim/reports.js
+    flauteHoursToday: 0, stormHoursToday: 0,
     // research
     techs: {},                // id -> true when done
     research: null,           // {id, progress(0..1)}

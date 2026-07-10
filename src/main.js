@@ -10,6 +10,7 @@ import {
 } from './sim/transport.js';
 import { tickContracts, signContract } from './sim/contracts.js';
 import { takeLoan, repayLoan, dailyLoanInterest } from './sim/loans.js';
+import { closeDay, trackDay } from './sim/reports.js';
 import { loadGame, saveGame, initAutosave } from './sim/save.js';
 import { initScene, updateDayNight, tickCamTween, keyboardPan, scene, camera, controls, renderer } from './render/scene.js';
 import { initPostFX, renderPostFX, setPostFX, PFX } from './render/postfx.js';
@@ -81,6 +82,7 @@ function frame(now) {
   if (gm > 0) {
     G.minutes += gm;
     if (Math.floor(G.minutes / 1440) + 1 > G.day) {
+      closeDay(); // capture yesterday's report card before the counters reset
       G.day = Math.floor(G.minutes / 1440) + 1;
       rollFossilFreeDay(); // reads gasMWhToday — must run before the daily resets
       G.incomeTransportToday = 0; G.incomeEnergyToday = 0; G.expensesToday = 0;
@@ -92,6 +94,7 @@ function frame(now) {
     }
     updateWeather(gh);
     tickGrid(gh);
+    trackDay(gh); // report-card counters (blackout/flaute/storm hours)
     tickIndustries(gh);
     tickVehicles(dt, gh);
     tickCities(gh);
