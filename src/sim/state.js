@@ -13,12 +13,24 @@ function initialState() {
     expensesToday: 0,
     co2SavedTons: 0,
     loan: 0,                  // outstanding bank loan (see sim/loans.js)
+    // energy-transition arc (shared field contract — see docs/ARCHITECTURE.md ADR 21/22)
+    carbonPrice: 30,          // €/t CO₂, rises daily (data.js CARBON)
+    co2EmittedTons: 0,        // lifetime emissions from the legacy gas plant
+    gasMWhToday: 0,           // gas generation today (fossil-free-week tracking)
+    gasCostToday: 0,          // today's gas fuel + carbon cost
+    fossilFreeDays: 0,        // consecutive days with zero gas use
+    gasDecommissioned: false, // legacy plant bought out (irreversible)
+    price: 85,                // live electricity price €/MWh (flat until the Smart Market)
+    marketLive: false,        // Smart Market active (dynamic pricing, day 10+)
+    reports: [],              // last 7 daily report cards (closeDay())
     // special transport offers & signed contracts (see sim/contracts.js)
     contracts: { offers: [], active: [], completed: 0, failed: 0, offerTimer: 0, seq: 1 },
     // weather (0..1)
     wind: 0.5,
     cloud: 0.25,
     dunkelflaute: 0,          // remaining hours of low-wind overcast event
+    weatherFront: null,       // scheduled front { type: 'dunkelflaute'|'storm', inHours, durationH }
+    forecast: null,           // next-24h outlook (derived each tick by updateWeather, not saved)
     // world
     tiles: null,              // Int/obj grid
     N: 192,
@@ -30,7 +42,7 @@ function initialState() {
     routes: [],
     vehicles: [],
     // energy live values (MW)
-    supply: { solar: 0, wind: 0, hydro: 0, battery: 0, fuelcell: 0 },
+    supply: { solar: 0, wind: 0, hydro: 0, battery: 0, fuelcell: 0, gas: 0 },
     demand: { city: 0, industry: 0, charging: 0, electrolyzer: 0 },
     unservedMW: 0,
     curtailedMW: 0,

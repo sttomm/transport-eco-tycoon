@@ -98,3 +98,45 @@ test('restore rejects unknown versions', () => {
   assert.equal(restore(null), false);
   assert.equal(restore({ v: 99 }), false);
 });
+
+test('v3 round-trips the energy-transition fields', () => {
+  freshWorld();
+  G.carbonPrice = 54;
+  G.co2EmittedTons = 87.5;
+  G.gasMWhToday = 12; G.gasCostToday = 990;
+  G.fossilFreeDays = 3;
+  G.gasDecommissioned = true;
+  G.weatherFront = { type: 'dunkelflaute', inHours: 11, durationH: 40 };
+  G.reports = [{ day: 4, energyIncome: 1000 }];
+
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  assert.equal(snap.v, 3);
+
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.equal(G.carbonPrice, 54);
+  assert.equal(G.co2EmittedTons, 87.5);
+  assert.equal(G.gasMWhToday, 12);
+  assert.equal(G.gasCostToday, 990);
+  assert.equal(G.fossilFreeDays, 3);
+  assert.equal(G.gasDecommissioned, true);
+  assert.deepEqual(G.weatherFront, { type: 'dunkelflaute', inHours: 11, durationH: 40 });
+  assert.deepEqual(G.reports, [{ day: 4, energyIncome: 1000 }]);
+});
+
+test('v2 saves (pre-gas) restore with energy-transition defaults', () => {
+  freshWorld();
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  snap.v = 2; // strip the arc fields like a real pre-arc save
+  delete snap.carbonPrice; delete snap.co2Emitted; delete snap.gasMWhToday;
+  delete snap.gasCostToday; delete snap.fossilFreeDays; delete snap.gasDecommissioned;
+  delete snap.reports; delete snap.weatherFront;
+
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.equal(G.carbonPrice, 30);
+  assert.equal(G.co2EmittedTons, 0);
+  assert.equal(G.gasDecommissioned, false);
+  assert.equal(G.weatherFront, null);
+  assert.deepEqual(G.reports, []);
+});

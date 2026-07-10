@@ -9,7 +9,11 @@ import { place, canPlace } from './grid.js';
 import { createRoute, buyVehicle, addWagon } from './transport.js';
 
 // v2: 192×192 world with 8 cities — v1 saves store tile coords of the old
-// 96×96 map and would silently mis-restore, so they are left under their old key
+// 96×96 map and would silently mis-restore, so they are left under their old key.
+// v3: energy-transition arc (legacy gas, carbon price, weather fronts, daily
+// reports). Same world seed, so v2 saves still restore — they just load
+// without a gas plant (it is only placed for new games) and get the new
+// fields' defaults.
 const KEY = 'transport-eco-tycoon-save-v2';
 const storage = () => (typeof localStorage === 'undefined' ? null : localStorage);
 
@@ -26,10 +30,15 @@ export function clearSave() {
 export function snapshot() {
   const stIx = st => G.stations.indexOf(st);
   return {
-    v: 2,
+    v: 3,
     minutes: G.minutes, day: G.day, money: G.money, co2: G.co2SavedTons,
     loan: G.loan, contracts: G.contracts, // contracts hold only indices → plain JSON
+    carbonPrice: G.carbonPrice, co2Emitted: G.co2EmittedTons,
+    gasMWhToday: G.gasMWhToday, gasCostToday: G.gasCostToday,
+    fossilFreeDays: G.fossilFreeDays, gasDecommissioned: G.gasDecommissioned,
+    reports: G.reports,
     wind: G.wind, cloud: G.cloud, dunkelflaute: G.dunkelflaute,
+    weatherFront: G.weatherFront,
     batteryMWh: G.batteryMWh, h2MWh: G.h2MWh,
     incomeT: G.incomeTransportToday, incomeE: G.incomeEnergyToday,
     expenses: G.expensesToday, curtailed: G.curtailedTodayMWh,
@@ -57,12 +66,21 @@ export function snapshot() {
 
 // apply a snapshot onto a freshly generated world; returns true on success
 export function restore(d) {
-  if (!d || d.v !== 2) return false;
+  if (!d || (d.v !== 2 && d.v !== 3)) return false;
 
   G.minutes = d.minutes; G.day = d.day; G.money = d.money;
   G.co2SavedTons = d.co2 || 0;
   G.loan = d.loan || 0;
   if (d.contracts) G.contracts = d.contracts; // pre-contract saves keep the fresh default
+  // v3 energy-transition fields — v2 saves keep the initialState defaults
+  if (d.carbonPrice != null) G.carbonPrice = d.carbonPrice;
+  G.co2EmittedTons = d.co2Emitted || 0;
+  G.gasMWhToday = d.gasMWhToday || 0;
+  G.gasCostToday = d.gasCostToday || 0;
+  G.fossilFreeDays = d.fossilFreeDays || 0;
+  G.gasDecommissioned = !!d.gasDecommissioned;
+  if (d.reports) G.reports = d.reports;
+  G.weatherFront = d.weatherFront || null;
   G.wind = d.wind; G.cloud = d.cloud; G.dunkelflaute = d.dunkelflaute || 0;
   G.incomeTransportToday = d.incomeT || 0; G.incomeEnergyToday = d.incomeE || 0;
   G.expensesToday = d.expenses || 0; G.curtailedTodayMWh = d.curtailed || 0;

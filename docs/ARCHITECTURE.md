@@ -355,6 +355,53 @@ repeat) must derive from `G.N`, not literals — the terrain texture and
 `DETAIL_REPEAT` both bit on this. Tests keep synthetic road/rail fixtures in
 the empty south-west (i 1–21, j 84–92); new cities must stay clear of it.
 
+### 21. Legacy gas bridge & rising carbon price (amends ADR 6)
+**Decision:** every new game starts with exactly one inherited 30 MW gas plant
+(`legacy: true` in `data.js` — hidden from the build palette, players can
+never build fossil capacity). It extends the pinned merit order by one step:
+deficit → battery → fuel cell → **gas** → blackout. Each gas MWh costs fuel
+(€70) plus `co2PerMWh × G.carbonPrice`, with the carbon price starting at
+€30/t and rising €3 per game day (`data.js` CARBON block); emissions accrue
+in `G.co2EmittedTons` next to the existing avoided-CO₂ ledger. A one-time
+decommission grant (€60k) removes the plant irreversibly, and a "fossil-free
+week" quest (7 consecutive days with zero gas) is the game's de-facto win
+condition.
+**Why:** headless experiments showed the starter grid blacks out from day 5
+with no early-game defense — new players lost to weather before the teaching
+arc began. A *bridge* plant keeps the lights on early while the carbon ramp
+guarantees it becomes a loss-maker (break-even ≈ €33/t, i.e. day 2), turning
+the whole game into the real energy-transition problem: phase out fossil
+without blackouts. ADR 6's "storage as the only dispatchables" becomes
+"…plus a single legacy gas plant whose phase-out is the game arc."
+**Invariant (tested):** fossil must never be the profitable long-run answer —
+gas margin is negative once carbonPrice > €35/t.
+**Shared-state contract** (pinned in `state.js`, save v3): `carbonPrice`,
+`co2EmittedTons`, `gasMWhToday`, `gasCostToday`, `fossilFreeDays`,
+`gasDecommissioned`, `supply.gas`, plus `weatherFront`/`forecast` (ADR-noted
+under F2), `reports` (daily report cards), `marketLive`/`price` (ADR 22).
+Save format bumps to v3 under the same localStorage key; v2 saves still
+restore (same world seed) and simply have no gas plant — it is only placed
+for new games.
+
+### 22. Smart Market: dynamic electricity pricing (supersedes the "no dynamic pricing" limitation)
+**Decision:** on game day 8 the regulator *announces*, and on day 10
+*activates*, the Smart Market: the flat €85/MWh is replaced by a live price
+`G.price` set each tick by teachable rules, in priority order — scarcity
+(unserved demand) €240 · gas running: gas marginal cost + €15 (the most
+expensive running plant sets the price — the merit-order lesson) · surplus
+being curtailed €25 · otherwise €45→€120 interpolated by residual load
+(demand − renewables) against the evening peak. Revenue = billable MW ×
+current price; constants live in `data.js` MARKET.
+**Why:** with a flat tariff, storage only prevents *losses*; real grids pay
+for flexibility. Once batteries and fuel cells discharge into €240 scarcity
+prices, storage arbitrage becomes the business model — and the two-day
+announcement window teaches players to prepare, mirroring how market reforms
+actually arrive. The day-10 start protects the early game (players learn the
+basics on a predictable tariff first).
+**Trade-off:** income becomes weather-correlated; balance is checked by a
+15-day headless run against the flat-price baseline (±30 % band) — tune the
+band constants, not the mechanism.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.
@@ -365,7 +412,7 @@ a freshly generated world. Both are pure and covered by `test/save.test.js`.
 ## Known limitations / roadmap
 
 - Transmission constraints (ADR #5) deferred — the natural "lesson 4"
-- No ships; no dynamic electricity pricing / demand response
+- No ships; no demand-response tech (dynamic pricing itself: see ADR 22)
 - Road L-path drag can silently skip blocked tiles (preview shows red, but a
   gap check would be friendlier)
 - Vehicle path caching: A* runs per leg per vehicle; fine at current fleet
