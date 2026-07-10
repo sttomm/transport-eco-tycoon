@@ -4,7 +4,7 @@
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
 import { BUILDINGS, CARBON, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas } from '../sim/grid.js';
-import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor } from '../sim/transport.js';
+import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
 import { solarFactor, POWER_PRICE } from '../sim/energy.js';
@@ -502,11 +502,21 @@ function updateLoanBox() {
 }
 
 // ---------- routes ----------
+// module-level UI state (display only — never saved, game rules live in the sim)
+const ROUTE_GROUPS = [['bus', '🚌', 'Bus'], ['rail', '🚆', 'Rail'], ['cargo', '🚚', 'Cargo']];
+const KIND_BUTTONS = { bus: ['bus'], rail: ['train'], cargo: ['truck'] }; // routeKind → buyable vehicle kinds
+let routeFilter = 'all';      // 'all' | 'bus' | 'rail' | 'cargo'
+let cargoFilter = null;       // cargo id — narrows the cargo group to routes that delivered it
+const routeGroupClosed = {};  // routeKind → true when the section is collapsed
+
 export function renderRoutes() {
   const el = $('tab-routes');
   el.innerHTML = `<h3>🚌 Routes</h3>
     <div class="dim small">1. Build stations near industries/cities (toolbar). 2. Create a route, click stations on the map to add stops. 3. Buy vehicles. Trains need Rail Stations linked by track — add wagons to give them capacity.</div>
-    <button id="newroute" class="big">+ New Route</button><div id="routelist"></div>`;
+    <button id="newroute" class="big">+ New Route</button>
+    <div id="routefilters" class="chiprow"></div>
+    <div id="cargofilters" class="chiprow"></div>
+    <div id="routelist"></div>`;
   el.querySelector('#newroute').onclick = () => {
     if (!G.stations.length) { showTipText('No stations yet', 'Place a Freight Depot or Bus Stop next to a road first.'); return; }
     const r = createRoute();
@@ -515,61 +525,107 @@ export function renderRoutes() {
     document.querySelectorAll('.tool').forEach(b => b.classList.remove('on'));
     renderRoutes();
   };
+
+  // group routes by their derived kind; stop-less routes have no kind yet
+  const grouped = { bus: [], rail: [], cargo: [], none: [] };
+  for (const r of G.routes) grouped[routeKind(r) || 'none'].push(r);
+
+  // filter chips: All + one per group
+  const fEl = el.querySelector('#routefilters');
+  if (G.routes.length) {
+    fEl.innerHTML = [['all', 'All', G.routes.length], ...ROUTE_GROUPS.map(([k, icon, name]) => [k, `${icon} ${name}`, grouped[k].length])]
+      .map(([k, label, n]) => `<button class="chip${routeFilter === k ? ' on' : ''}" data-f="${k}">${label} <span class="chip-n">${n}</span></button>`).join('');
+    fEl.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { routeFilter = b.dataset.f; renderRoutes(); });
+  }
+
+  // cargo routes: extra filter row by transported good (goods actually delivered)
+  const goods = [...new Set(grouped.cargo.flatMap(r => Object.keys(r.cargoCarried || {})))].filter(c => c !== 'pax');
+  if (cargoFilter && !goods.includes(cargoFilter)) cargoFilter = null;
+  const cEl = el.querySelector('#cargofilters');
+  if ((routeFilter === 'all' || routeFilter === 'cargo') && goods.length) {
+    cEl.innerHTML = `<span class="dim small">Goods:</span>` +
+      [['', 'any'], ...goods.map(c => [c, CARGO[c].name])]
+        .map(([c, label]) => `<button class="chip${(cargoFilter || '') === c ? ' on' : ''}" data-c="${c}">${label}</button>`).join('');
+    cEl.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { cargoFilter = b.dataset.c || null; renderRoutes(); });
+  }
+
   const list = el.querySelector('#routelist');
   G.routeHover = null;
-  for (const r of G.routes) {
-    const d = document.createElement('div');
-    d.className = 'route' + (G.routeEdit === r ? ' editing' : '');
-    d.style.borderLeft = `4px solid ${routeColor(r)}`;
-    d.onmouseenter = () => { G.routeHover = r; };
-    d.onmouseleave = () => { if (G.routeHover === r) G.routeHover = null; };
-    const stops = r.stops.map(s => s.name || s.def.name).join(' → ') || '<i class="dim">click stations on the map…</i>';
-    d.innerHTML = `<div class="route-head"><b>${r.name}</b>
-        ${G.routeEdit === r ? '<button data-a="done">✔ Done</button>' : '<button data-a="edit">✎</button>'}
-        <button data-a="del">🗑</button></div>
-      <div class="small">${stops}</div>
-      <div class="route-veh">
-        <button data-a="truck">+ ${VEHICLES.truck.icon} ${fmtMoney(VEHICLES.truck.cost)}</button>
-        <button data-a="bus">+ ${VEHICLES.bus.icon} ${fmtMoney(VEHICLES.bus.cost)}</button>
-        <button data-a="train">+ ${VEHICLES.train.icon} ${fmtMoney(VEHICLES.train.cost)}</button>
-      </div><div class="vehlist" data-r="${r.id}"></div>`;
-    d.querySelector('[data-a=del]').onclick = () => {
-      [...r.vehicles].forEach(sellVehicle);
-      G.routes = G.routes.filter(x => x !== r);
-      if (G.routeEdit === r) G.routeEdit = null;
-      renderRoutes();
-    };
-    const eb = d.querySelector('[data-a=edit]');
-    if (eb) eb.onclick = () => { G.routeEdit = r; renderRoutes(); };
-    const db = d.querySelector('[data-a=done]');
-    if (db) db.onclick = () => { G.routeEdit = null; renderRoutes(); };
-    for (const kind of ['truck', 'bus', 'train']) {
-      d.querySelector(`[data-a=${kind}]`).onclick = () => {
-        if (r.stops.length < 2) { showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).'); return; }
-        if (!spend(VEHICLES[kind].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
-        const v = buyVehicle(r, kind);
-        if (!v) {
-          G.money += VEHICLES[kind].cost;
+  // routes without stops yet are being set up — always visible, above the groups
+  for (const r of grouped.none) list.appendChild(routeCard(r));
+  for (const [k, icon, name] of ROUTE_GROUPS) {
+    if (routeFilter !== 'all' && routeFilter !== k) continue;
+    let rs = grouped[k];
+    if (k === 'cargo' && cargoFilter) rs = rs.filter(r => (r.cargoCarried || {})[cargoFilter]);
+    if (!rs.length) continue;
+    const head = document.createElement('div');
+    head.className = 'rgroup-head';
+    head.innerHTML = `<span class="rgroup-arrow">${routeGroupClosed[k] ? '▸' : '▾'}</span> ${icon} ${name} <span class="dim">(${rs.length})</span>`;
+    head.onclick = () => { routeGroupClosed[k] = !routeGroupClosed[k]; renderRoutes(); };
+    list.appendChild(head);
+    if (!routeGroupClosed[k]) for (const r of rs) list.appendChild(routeCard(r));
+  }
+  renderRoutesLive();
+}
+
+// one route card: name, stops, vehicle-buy buttons (only kinds matching the
+// route's derived kind), finance-relevant vehicle list
+function routeCard(r) {
+  const d = document.createElement('div');
+  d.className = 'route' + (G.routeEdit === r ? ' editing' : '');
+  d.style.borderLeft = `4px solid ${routeColor(r)}`;
+  d.onmouseenter = () => { G.routeHover = r; };
+  d.onmouseleave = () => { if (G.routeHover === r) G.routeHover = null; };
+  const stops = r.stops.map(s => s.name || s.def.name).join(' → ') || '<i class="dim">click stations on the map…</i>';
+  const rk = routeKind(r);
+  const kinds = rk ? KIND_BUTTONS[rk] : ['truck', 'bus', 'train']; // kindless route: all options open
+  d.innerHTML = `<div class="route-head"><b>${r.name}</b>
+      ${G.routeEdit === r ? '<button data-a="done">✔ Done</button>' : '<button data-a="edit">✎</button>'}
+      <button data-a="del">🗑</button></div>
+    <div class="small">${stops}</div>
+    <div class="route-veh">
+      ${kinds.map(k => `<button data-a="${k}">+ ${VEHICLES[k].icon} ${fmtMoney(VEHICLES[k].cost)}</button>`).join('')}
+    </div><div class="vehlist" data-r="${r.id}"></div>`;
+  d.querySelector('[data-a=del]').onclick = () => {
+    [...r.vehicles].forEach(sellVehicle);
+    G.routes = G.routes.filter(x => x !== r);
+    if (G.routeEdit === r) G.routeEdit = null;
+    renderRoutes();
+  };
+  const eb = d.querySelector('[data-a=edit]');
+  if (eb) eb.onclick = () => { G.routeEdit = r; renderRoutes(); };
+  const db = d.querySelector('[data-a=done]');
+  if (db) db.onclick = () => { G.routeEdit = null; renderRoutes(); };
+  for (const kind of kinds) {
+    d.querySelector(`[data-a=${kind}]`).onclick = () => {
+      if (r.stops.length < 2) { showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).'); return; }
+      if (!spend(VEHICLES[kind].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
+      const v = buyVehicle(r, kind);
+      if (!v) {
+        G.money += VEHICLES[kind].cost;
+        const rk2 = routeKind(r);
+        if (rk2 && VEHICLE_ROUTE_KIND[kind] !== rk2) {
+          showTipText('Wrong vehicle type', `${r.name} is a ${rk2} route — its stops only serve ${KIND_BUTTONS[rk2].map(k => VEHICLES[k].name.toLowerCase() + 's').join('/')}.`);
+        } else {
           showTipText(kind === 'train' ? 'No rail access' : 'No road access',
             kind === 'train' ? 'The first stop has no adjacent rail track — trains need Rail Stations connected by track.' : 'The first stop has no adjacent road.');
         }
-        renderRoutes();
-      };
-    }
-    // wagon buttons live inside the constantly re-rendered vehlist → delegate clicks
-    d.querySelector('.vehlist').onclick = e => {
-      const w = e.target.dataset.w;
-      if (!w) return;
-      const v = r.vehicles[+e.target.dataset.vi];
-      if (!v || v.kind !== 'train') return;
-      if (v.wagons.length >= v.def.maxWagons) { showTipText('Train full', `A locomotive pulls at most ${v.def.maxWagons} wagons.`); return; }
-      if (!spend(WAGONS[w].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
-      addWagon(v, w);
-      renderRoutesLive();
+      }
+      renderRoutes();
     };
-    list.appendChild(d);
   }
-  renderRoutesLive();
+  // wagon buttons live inside the constantly re-rendered vehlist → delegate clicks
+  d.querySelector('.vehlist').onclick = e => {
+    const w = e.target.dataset.w;
+    if (!w) return;
+    const v = r.vehicles[+e.target.dataset.vi];
+    if (!v || v.kind !== 'train') return;
+    if (v.wagons.length >= v.def.maxWagons) { showTipText('Train full', `A locomotive pulls at most ${v.def.maxWagons} wagons.`); return; }
+    if (!spend(WAGONS[w].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
+    addWagon(v, w);
+    renderRoutesLive();
+  };
+  return d;
 }
 function renderRoutesLive() {
   for (const r of G.routes) {

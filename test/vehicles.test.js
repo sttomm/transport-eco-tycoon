@@ -4,17 +4,26 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
 import { place } from '../src/sim/grid.js';
-import { tickVehicles, createRoute, buyVehicle, addWagon, sellVehicle, paxCapacity, freightCapacity } from '../src/sim/transport.js';
+import { tickVehicles, createRoute, buyVehicle, addWagon, sellVehicle, paxCapacity, freightCapacity, routeKind } from '../src/sim/transport.js';
 import { freshWorld, buildRoad, buildRail } from './helpers.js';
 
 const J = 90;
 
 beforeEach(() => freshWorld());
 
-function roadRoute() {
+function roadRoute(stype = 'truckStop') {
   buildRoad(2, J, 20, J);
-  const a = place('truckStop', 4, J - 1);
-  const b = place('truckStop', 16, J - 1);
+  const a = place(stype, 4, J - 1);
+  const b = place(stype, 16, J - 1);
+  const r = createRoute();
+  r.stops.push(a, b);
+  return r;
+}
+
+function railRoute() {
+  buildRail(2, J, 20, J);
+  const a = place('trainStation', 4, J - 2);
+  const b = place('trainStation', 14, J - 2);
   const r = createRoute();
   r.stops.push(a, b);
   return r;
@@ -61,10 +70,58 @@ test('a drained vehicle strands, the service van revives it', () => {
   assert.notEqual(v.state, 'stranded');
 });
 
+test('routeKind derives from stop station types (majority, tie → cargo)', () => {
+  buildRoad(2, J, 20, J);
+  const bus1 = place('busStop', 4, J - 1), bus2 = place('busStop', 8, J - 1);
+  const depot = place('truckStop', 12, J - 1);
+  buildRail(2, J - 6, 20, J - 6);
+  const rail1 = place('trainStation', 4, J - 8);
+
+  const r = createRoute();
+  assert.equal(routeKind(r), null, 'no stops → no kind yet');
+  r.stops.push(bus1);
+  assert.equal(routeKind(r), 'bus');
+  r.stops.push(bus2, depot);
+  assert.equal(routeKind(r), 'bus', 'majority of bus stops wins');
+  r.stops.length = 0;
+  r.stops.push(rail1, rail1);
+  assert.equal(routeKind(r), 'rail');
+  r.stops.length = 0;
+  r.stops.push(depot, bus1);
+  assert.equal(routeKind(r), 'cargo', 'mixed tie resolves to cargo');
+  r.stops.length = 0;
+  r.stops.push(bus1, rail1);
+  assert.equal(routeKind(r), 'cargo', 'bus/rail tie also resolves to cargo');
+});
+
+test('buyVehicle rejects a vehicle kind that mismatches the route kind', () => {
+  const r = roadRoute(); // truck stops → cargo route
+  const before = G.money;
+  assert.equal(buyVehicle(r, 'bus'), null, 'no buses on a cargo route');
+  assert.equal(buyVehicle(r, 'train'), null, 'no trains on a cargo route');
+  assert.equal(G.money, before, 'nothing charged');
+  assert.equal(G.vehicles.length, 0);
+  assert.ok(buyVehicle(r, 'truck'), 'matching kind accepted');
+});
+
+test('bus routes take buses; the restore-only bypass grandfathers mismatches', () => {
+  const r = roadRoute('busStop');
+  assert.equal(routeKind(r), 'bus');
+  assert.ok(buyVehicle(r, 'bus'));
+  assert.equal(buyVehicle(r, 'truck'), null, 'new purchases are validated');
+  const v = buyVehicle(r, 'truck', { skipKindCheck: true });
+  assert.ok(v, 'save-restore bypass keeps legacy vehicles alive');
+  assert.equal(v.kind, 'truck');
+});
+
 test('capacity comes from the vehicle type; trains from their wagons', () => {
-  const r = roadRoute();
-  const bus = buyVehicle(r, 'bus');
-  const truck = buyVehicle(r, 'truck');
+  buildRoad(2, J, 20, J);
+  const rb = createRoute();
+  rb.stops.push(place('busStop', 4, J - 1), place('busStop', 16, J - 1));
+  const rt = createRoute();
+  rt.stops.push(place('truckStop', 6, J - 1), place('truckStop', 18, J - 1));
+  const bus = buyVehicle(rb, 'bus');
+  const truck = buyVehicle(rt, 'truck');
   assert.equal(paxCapacity(bus), 30);
   assert.equal(freightCapacity(bus), 0);
   assert.equal(freightCapacity(truck), 18);
@@ -72,11 +129,7 @@ test('capacity comes from the vehicle type; trains from their wagons', () => {
 });
 
 test('trains: wagons give capacity, capped at maxWagons', () => {
-  buildRail(2, J, 20, J);
-  const a = place('trainStation', 4, J - 2);
-  const b = place('trainStation', 14, J - 2);
-  const r = createRoute();
-  r.stops.push(a, b);
+  const r = railRoute();
   const train = buyVehicle(r, 'train');
   assert.ok(train, 'rail access ok');
   assert.equal(paxCapacity(train), 0, 'a bare locomotive carries nothing');
@@ -89,11 +142,7 @@ test('trains: wagons give capacity, capped at maxWagons', () => {
 });
 
 test('a blackout stops trains; a healthy grid moves them', () => {
-  buildRail(2, J, 20, J);
-  const a = place('trainStation', 4, J - 2);
-  const b = place('trainStation', 14, J - 2);
-  const r = createRoute();
-  r.stops.push(a, b);
+  const r = railRoute();
   const train = buyVehicle(r, 'train');
 
   G.servedFraction = 0; // total blackout — no traction power

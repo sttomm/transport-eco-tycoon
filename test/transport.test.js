@@ -78,6 +78,16 @@ test('a truck hauls grain to the food plant: payment, stats, input stock', () =>
   assert.ok(food.stock > 0, 'food plant is processing the grain');
 });
 
+test('routes record which goods they actually delivered (cargoCarried)', () => {
+  const r = createRoute();
+  r.stops.push(depotA, depotB);
+  buyVehicle(r, 'truck');
+  assert.deepEqual(r.cargoCarried, {}, 'nothing recorded before the first delivery');
+  step(600);
+  assert.equal(r.cargoCarried.grain, true, 'grain deliveries recorded for the routes filter');
+  assert.ok(!r.cargoCarried.food, 'food never travelled on this route');
+});
+
 test('trucks only load cargo some other stop of the route accepts', () => {
   const r = createRoute();
   r.stops.push(depotA, depotB);

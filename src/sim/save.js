@@ -55,7 +55,7 @@ export function snapshot() {
       foodLevel: c.foodLevel || 0, goodsLevel: c.goodsLevel || 0,
     })),
     routes: G.routes.map(r => ({
-      name: r.name, stops: r.stops.map(stIx),
+      name: r.name, stops: r.stops.map(stIx), cargoCarried: r.cargoCarried || {},
       vehicles: r.vehicles.map(v => ({
         kind: v.kind, battery: v.battery, cargo: v.cargo,
         stopIndex: v.stopIndex, wagons: v.wagons.map(w => w.type),
@@ -121,8 +121,11 @@ export function restore(d) {
     const r = createRoute();
     r.name = rd.name;
     r.stops = rd.stops.map(ix => placed[ix]).filter(Boolean);
+    r.cargoCarried = rd.cargoCarried || {}; // pre-routeKind saves: rebuilt on next delivery
     for (const vd of rd.vehicles || []) {
-      const v = buyVehicle(r, vd.kind);
+      // skipKindCheck grandfathers vehicles whose kind no longer matches the
+      // route's derived kind — validation applies to new purchases only
+      const v = buyVehicle(r, vd.kind, { skipKindCheck: true });
       if (!v) continue;
       v.battery = vd.battery;
       v.cargo = vd.cargo || {};

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { G } from '../src/sim/state.js';
 import { place, tile, isRail } from '../src/sim/grid.js';
-import { createRoute, buyVehicle, addWagon } from '../src/sim/transport.js';
+import { createRoute, buyVehicle, addWagon, routeKind } from '../src/sim/transport.js';
 import { snapshot, restore } from '../src/sim/save.js';
 import { freshWorld, buildRoad, buildRail, findSpot } from './helpers.js';
 
@@ -91,6 +91,34 @@ test('trains restore with their wagons', () => {
   const t2 = G.routes[0].vehicles[0];
   assert.equal(t2.kind, 'train');
   assert.deepEqual(t2.wagons.map(w => w.type), ['pax', 'freight']);
+});
+
+test('restore grandfathers vehicles that mismatch the route kind, keeps cargoCarried', () => {
+  freshWorld();
+  buildRoad(2, J, 20, J);
+  const a = place('busStop', 4, J - 1);
+  const b = place('busStop', 16, J - 1);
+  const r = createRoute();
+  r.stops.push(a, b);
+  // like a pre-validation save: a truck living on what now derives as a bus route
+  const truck = buyVehicle(r, 'truck', { skipKindCheck: true });
+  assert.ok(truck, 'fixture vehicle created');
+  r.cargoCarried = { grain: true };
+
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  freshWorld();
+  assert.equal(restore(snap), true);
+
+  assert.equal(routeKind(G.routes[0]), 'bus');
+  assert.equal(G.routes[0].vehicles.length, 1, 'mismatched truck survives the load');
+  assert.equal(G.routes[0].vehicles[0].kind, 'truck');
+  assert.deepEqual(G.routes[0].cargoCarried, { grain: true }, 'delivered-goods memory round-trips');
+
+  // saves from before cargoCarried existed get the safe default
+  delete snap.routes[0].cargoCarried;
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.deepEqual(G.routes[0].cargoCarried, {});
 });
 
 test('restore rejects unknown versions', () => {

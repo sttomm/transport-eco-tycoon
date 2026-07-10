@@ -186,14 +186,37 @@ export function tickIndustries(gameHours) {
 // ---------- routes & vehicles ----------
 let routeSeq = 1;
 export function createRoute() {
-  const r = { id: routeSeq++, name: 'Route ' + routeSeq, stops: [], vehicles: [] };
+  const r = { id: routeSeq++, name: 'Route ' + routeSeq, stops: [], vehicles: [], cargoCarried: {} };
   G.routes.push(r);
   return r;
 }
 
-export function buyVehicle(route, kind) {
+// which route kind each vehicle type belongs on
+export const VEHICLE_ROUTE_KIND = { bus: 'bus', train: 'rail', truck: 'cargo' };
+
+// A route's kind is derived from its stops' station types: bus stops → 'bus',
+// rail stations → 'rail', freight depots → 'cargo'. Mixed stops: majority
+// wins, ties go to 'cargo'. No stops yet → null (no kind, no validation).
+export function routeKind(route) {
+  if (!route.stops.length) return null;
+  const counts = { bus: 0, rail: 0, cargo: 0 };
+  for (const st of route.stops) {
+    counts[st.stype === 'bus' ? 'bus' : st.stype === 'train' ? 'rail' : 'cargo']++;
+  }
+  const max = Math.max(counts.bus, counts.rail, counts.cargo);
+  const winners = Object.keys(counts).filter(k => counts[k] === max);
+  return winners.length > 1 ? 'cargo' : winners[0];
+}
+
+// opts.skipKindCheck is ONLY for save-restore: it grandfathers vehicles bought
+// before route kinds existed (a hard reject would silently delete them on load).
+export function buyVehicle(route, kind, opts = {}) {
   const def = VEHICLES[kind];
   if (route.stops.length < 2) return null;
+  if (!opts.skipKindCheck) {
+    const rk = routeKind(route);
+    if (rk && VEHICLE_ROUTE_KIND[kind] !== rk) return null;
+  }
   const st = route.stops[0];
   const road = stationRoadTile(st, kind === 'train' ? isRail : isRoad);
   if (!road) return null;
@@ -349,6 +372,7 @@ function arriveAtStation(v) {
           if (extra) { credit(v, extra); paidHere += extra; }
         }
         G.stats[grp.type === 'local' ? 'paxLocal' : 'paxInter'] += grp.n;
+        v.route.cargoCarried.pax = true;
         if (v.kind === 'train') G.stats.railUnits += grp.n;
         if (grp.type === 'inter') grp.dest.pop += Math.floor(grp.n * 0.08);
       } else keep.push(grp);
@@ -393,6 +417,7 @@ function arriveAtStation(v) {
         }
       }
       if (accepted) {
+        v.route.cargoCarried[cid] = true; // goods actually delivered on this route (UI filter)
         const pay = payDelivery(v, cid, amt, dist);
         paidHere += pay;
         const extra = contractDelivery(cid, { toCity: destCity, toInd: destInd }, amt, pay);

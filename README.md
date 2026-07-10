@@ -31,6 +31,11 @@ need internet on first load.)
 1. **Transport** — build roads (drag; crossing the river builds bridges), place
    Freight Depots / Bus Stops next to roads, create routes (🚌 tab → New Route →
    click stations on the map), buy electric trucks & buses.
+   The routes tab groups routes into collapsible 🚌 Bus / 🚆 Rail / 🚚 Cargo
+   sections (a route's kind follows its stops' station types) with filter
+   chips, and cargo routes can additionally be filtered by the goods they have
+   delivered. Each route only offers the matching vehicle type — a bus route
+   won't sell you a truck.
    Cargo chains: Iron Ore Mine → Green Steel Works → city, Farm → Food Plant → city,
    plus passengers between neighbouring cities (press V to see who wants to go
    where — central towns make natural transfer hubs). Every cargo chain has
