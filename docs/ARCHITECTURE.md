@@ -489,6 +489,26 @@ spend more time on the chargers your grid feeds. Numbers are gentle: a
 never-replaced truck costs ~€90/day extra at the cap, noticeable in the
 report card, never fatal.
 
+### 28. Milestone-gated build palette (amends ADR 12's "no tutorial gates" — for buildings only)
+**Decision:** advanced buildings unlock as play progresses: rail + rail
+stations after the first freight-chain objective (`grainChain`), the whole H₂
+chain (electrolyzer/tank/fuel cell) after the battery objective
+(`storagePlay`), the e-fuel refinery after the H₂-reserve objective, and the
+interconnector when the Smart Market goes live (day 10). Lock state is
+**derived live** from `G` (`data.js` UNLOCKS predicates, `grid.js#isUnlocked`)
+and never stored — loading a save recomputes it. Only the *palette* is gated:
+locked tools render greyed with a 🔒 and clicking shows the unlock hint;
+`canPlace()`/`place()` stay lock-free because the save replay, the starter
+grid and the DEBUG API all go through them (a lock there would silently drop
+restored buildings — pinned by test).
+**Why:** the day-one palette had grown to 13 buildings across three systems;
+new players built electrolyzers before understanding batteries and the
+teaching sequence (variability → daily storage → seasonal storage → markets)
+was skippable. The gates follow the existing quest chain, so they add no new
+bookkeeping, and old saves simply start with whatever their progress already
+earned. ADR 12's principle survives: the sandbox isn't paused or railroaded —
+locked options are visible with a clear path to earn them.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

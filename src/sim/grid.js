@@ -4,7 +4,7 @@
 // keeps the Three.js scene in sync.
 import { G, emit } from './state.js';
 import { makeNoise } from './noise.js';
-import { BUILDINGS, CARBON, INDUSTRY_TYPES } from './data.js';
+import { BUILDINGS, CARBON, INDUSTRY_TYPES, UNLOCKS } from './data.js';
 
 export const WORLD_SEED = 20260612;
 export const WATER_Y = -0.35;
@@ -148,6 +148,17 @@ function free(i, j, fp) {
     if (t) { t.occ = null; if (t.t === 'used') t.t = 'grass'; }
   }
 }
+
+// ---------- build-palette progression (ADR 28) ----------
+// Which buildings the PLAYER may currently select. Derived from live state,
+// never saved. Deliberately NOT enforced in canPlace()/place(): the save
+// replay, the starter grid and the DEBUG API go through those, and a lock
+// there would silently drop restored buildings. The palette is the gate.
+export function isUnlocked(toolId) {
+  const u = UNLOCKS.find(x => x.tool === toolId);
+  return !u || !!u.when(G);
+}
+export const unlockHint = toolId => UNLOCKS.find(x => x.tool === toolId)?.hint || '';
 
 // ---------- placement ----------
 export function canPlace(toolId, i, j) {

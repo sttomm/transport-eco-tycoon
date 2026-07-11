@@ -175,6 +175,21 @@ export const VEHICLES = {
   },
 };
 
+// Build-palette unlocks (ADR 28): advanced buildings appear as play
+// progresses. Derived LIVE from game state (quests done, game day) — never
+// stored, so saves need nothing and loading recomputes them. Only the palette
+// is gated: place() stays lock-free (save replay, starter grid, DEBUG).
+// Anything not listed here is available from turn one.
+export const UNLOCKS = [
+  { tool: 'rail', hint: 'Complete "🌾 Feed the food plant" — master road freight before the railway age', when: G => !!G.questsDone?.grainChain },
+  { tool: 'trainStation', hint: 'Complete "🌾 Feed the food plant" — master road freight before the railway age', when: G => !!G.questsDone?.grainChain },
+  { tool: 'electrolyzer', hint: 'Complete "🔋 Store the sun" (80 MWh of battery) — daily storage before seasonal storage', when: G => !!G.questsDone?.storagePlay },
+  { tool: 'h2tank', hint: 'Complete "🔋 Store the sun" (80 MWh of battery) — daily storage before seasonal storage', when: G => !!G.questsDone?.storagePlay },
+  { tool: 'fuelcell', hint: 'Complete "🔋 Store the sun" (80 MWh of battery) — daily storage before seasonal storage', when: G => !!G.questsDone?.storagePlay },
+  { tool: 'efuel', hint: 'Complete "🫧 Hydrogen reserve" — stockpile hydrogen before you sell it', when: G => !!G.questsDone?.h2Reserve },
+  { tool: 'interconnector', hint: `The Smart Market opens cross-border power trading on day ${MARKET.liveDay}`, when: G => G.day >= MARKET.liveDay },
+];
+
 // Vehicle aging (ADR 27): vehicles run at list conditions while young, then
 // O&M creeps up and EV packs lose capacity — fleet renewal becomes a real
 // decision. Replacement (Routes tab, or per-route auto-replace on the day

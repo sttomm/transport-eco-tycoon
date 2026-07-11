@@ -2,8 +2,8 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
-import { tile, canPlace, place, bulldoze, decommissionGas, isRail, isRoad, lShapedPath, dragCost } from '../src/sim/grid.js';
-import { BUILDINGS, CARBON } from '../src/sim/data.js';
+import { tile, canPlace, place, bulldoze, decommissionGas, isRail, isRoad, isUnlocked, unlockHint, lShapedPath, dragCost } from '../src/sim/grid.js';
+import { BUILDINGS, CARBON, MARKET, UNLOCKS } from '../src/sim/data.js';
 import { freshWorld, findSpot, findGrass, findWater } from './helpers.js';
 
 beforeEach(() => freshWorld());
@@ -157,6 +157,39 @@ test('bulldozing a station removes it from every route', () => {
   assert.equal(G.stations.length, 0);
   assert.equal(G.routes[0].stops.length, 0);
   assert.deepEqual(events, [st], 'renderer is told to drop the mesh');
+});
+
+test('build-palette unlocks derive from progress; placement stays lock-free (ADR 28)', () => {
+  // every gated tool must exist (and carry a player-facing hint)
+  for (const u of UNLOCKS) {
+    assert.ok(BUILDINGS[u.tool], `unknown tool ${u.tool}`);
+    assert.ok(u.hint.length > 10, `hint missing for ${u.tool}`);
+  }
+  // fresh game: the basics are open, the advanced tiers are locked
+  for (const id of ['road', 'busStop', 'truckStop', 'solar', 'wind', 'hydro', 'battery']) {
+    assert.ok(isUnlocked(id), `${id} should be open from turn one`);
+  }
+  assert.equal(isUnlocked('rail'), false);
+  assert.equal(isUnlocked('trainStation'), false);
+  assert.equal(isUnlocked('electrolyzer'), false);
+  assert.equal(isUnlocked('efuel'), false);
+  assert.equal(isUnlocked('interconnector'), false);
+  assert.ok(unlockHint('rail').includes('Feed the food plant'));
+  // milestones flip them
+  G.questsDone = { grainChain: true };
+  assert.ok(isUnlocked('rail') && isUnlocked('trainStation'), 'rail age after the first freight chain');
+  G.questsDone.storagePlay = true;
+  assert.ok(isUnlocked('electrolyzer') && isUnlocked('h2tank') && isUnlocked('fuelcell'), 'H₂ chain after batteries');
+  assert.equal(isUnlocked('efuel'), false, 'refinery still needs the H₂ reserve');
+  G.questsDone.h2Reserve = true;
+  assert.ok(isUnlocked('efuel'));
+  G.day = MARKET.liveDay;
+  assert.ok(isUnlocked('interconnector'), 'cross-border trading with the Smart Market');
+  // the SIM never locks: save replay / starter grid / DEBUG go through place()
+  G.questsDone = {}; G.day = 1;
+  const [i, j] = findSpot('h2tank');
+  assert.ok(canPlace('h2tank', i, j), 'canPlace ignores palette locks');
+  assert.ok(place('h2tank', i, j), 'place ignores palette locks');
 });
 
 test('legacy gas plant: placeable (save replay path) though hidden from the palette', () => {

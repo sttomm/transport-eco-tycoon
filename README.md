@@ -68,6 +68,11 @@ on a route and the depot renews aged vehicles overnight.
 capital-intensive — all the cost is upfront and the fuel is free — so cheap
 early leverage can pay for itself, but standing debt eats your margin.
 
+**Progression:** the build palette grows with you — rail unlocks after your
+first freight chain, the hydrogen chain after you've mastered batteries, the
+e-fuel refinery after your first H₂ stockpile, and the interconnector when
+the Smart Market opens. Locked tools show a 🔒 with exactly what earns them.
+
 **Controls:** right-drag pan · middle-drag rotate · WASD/arrows pan · wheel
 zoom · Space pause · 1/2/3 speed · V passenger demand · ESC cancel tool.
 

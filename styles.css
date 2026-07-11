@@ -59,6 +59,9 @@
   .toolrow { display: flex; gap: 6px; }
   .tool { display: flex; flex-direction: column; align-items: center; width: 74px; padding: 5px 2px; gap: 1px; }
   .ticon { font-size: 19px; } .tname { font-size: 10.5px; line-height: 1.15; text-align: center; } .tcost { font-size: 10px; color: #f0d264; }
+  /* milestone-locked palette entries (ADR 28) — click shows the unlock hint */
+  .tool.locked { position: relative; opacity: 0.45; filter: grayscale(0.75); }
+  .tool.locked::after { content: '🔒'; position: absolute; top: 1px; right: 3px; font-size: 11px; filter: none; }
 
   /* right tab buttons + panel */
   #tabbtns { position: absolute; top: 52px; right: 10px; z-index: 11; display: flex; flex-direction: column; gap: 6px; }

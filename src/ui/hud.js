@@ -3,7 +3,7 @@
 // Reads sim state each tick; never contains game rules.
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
 import { AGING, BUILDINGS, CARBON, CLIMATE, H2OFFTAKE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
-import { decommissionGas } from '../sim/grid.js';
+import { decommissionGas, isUnlocked, unlockHint } from '../sim/grid.js';
 import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
@@ -87,13 +87,36 @@ function buildToolbar() {
       b.className = 'tool';
       b.dataset.tool = id;
       b.innerHTML = `<span class="ticon">${def.icon}</span><span class="tname">${def.name}</span><span class="tcost">${def.cost ? fmtMoney(def.cost) : ''}</span>`;
-      b.onclick = () => selectTool(G.tool === id ? null : id);
-      b.onmouseenter = e => showTooltip(e, `<b>${def.name}</b> ${def.cost ? '— ' + fmtMoney(def.cost) : ''}${def.upkeep ? ` (+${def.upkeep}/day)` : ''}<br>${def.desc}`);
+      b.onclick = () => {
+        if (!isUnlocked(id)) { showTipText(`🔒 ${def.name} — not available yet`, unlockHint(id)); return; }
+        selectTool(G.tool === id ? null : id);
+      };
+      b.onmouseenter = e => showTooltip(e, `<b>${def.name}</b> ${def.cost ? '— ' + fmtMoney(def.cost) : ''}${def.upkeep ? ` (+${def.upkeep}/day)` : ''}<br>${def.desc}` +
+        (isUnlocked(id) ? '' : `<br><span class="warn">🔒 ${unlockHint(id)}</span>`));
       b.onmouseleave = hideTooltip;
       row.appendChild(b);
     }
     grp.appendChild(row);
     bar.appendChild(grp);
+  }
+  updateToolbarLocks();
+}
+
+// ---------- build-palette unlocks (ADR 28) ----------
+// lock state is derived each UI tick; a lock→unlock transition during play
+// gets a one-shot celebration toast (module state — a loaded save that is
+// already past a milestone starts unlocked without fanfare)
+const lockedTools = new Set();
+function updateToolbarLocks() {
+  for (const btn of document.querySelectorAll('.tool')) {
+    const id = btn.dataset.tool;
+    const locked = !isUnlocked(id);
+    btn.classList.toggle('locked', locked);
+    if (locked) lockedTools.add(id);
+    else if (lockedTools.has(id)) {
+      lockedTools.delete(id);
+      showTipText(`🔓 Unlocked: ${BUILDINGS[id].icon} ${BUILDINGS[id].name}`, BUILDINGS[id].desc);
+    }
   }
 }
 
@@ -320,6 +343,7 @@ export function updateUI(dt) {
       `🔋 ${pct(G.batteryMWh, G.batteryCapMWh)} <span class="dim">${G.batteryMWh.toFixed(0)}/${G.batteryCapMWh.toFixed(0)} MWh</span>` +
       ` &nbsp; 🫧 ${pct(G.h2MWh, G.h2CapMWh)} <span class="dim">${G.h2MWh.toFixed(0)}/${G.h2CapMWh.toFixed(0)} MWh</span>`;
     updateWeatherBanner();
+    updateToolbarLocks();
     renderInfobox();
     if (activeTab === 'routes') renderRoutesLive();
     if (activeTab === 'research') renderResearchLive();
