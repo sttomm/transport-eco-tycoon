@@ -1,5 +1,5 @@
 import { G, emit, hourOfDay, season } from './state.js';
-import { BUILDINGS, CARBON, FORECAST, MARKET } from './data.js';
+import { BUILDINGS, CARBON, CLIMATE, FORECAST, MARKET } from './data.js';
 
 // Flat electricity tariff per MWh served — the price until the Smart Market
 // goes live on day MARKET.liveDay; after that G.price is set dynamically each
@@ -9,12 +9,34 @@ export const CO2_PER_MWH = 0.4; // tonnes avoided vs fossil mix
 
 // ---- weather ----------------------------------------------------------
 // Wind & cloud are mean-reverting random walks; occasionally a multi-day
-// "Dunkelflaute" (dark calm) or a storm front rolls through. Fronts are not
+// "Dunkelflaute" (dark calm), a storm front or a summer heatwave (ADR 24)
+// rolls through. Fronts are not
 // applied instantly: the hourly roll SCHEDULES them on G.weatherFront with
 // 10-14 h lead time (ADR 23) so the forecast can warn the player. The forced
 // debug path `G.dunkelflaute = 40` bypasses the front machinery and applies
 // on the very next tick (playtest recipes depend on it).
 const windTrendTarget = () => 0.42 * season().windMul + 0.25 * Math.sin(G.day * 0.7);
+
+// ---- climate feedback (ADR 24) ------------------------------------------
+// Emitted CO₂ loads the weather dice: the more the gas plant has burned, the
+// more often EXTREME events roll — capped at 2× so it teaches, not punishes.
+export function climateRiskMult() {
+  return Math.min(CLIMATE.maxMult, 1 + G.co2EmittedTons / CLIMATE.scaleTons);
+}
+
+// Per-hourly-roll probabilities for the three scheduled events. Factored out
+// (and exported) so tests can pin the climate feedback on the thresholds
+// without fighting Math.random. The base Dunkelflaute is deliberately NOT
+// risk-scaled — it is normal weather variability; climate change loads the
+// dice for storms and heatwaves. Heatwaves are summer-only heat domes.
+export function eventThresholds() {
+  const risk = climateRiskMult();
+  return {
+    flaute: G.day > 3 ? CLIMATE.flauteRisk : 0,
+    storm: CLIMATE.stormRisk * risk,
+    heatwave: season().name === 'Summer' ? CLIMATE.heatRisk * risk : 0,
+  };
+}
 
 let weatherTimer = 0;
 export function updateWeather(gameHours) {
@@ -25,6 +47,12 @@ export function updateWeather(gameHours) {
     G.dunkelflaute -= gameHours;
     G.wind = drift(0.06, G.wind, 0.5);
     G.cloud = drift(0.92, G.cloud, 0.5);
+  } else if (G.heatwave > 0) {
+    // heat dome (ADR 24): stagnant high-pressure air — wind pinned low,
+    // skies stay clear (strong solar). The demand side lives in tickGrid.
+    G.heatwave -= gameHours;
+    G.wind = drift(Math.min(CLIMATE.heatWindCap, windTrendTarget()), G.wind, 0.4);
+    G.cloud = drift(0.08, G.cloud, 0.4);
   } else {
     // windier in autumn/winter, calmer in summer (seasonal storm tracks)
     G.wind = drift(windTrendTarget(), G.wind, 0.15);
@@ -36,21 +64,29 @@ export function updateWeather(gameHours) {
         const f = G.weatherFront;
         G.weatherFront = null;
         if (f.type === 'dunkelflaute') G.dunkelflaute = f.durationH;
+        else if (f.type === 'heatwave') { G.heatwave = f.durationH; emit('tip', 'heatwave'); }
         else { G.wind = 1.0; emit('tip', 'storm'); } // gust → cut-out on arrival
       }
     } else if (weatherTimer > 1) {
       // rare events, evaluated roughly hourly — no new roll while a front is
-      // scheduled (branch above) or a dunkelflaute is active (outer branch)
+      // scheduled (branch above) or a flaute/heatwave is active (outer branches).
+      // Storm & heatwave thresholds carry the climate-risk multiplier (ADR 24).
       weatherTimer = 0;
+      const th = eventThresholds();
       const lead = FORECAST.leadHmin + Math.random() * (FORECAST.leadHmax - FORECAST.leadHmin);
-      if (G.day > 3 && Math.random() < 0.006) {
+      if (Math.random() < th.flaute) {
         G.weatherFront = {
           type: 'dunkelflaute', inHours: lead,
           durationH: FORECAST.flauteHmin + Math.random() * (FORECAST.flauteHmax - FORECAST.flauteHmin),
         };
         emit('tip', 'dunkelflaute'); // warn at schedule time — charge everything now
-      } else if (Math.random() < 0.005) {
+      } else if (Math.random() < th.storm) {
         G.weatherFront = { type: 'storm', inHours: lead, durationH: FORECAST.stormH };
+      } else if (Math.random() < th.heatwave) {
+        G.weatherFront = {
+          type: 'heatwave', inHours: lead,
+          durationH: CLIMATE.heatHmin + Math.random() * (CLIMATE.heatHmax - CLIMATE.heatHmin),
+        };
       }
     }
   }
@@ -74,22 +110,30 @@ function buildForecast() {
   else if (G.weatherFront?.type === 'dunkelflaute') {
     flStart = G.weatherFront.inHours; flEnd = flStart + G.weatherFront.durationH;
   }
+  // hours during which a heatwave (active or scheduled) bakes the outlook
+  let hwStart = Infinity, hwEnd = -Infinity;
+  if (G.heatwave > 0) { hwStart = 0; hwEnd = G.heatwave; }
+  else if (G.weatherFront?.type === 'heatwave') {
+    hwStart = G.weatherFront.inHours; hwEnd = hwStart + G.weatherFront.durationH;
+  }
   const stormAt = G.weatherFront?.type === 'storm' ? G.weatherFront.inHours : NaN;
 
   const slots = [];
   for (let t = 0; t < FORECAST.horizonH; t += FORECAST.slotH) {
     const flaute = t < flEnd && t + FORECAST.slotH > flStart;
+    const heat = t < hwEnd && t + FORECAST.slotH > hwStart;
     const storm = stormAt >= t && stormAt < t + FORECAST.slotH;
     const h = (now + t + FORECAST.slotH / 2) % 24; // slot midpoint, wall-clock
     const night = h < s.sunrise || h > s.sunset;
-    const cloud = flaute ? 0.92 : G.cloud; // cloud-persistence assumption
+    const cloud = flaute ? 0.92 : heat ? 0.08 : G.cloud; // cloud-persistence assumption; heat domes are clear
     const sun = night ? 0
       : Math.max(0, Math.sin(Math.PI * (h - s.sunrise) / (s.sunset - s.sunrise))) * s.solarAmp * (1 - cloud * 0.82);
-    slots.push({ hour: Math.floor(h), sun, night, flaute, storm });
+    slots.push({ hour: Math.floor(h), sun, night, flaute, storm, heat });
   }
   G.forecast = {
-    slots,                        // 8 × 3 h: { hour, sun (relative factor), night, flaute, storm }
-    windTrend: windTrendTarget(), // where the wind walk is drifting (0..~1)
+    slots,                        // 8 × 3 h: { hour, sun (relative factor), night, flaute, storm, heat }
+    // where the wind walk is drifting (0..~1) — pinned low under a heat dome
+    windTrend: G.heatwave > 0 ? Math.min(CLIMATE.heatWindCap, windTrendTarget()) : windTrendTarget(),
     front: G.weatherFront ? { ...G.weatherFront } : null,
   };
 }
@@ -137,6 +181,8 @@ export function tickGrid(gameHours) {
   if (G.carbonPrice >= 80) emit('tip', 'carbon80');
   // Smart Market timeline (ADR 22) — one-shot tips, deduped by the UI
   if (G.day >= MARKET.announceDay && G.day < MARKET.liveDay) emit('tip', 'marketAnnounce');
+  // climate feedback (ADR 24): warn once when emissions push event risk past "elevated"
+  if (climateRiskMult() >= CLIMATE.elevatedAt) emit('tip', 'climateRisk');
   // --- supply available from renewables
   const solarMW = capacity('solar') * solarFactor() * m.solar;
   const windMW = capacity('wind') * windFactor() * m.wind;
@@ -144,8 +190,9 @@ export function tickGrid(gameHours) {
 
   // --- inflexible demand
   let cityMW = 0;
-  // winter heating raises city demand, mild seasons lower it
-  const seasonDemand = season().demandMul;
+  // winter heating raises city demand, mild seasons lower it; an active
+  // heatwave adds air-conditioning load on top (ADR 24)
+  const seasonDemand = season().demandMul * (G.heatwave > 0 ? CLIMATE.heatDemand : 1);
   for (const c of G.cities) cityMW += (c.pop / 1000) * 1.1 * cityDemandCurve() * m.cityDemand * seasonDemand;
   let indMW = 0;
   for (const ind of G.industries) if (ind.wantsPower) indMW += ind.def.powerMW * m.industryDemand;

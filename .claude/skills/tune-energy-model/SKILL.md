@@ -36,10 +36,14 @@ change model and tests together, and `npm test` before any browser check.
 - `windFactor()`: 0 below w=0.12, `min(1, ((w−0.12)/0.55)³·3.2)`, 0 above 0.96
 - `cityDemandCurve()`: 0.62 base + Gaussians at 08:00 (0.5) and 19:30 (0.75)
 - Weather: mean-reverting walks; Dunkelflaute event (wind→0.06, cloud→0.92,
-  36-54 h, ~0.6%/h after day 3); storm event (wind→1.0 → cut-out). Events are
+  36-54 h, ~0.6%/h after day 3); storm event (wind→1.0 → cut-out); summer
+  heatwave event (18-30 h, city demand ×1.3, wind target capped 0.25, clear
+  skies — data.js CLIMATE, ADR 24). Storm & heatwave rolls are multiplied by
+  `climateRiskMult()` (1 + emitted CO₂/1500 t, cap 2×) — the flaute roll is
+  NOT. Events are
   scheduled 10-14 h ahead on `G.weatherFront` (data.js FORECAST, ADR 23) and
   applied when the countdown ends; `G.forecast` is derived each tick. The
-  forced path `G.dunkelflaute = 40` below still applies immediately.
+  forced paths `G.dunkelflaute = 40` / `G.heatwave = 20` still apply immediately.
 - Money: `(cityMW + indMW) × servedFraction × hours × €85`; fleet charging is
   unbilled; CO₂ counter +0.4 t/MWh served
 

@@ -55,6 +55,25 @@ discover this.
   FORECAST. Setting `G.dunkelflaute` directly (debug/playtest path) still
   applies instantly, bypassing the front machinery.
 
+## Climate feedback (ADR 24)
+
+Burning gas doesn't just cost money — it loads the weather dice. The lifetime
+`G.co2EmittedTons` multiplies the probability of **extreme** events:
+
+| Number | Game | Real-world anchor |
+|---|---|---|
+| Risk multiplier | `min(2, 1 + emitted / 1500 t)` on the hourly storm & heatwave rolls (`data.js` CLIMATE, `energy.js#climateRiskMult`) | climate **attribution science**: a warmer atmosphere makes heatwaves and severe storms measurably more frequent and more intense; the effect is on the *frequency of extremes*, not on everyday weather |
+| Base Dunkelflaute roll | **unscaled** (0.6%/h after day 3) | a dark calm is ordinary winter weather variability, not a warming signature — and the teaching must stay "emissions load the dice for extremes" |
+| Heatwave | summer only, ~0.5%/h × risk, 18–30 h, scheduled 10–14 h ahead like every front | heatwaves are the most confidently attributed extreme; forecasts see them days out |
+| Heat dome effects | city demand ×1.3 (AC), wind drift target capped at 0.25, clear skies (solar strong) | a heat dome is a stagnant high-pressure system: peak AC load arrives *together with* calm air (Texas 2023, Europe 2022), while cloudless skies keep PV delivering — batteries charged at noon carry the hot evening |
+
+The multiplier is deliberately gentle (caps at 2× after ~1,500 t, i.e. weeks
+of heavy gas reliance): the loop gas → CO₂ → worse weather → harder grid should
+be *felt*, not fatal. The dashboard 🌡 Climate box shows emitted vs avoided
+CO₂ and the risk band (calm < 1.15× ≤ elevated < 1.5× ≤ high). During a
+heatwave the active-event state is `G.heatwave` (hours remaining, like
+`G.dunkelflaute`); heatwave hours land in the daily report as `heatHours`.
+
 ## Demand
 
 - Cities: `pop/1000 × 1.1 MW × daily curve` — double-peaked (Gaussian bumps at

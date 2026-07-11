@@ -74,6 +74,7 @@
   #chartlegend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--dim); margin-bottom: 8px; }
   #chartlegend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 3px; }
   #kpis { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 8px 0; }
+  .kpirow { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; } /* climate box: emitted vs avoided side by side */
   .kpi { background: var(--panel2); border-radius: 6px; padding: 6px; text-align: center; }
   .kpi-v { font-size: 15px; font-weight: 700; color: var(--accent); }
   .kpi-n { font-size: 10px; color: var(--dim); }

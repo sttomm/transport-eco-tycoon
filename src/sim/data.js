@@ -88,6 +88,25 @@ export const FORECAST = {
   slotH: 3, horizonH: 24,         // forecast outlook: 8 slots of 3 h
 };
 
+// Climate feedback (ADR 24): emitted CO₂ loads the weather dice. The hourly
+// extreme-event rolls (storm + heatwave, NOT the base Dunkelflaute — that is
+// normal weather variability) are multiplied by
+// `min(maxMult, 1 + co2EmittedTons / scaleTons)` (energy.js#climateRiskMult).
+// The heatwave (summer only) is a heat dome: stagnant air caps wind low while
+// air conditioning pushes city demand up — skies stay clear, solar stays strong.
+// Gentle by design: teaching, not punishment.
+export const CLIMATE = {
+  scaleTons: 1500,    // emitted tons at which extreme-event risk doubles (= the cap)
+  maxMult: 2,         // risk multiplier ceiling
+  flauteRisk: 0.006,  // Dunkelflaute per hourly roll (day 4+) — base variability, NOT risk-scaled
+  stormRisk: 0.005,   // storm per hourly roll — × risk multiplier
+  heatRisk: 0.005,    // heatwave per hourly roll, summer only — × risk multiplier
+  heatHmin: 18, heatHmax: 30, // heatwave duration (h); scheduled with the FORECAST lead time
+  heatDemand: 1.3,    // city demand × while a heatwave is active (air conditioning)
+  heatWindCap: 0.25,  // wind drift target cap during a heatwave (heat domes are stagnant)
+  elevatedAt: 1.15, highAt: 1.5, // dashboard risk-indicator bands (calm / elevated / high)
+};
+
 // Smart Market (ADR 22): announced on day `announceDay`, live from `liveDay`.
 // From then on the flat €85/MWh tariff is replaced by a dynamic price set each
 // tick by pay-as-clear merit-order rules (see energy.js#tickGrid):
@@ -262,6 +281,16 @@ export const TIPS = {
     // lead time is the preparation window (see energy.js updateWeather, ADR 23)
     title: 'Dunkelflaute inbound!',
     text: 'The forecast shows a high-pressure system arriving in ~12 hours: ~2 days of thick clouds AND almost no wind. This is the hardest test of any renewable grid — your batteries alone won\'t last, this is exactly what hydrogen reserves are for. Use the lead time: charge everything now and check your H₂ tank level!',
+  },
+  heatwave: {
+    // fires when the heatwave front ARRIVES (the banner already warned during
+    // the lead time) — the phenomenon needs to be observable to be teachable
+    title: 'Heatwave — a heat dome sits over the region',
+    text: 'Air conditioners are pushing city demand +30% — while your turbines idle, because heat domes are stagnant high-pressure air, not wind. The one mercy: cloudless skies mean strong solar. This is a classic climate-change stress test for real grids (Texas 2023, Europe 2022): peak demand and calm air arrive together. Batteries charged at noon carry the hot evening.',
+  },
+  climateRisk: {
+    title: 'The weather dice are loaded',
+    text: 'Your gas habit is catching up with you: emitted CO₂ has pushed extreme-event risk to "elevated" — storms and heatwaves now roll noticeably more often (up to 2× at high emissions, see the 📊 Climate box). This is climate attribution in miniature: a warmer atmosphere makes extreme weather more frequent and more intense. Every gas MWh you avoid keeps the dice fairer.',
   },
   storm: {
     title: 'Storm cut-out',

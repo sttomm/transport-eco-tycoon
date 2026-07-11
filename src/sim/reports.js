@@ -1,13 +1,14 @@
 // Daily report card: closeDay() snapshots yesterday's daily counters into a
 // report object on G.reports (ring buffer, last 7 days) and emits 'dayReport'.
 // trackDay() accumulates the per-day observations no other tick books anywhere
-// (blackout / dunkelflaute / storm hours). Pure sim — the end-of-day toast and
+// (blackout / dunkelflaute / storm / heatwave hours). Pure sim — the end-of-day toast and
 // the "Yesterday" dashboard block live in src/ui/hud.js.
 //
 // Call order in main.js's day rollover matters: closeDay() runs BEFORE the
 // shared daily counters (income/expenses/curtailed/finance) are reset, so the
 // report captures the finished day. closeDay() resets only the counters this
-// module owns (blackoutHoursToday, flauteHoursToday, stormHoursToday).
+// module owns (blackoutHoursToday, flauteHoursToday, stormHoursToday,
+// heatHoursToday).
 import { G, emit } from './state.js';
 import { LOAN_RATE } from './loans.js';
 
@@ -19,6 +20,7 @@ export function trackDay(gameHours) {
   if (G.blackout) G.blackoutHoursToday += gameHours;
   if (G.dunkelflaute > 0) G.flauteHoursToday += gameHours;
   if (G.wind > 0.96) G.stormHoursToday += gameHours; // above turbine cut-out
+  if (G.heatwave > 0) G.heatHoursToday += gameHours; // heat dome active (ADR 24)
 }
 
 // Aggregate the day that just ended into a report. CO₂ is stored as lifetime
@@ -58,6 +60,7 @@ export function closeDay() {
     curtailedMWh: G.curtailedTodayMWh,
     flauteHours: G.flauteHoursToday,
     stormHours: G.stormHoursToday,
+    heatHours: G.heatHoursToday,
   };
   G.reports.push(report);
   while (G.reports.length > REPORT_KEEP) G.reports.shift();
@@ -65,6 +68,7 @@ export function closeDay() {
   G.blackoutHoursToday = 0;
   G.flauteHoursToday = 0;
   G.stormHoursToday = 0;
+  G.heatHoursToday = 0;
   emit('dayReport', report);
   return report;
 }

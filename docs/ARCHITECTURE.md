@@ -414,6 +414,21 @@ analysis of ADR 21, since the first flaute now announces itself ~half a day
 early. The forced-event debug path (`G.dunkelflaute = 40` applies on the next
 tick) is preserved and pinned by `test/weather.test.js`.
 
+### 24. Climate feedback: emissions load the weather dice
+**Decision:** the lifetime CO₂ emitted by the gas plant multiplies the hourly
+*extreme*-event probabilities (storm and the new summer-only **heatwave**) by
+`min(2, 1 + emitted/1500 t)` — the base Dunkelflaute roll stays unscaled, since
+a dark calm is ordinary weather variability, not a warming signature. The
+heatwave rides the ADR 23 front pipeline (scheduled 10–14 h ahead, forecast +
+banner) and models a heat dome: city demand ×1.3 (air conditioning) while the
+wind drift target is capped low (stagnant air) and skies stay clear (solar
+strong). **Why:** it closes the game's causal loop — gas → CO₂ → worse
+weather → harder grid — which is climate attribution in miniature, and it
+gives the emitted-CO₂ ledger (ADR 21) a consequence beyond the carbon bill.
+All constants live in `data.js` CLIMATE; the 2× cap keeps it teaching, not
+punishment. Active state `G.heatwave` (+ `heatHoursToday`) persists as
+backwards-safe v3 save fields — no version bump.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

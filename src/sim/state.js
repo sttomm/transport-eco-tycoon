@@ -29,7 +29,8 @@ function initialState() {
     wind: 0.5,
     cloud: 0.25,
     dunkelflaute: 0,          // remaining hours of low-wind overcast event
-    weatherFront: null,       // scheduled front { type: 'dunkelflaute'|'storm', inHours, durationH }
+    heatwave: 0,              // remaining hours of heat-dome event (high demand, low wind — ADR 24)
+    weatherFront: null,       // scheduled front { type: 'dunkelflaute'|'storm'|'heatwave', inHours, durationH }
     forecast: null,           // next-24h outlook (derived each tick by updateWeather, not saved)
     // world
     tiles: null,              // Int/obj grid
@@ -53,7 +54,7 @@ function initialState() {
     h2MWh: 0, h2CapMWh: 0, elecCapMW: 0, fcCapMW: 0,
     curtailedTodayMWh: 0,
     blackoutHoursToday: 0,    // daily-report counters, owned by sim/reports.js
-    flauteHoursToday: 0, stormHoursToday: 0,
+    flauteHoursToday: 0, stormHoursToday: 0, heatHoursToday: 0,
     // research
     techs: {},                // id -> true when done
     research: null,           // {id, progress(0..1)}

@@ -22,6 +22,7 @@ function playDay() {
   G.curtailedTodayMWh = 33;
   G.flauteHoursToday = 6;
   G.stormHoursToday = 0.5;
+  G.heatHoursToday = 4;
 }
 
 test('closeDay aggregates the daily counters into a report', () => {
@@ -49,6 +50,7 @@ test('closeDay aggregates the daily counters into a report', () => {
   assert.equal(r.curtailedMWh, 33);
   assert.equal(r.flauteHours, 6);
   assert.equal(r.stormHours, 0.5);
+  assert.equal(r.heatHours, 4);
   assert.equal(G.reports[G.reports.length - 1], r, 'report pushed onto G.reports');
 });
 
@@ -75,6 +77,7 @@ test('closeDay resets only its own counters; shared ones are captured, not touch
   assert.equal(G.blackoutHoursToday, 0);
   assert.equal(G.flauteHoursToday, 0);
   assert.equal(G.stormHoursToday, 0);
+  assert.equal(G.heatHoursToday, 0);
   // shared daily counters → main.js's rollover resets them, not closeDay
   assert.equal(G.incomeEnergyToday, 5000);
   assert.equal(G.incomeTransportToday, 1500);
@@ -99,21 +102,25 @@ test("closeDay emits 'dayReport' with the report", () => {
   assert.equal(got.day, G.day);
 });
 
-test('trackDay accumulates blackout, dunkelflaute and storm hours', () => {
+test('trackDay accumulates blackout, dunkelflaute, storm and heatwave hours', () => {
   G.blackout = true;
   G.dunkelflaute = 10;
   G.wind = 1.0; // above storm cut-out
+  G.heatwave = 8;
   trackDay(2);
   assert.equal(G.blackoutHoursToday, 2);
   assert.equal(G.flauteHoursToday, 2);
   assert.equal(G.stormHoursToday, 2);
+  assert.equal(G.heatHoursToday, 2);
   G.blackout = false;
   G.dunkelflaute = 0;
   G.wind = 0.5;
+  G.heatwave = 0;
   trackDay(3);
   assert.equal(G.blackoutHoursToday, 2, 'stable grid adds nothing');
   assert.equal(G.flauteHoursToday, 2);
   assert.equal(G.stormHoursToday, 2);
+  assert.equal(G.heatHoursToday, 2);
 });
 
 test('report counters survive a save/load round trip', async () => {

@@ -2,12 +2,12 @@
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
-import { BUILDINGS, CARBON, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { BUILDINGS, CARBON, CLIMATE, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas } from '../sim/grid.js';
 import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
-import { solarFactor, POWER_PRICE } from '../sim/energy.js';
+import { solarFactor, climateRiskMult, POWER_PRICE } from '../sim/energy.js';
 import { clearSave } from '../sim/save.js';
 
 const $ = id => document.getElementById(id);
@@ -204,9 +204,11 @@ function reportAdvice(r) {
     return `⚠ ${r.blackoutHours.toFixed(1)} h of blackout — add generation or storage before the evening peak.`;
   if (r.gasCost > 1000)
     return `🏭 The gas plant burned ${fmtMoney(r.gasCost)} in fuel and carbon costs — every renewable MWh you add shrinks that bill.`;
-  if (r.flauteHours > 0.05 || r.stormHours > 0.05)
+  if (r.flauteHours > 0.05 || r.stormHours > 0.05 || (r.heatHours || 0) > 0.05)
     return r.flauteHours > 0.05
       ? `🌫 A Dunkelflaute covered ${r.flauteHours.toFixed(0)} h of the day — hydrogen reserves are what carry you through these.`
+      : (r.heatHours || 0) > 0.05
+      ? `🔥 A heatwave baked ${r.heatHours.toFixed(0)} h of the day: ACs pushed city demand +${Math.round((CLIMATE.heatDemand - 1) * 100)}% while turbines idled — noon solar into batteries carries the hot evening.`
       : `🌪 Storm gusts forced turbine cut-outs for ${r.stormHours.toFixed(1)} h — batteries bridge those gaps.`;
   if (r.curtailedMWh > 20)
     return `♻ ${r.curtailedMWh.toFixed(0)} MWh of clean power was curtailed — batteries or electrolyzers could turn that surplus into money.`;
@@ -269,7 +271,7 @@ function buildTabs() {
       document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
       $('sidepanel').style.display = activeTab ? 'flex' : 'none';
       document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
-      if (activeTab === 'dashboard') { renderYesterday(); renderForecast(); }
+      if (activeTab === 'dashboard') { renderYesterday(); renderForecast(); renderClimate(); }
       if (activeTab === 'contracts') renderContracts();
       if (activeTab === 'research') { renderResearch(); showTip('research'); }
       if (activeTab === 'routes') renderRoutes();
@@ -304,7 +306,8 @@ export function updateUI(dt) {
     const sf = solarFactor();
     $('solarstat').innerHTML = `${sf <= 0 ? '🌙' : G.cloud > 0.6 ? '☁️' : G.cloud > 0.3 ? '🌤' : '☀️'} ${(sf * 100).toFixed(0)}%`;
     $('windstat').innerHTML = `🌬 ${(G.wind * 90).toFixed(0)} km/h` +
-      (G.dunkelflaute > 0 ? ' <span class="bad blink">DUNKELFLAUTE</span>' : '');
+      (G.dunkelflaute > 0 ? ' <span class="bad blink">DUNKELFLAUTE</span>'
+        : G.heatwave > 0 ? ' <span class="warn blink">HEATWAVE</span>' : '');
     const sn = season();
     $('season').textContent = `${sn.icon} ${sn.name}`;
     const pop = Math.floor(G.cities.reduce((a, c) => a + c.pop, 0));
@@ -327,6 +330,7 @@ export function updateUI(dt) {
     chartTimer = 0;
     renderForecast();
     drawPowerChart();
+    renderClimate();
     drawFinance();
     updateLoanBox();
   }
@@ -349,6 +353,8 @@ function updateWeatherBanner() {
   const eta = Math.max(1, Math.round(f.inHours));
   el.textContent = f.type === 'dunkelflaute'
     ? `⚠ Dunkelflaute in ~${eta} h — est. ${Math.round(f.durationH)} h of dark calm. Charge batteries & H₂ now!`
+    : f.type === 'heatwave'
+    ? `🔥 Heatwave in ~${eta} h — city demand +${Math.round((CLIMATE.heatDemand - 1) * 100)}% (AC), wind low for ~${Math.round(f.durationH)} h. Solar stays strong — charge storage at noon.`
     : `⚠ Storm front in ~${eta} h — turbines will cut out. Storage bridges the gap.`;
 }
 
@@ -356,19 +362,43 @@ function updateWeatherBanner() {
 function slotIcon(sl) {
   if (sl.storm) return '🌪';
   if (sl.flaute) return '🌫';
+  if (sl.heat) return '🔥';
   if (sl.night) return '🌙';
   return sl.sun > 0.55 ? '☀️' : sl.sun > 0.25 ? '🌤' : '☁️';
 }
+const FRONT_LABEL = { dunkelflaute: '🌫 Dunkelflaute', storm: '🌪 Storm', heatwave: '🔥 Heatwave' };
 function renderForecast() {
   const fc = G.forecast;
   if (!fc) return;
   $('forecaststrip').innerHTML = fc.slots.map(sl =>
-    `<div class="fslot${sl.flaute || sl.storm ? ' warnslot' : ''}">
+    `<div class="fslot${sl.flaute || sl.storm || sl.heat ? ' warnslot' : ''}">
       <div class="fi">${slotIcon(sl)}</div><div class="fh">${String(sl.hour).padStart(2, '0')}h</div></div>`).join('');
   const dw = fc.windTrend - G.wind;
   const arrow = dw > 0.06 ? '↗ picking up' : dw < -0.06 ? '↘ easing' : '→ steady';
   $('forecastwind').innerHTML = `🌬 Wind trend: ${arrow}` +
-    (fc.front ? ` · <span class="warn">${fc.front.type === 'dunkelflaute' ? '🌫 Dunkelflaute' : '🌪 Storm'} in ~${Math.max(1, Math.round(fc.front.inHours))} h</span>` : '');
+    (fc.front ? ` · <span class="warn">${FRONT_LABEL[fc.front.type]} in ~${Math.max(1, Math.round(fc.front.inHours))} h</span>` : '');
+}
+
+// ---------- climate box (ADR 24) ----------
+// emitted vs avoided CO₂ side by side + the extreme-event risk band derived
+// from climateRiskMult(): calm (< elevatedAt) / elevated (< highAt) / high
+function renderClimate() {
+  const el = $('climatebox');
+  if (!el) return;
+  const risk = climateRiskMult();
+  const [band, cls] = risk >= CLIMATE.highAt ? ['high', 'bad']
+    : risk >= CLIMATE.elevatedAt ? ['elevated', 'warn'] : ['calm', 'good'];
+  el.innerHTML = `<h3>🌡 Climate</h3>
+    <div class="kpirow">
+      ${kpi('CO₂ emitted (gas)', `<span class="${G.co2EmittedTons > 0.5 ? 'bad' : 'dim'}">${G.co2EmittedTons.toFixed(0)} t</span>`)}
+      ${kpi('CO₂ avoided', `<span class="good">${G.co2SavedTons.toFixed(0)} t</span>`)}
+    </div>
+    <div class="finrow"><span>Extreme-event risk <span class="dim small">(storms & heatwaves ×${risk.toFixed(2)})</span></span><span class="${cls}"><b>${band}</b></span></div>`;
+  liveTip(el, () => `<b>🌡 Climate feedback</b><br>
+    Every gas MWh emits CO₂ — and a warmer atmosphere rolls more extreme weather. Your emitted
+    ${G.co2EmittedTons.toFixed(0)} t multiply the storm & heatwave probability by
+    <b>${risk.toFixed(2)}×</b> (capped at ${CLIMATE.maxMult}× at ${CLIMATE.scaleTons} t). Ordinary
+    Dunkelflauten are unaffected — they're normal weather; climate change loads the dice for the <i>extremes</i>.`);
 }
 
 // ---------- dashboard charts ----------
@@ -451,9 +481,8 @@ function drawPowerChart() {
     kpi('Battery round trip', '92%') +
     kpi('Power price', `€${G.price.toFixed(0)}/MWh <span class="dim small">${G.marketLive ? `dynamic since day ${MARKET.liveDay}` : `flat until day ${MARKET.liveDay}`}</span>`) +
     kpi('Carbon price', `€${G.carbonPrice}/t <span class="dim small">▲ €${CARBON.perDay}/day</span>`) +
-    kpi('CO₂ emitted (gas)', G.co2EmittedTons.toFixed(0) + ' t') +
-    kpi('CO₂ avoided', G.co2SavedTons.toFixed(0) + ' t') +
     (G.gasCostToday > 0 ? kpi('Gas cost today', fmtMoney(-G.gasCostToday)) : '');
+  // emitted/avoided CO₂ moved into the 🌡 Climate box below (ADR 24)
 }
 const kpi = (n, v) => `<div class="kpi"><div class="kpi-v">${v}</div><div class="kpi-n">${n}</div></div>`;
 

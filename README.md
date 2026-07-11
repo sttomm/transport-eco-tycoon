@@ -98,9 +98,14 @@ dashboard chart — discharging storage into scarce hours now earns real money,
 so storage arbitrage becomes the business model.
 
 The weather brings real phenomena: multi-day **Dunkelflaute** (dark calm) events
-that batteries can't bridge, and storms that force turbine cut-outs. Fronts
+that batteries can't bridge, storms that force turbine cut-outs, and summer
+**heatwaves** — stagnant heat domes where air conditioning pushes city demand
++30% while turbines idle (solar, at least, shines on). Fronts
 announce themselves 10–14 h ahead in the dashboard **weather forecast** and a
-warning banner — enough time to charge everything, never enough to escape. The
+warning banner — enough time to charge everything, never enough to escape.
+And the climate feeds back: every tonne of CO₂ your gas plant emits loads the
+weather dice, multiplying storm and heatwave risk up to 2× (watch the 🌡
+Climate box on the dashboard) — burn fossil, get worse weather. The
 **Energy Advisor** explains each concept (duck curve, curtailment, flexible
 demand, …) the moment it first happens to you, and the 📚 tab has a small
 encyclopedia.
