@@ -452,6 +452,24 @@ Imports do **not** break the fossil-free-week streak (that quest is about the
 player's own plant) — but the CO₂ ledger and the ADR 24 climate feedback see
 them, so "fossil-free by import" is visibly not emissions-free.
 
+### 26. H₂ offtake: hydrogen becomes a product (sector coupling)
+**Decision:** a buildable **E-Fuel Refinery** sells up to 4 MW (chemical) of
+grid hydrogen into offtake contracts at €95/MWh — but only the amount above a
+**40 % tank reserve**, which is never sold (`data.js` H2OFFTAKE,
+`energy.js#tickGrid` after dispatch). Sales are chemical, not electrical: they
+never appear in the merit order or set the power price. Each sold MWh credits
+0.25 t *avoided* CO₂ (e-fuel displaces fossil kerosene/diesel downstream). A
+new energy quest ("🛢 Hydrogen economy", 300 MWh sold) follows the H₂-reserve
+quest.
+**Why:** with only the fuel cell as H₂ sink, overbuilt electrolyzers were dead
+capital outside Dunkelflauten; an offtake contract makes routine surplus →
+molecules a business — the real sector-coupling story. The price is pinned
+between the €25 surplus power value and a scarcity fuel-cell discharge
+(0.58 × €240 ≈ €139/MWh chemical), so selling routine surplus pays while
+hoarding for emergencies pays better; the hard reserve keeps the teaching
+invariant that a Dunkelflaute must remain survivable — the game never lets
+the player's insurance be quietly sold out from under the fuel cells.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

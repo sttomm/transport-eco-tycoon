@@ -79,6 +79,7 @@ All numbers are anchored to real-world magnitudes:
 | H₂ tank + fuel cell | 150 MWh storage, 58% → 64% reconversion | ~39% round trip, but cheap per stored MWh → seasonal storage |
 | Green steel works | 13 MW + grid H₂ for +50% output | H₂-DRI + EAF ≈ 3.5 MWh/t (HYBRIT, Stegra) |
 | Interconnector | 12 MW import link, €95/MWh + neighbour-mix CO₂; throttled to 30% at €220 during region-wide events | HVDC interconnection helps — but Dunkelflauten are continental, everyone is short at once |
+| E-Fuel Refinery | sells H₂ at €95/MWh above a hard 40% tank reserve | sector coupling: green H₂ offtake deals (€3–6/kg) turn surplus power into molecules |
 
 **The fossil bridge:** every new game inherits one 30 MW **legacy gas plant**.
 It jumps in when your storage runs dry and keeps the early game alive — but a

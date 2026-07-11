@@ -1,5 +1,5 @@
 import { G, emit, hourOfDay, season } from './state.js';
-import { BUILDINGS, CARBON, CLIMATE, FORECAST, INTERCONNECT, MARKET } from './data.js';
+import { BUILDINGS, CARBON, CLIMATE, FORECAST, H2OFFTAKE, INTERCONNECT, MARKET } from './data.js';
 
 // Flat electricity tariff per MWh served — the price until the Smart Market
 // goes live on day MARKET.liveDay; after that G.price is set dynamically each
@@ -285,6 +285,27 @@ export function tickGrid(gameHours) {
   G.batteryMWh = Math.min(G.batteryMWh, G.batteryCapMWh);
   G.h2MWh = Math.min(G.h2MWh, G.h2CapMWh);
 
+  // --- H₂ offtake (ADR 26): the e-fuel refinery sells hydrogen above the
+  // strategic tank reserve — the Dunkelflaute insurance is never for sale.
+  // Chemical sales, not grid dispatch: they never touch the electricity price.
+  let offMW = 0;
+  if (G.offtakeCapMW > 0 && gameHours > 0) {
+    const reserve = G.h2CapMWh * H2OFFTAKE.reserveFrac;
+    offMW = Math.min(G.offtakeCapMW, Math.max(0, (G.h2MWh - reserve) / gameHours));
+    if (offMW > 0.01) {
+      G.h2MWh -= offMW * gameHours;
+      const rev = offMW * gameHours * H2OFFTAKE.pricePerMWh;
+      G.money += rev;
+      G.incomeEnergyToday += rev;
+      G.h2SoldMWhToday += offMW * gameHours;
+      G.h2SoldMWh += offMW * gameHours;
+      // e-fuels displace fossil kerosene/diesel downstream — avoided CO₂
+      G.co2SavedTons += offMW * gameHours * H2OFFTAKE.co2PerMWh;
+      emit('tip', 'firstOfftake');
+    } else offMW = 0;
+  }
+  G.h2OfftakeMW = offMW;
+
   const servedMW = inflex - unservedMW;
   G.servedFraction = inflex > 0.01 ? servedMW / inflex : 1;
   G.blackout = G.servedFraction < 0.97;
@@ -363,6 +384,7 @@ export function rollFossilFreeDay() {
   // climate dice still see imports)
   G.importMWhToday = 0;
   G.importCostToday = 0;
+  G.h2SoldMWhToday = 0;
 }
 
 export function dailyUpkeep() {

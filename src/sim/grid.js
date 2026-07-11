@@ -225,6 +225,7 @@ export function place(toolId, i, j) {
     if (def.elecMW) G.elecCapMW += def.elecMW;
     if (def.fcMW) G.fcCapMW += def.fcMW;
     if (def.importMW) G.importCapMW += def.importMW;
+    if (def.offtakeMW) G.offtakeCapMW += def.offtakeMW;
     emit('placed', ref);
     emit('plantBuilt', ref);
   } else {
@@ -269,6 +270,7 @@ export function bulldoze(i, j) {
       if (d.elecMW) G.elecCapMW -= d.elecMW;
       if (d.fcMW) G.fcCapMW -= d.fcMW;
       if (d.importMW) G.importCapMW -= d.importMW;
+      if (d.offtakeMW) G.offtakeCapMW -= d.offtakeMW;
     } else {
       G.stations = G.stations.filter(s => s !== occ);
       G.routes.forEach(r => r.stops = r.stops.filter(s => s !== occ));

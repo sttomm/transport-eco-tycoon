@@ -130,6 +130,14 @@ test('interconnector registers import capacity on place, deregisters on bulldoze
   assert.equal(G.importCapMW, 0);
 });
 
+test('e-fuel refinery registers offtake capacity on place, deregisters on bulldoze (ADR 26)', () => {
+  const [i, j] = findSpot('efuel');
+  place('efuel', i, j);
+  assert.equal(G.offtakeCapMW, 4);
+  bulldoze(i, j);
+  assert.equal(G.offtakeCapMW, 0);
+});
+
 test('LFP research multiplies capacity of batteries placed afterwards', () => {
   G.mult.batteryCap = 1.35;
   const [i, j] = findSpot('battery');

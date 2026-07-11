@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, resetState } from '../src/sim/state.js';
 import { solarFactor, windFactor, tickGrid, dailyUpkeep, rollFossilFreeDay, cityDemandCurve, POWER_PRICE } from '../src/sim/energy.js';
-import { BUILDINGS, CARBON, INTERCONNECT, MARKET } from '../src/sim/data.js';
+import { BUILDINGS, CARBON, H2OFFTAKE, INTERCONNECT, MARKET } from '../src/sim/data.js';
 
 // energy tests run on an empty world: no cities/industries unless we add them
 beforeEach(() => resetState());
@@ -180,6 +180,36 @@ test('INVARIANT: gas margin is negative once carbonPrice > €35/t — fossil ne
   assert.ok(CARBON.start + 2 * CARBON.perDay > (POWER_PRICE - d.fuelPerMWh) / d.co2PerMWh);
 });
 
+// ---- H₂ offtake (ADR 26) --------------------------------------------------
+// the e-fuel refinery sells hydrogen ONLY above the strategic tank reserve
+
+test('H₂ offtake sells above the reserve at the contract price, avoided CO₂ credited', () => {
+  G.minutes = MIDNIGHT; G.wind = 0; // grid idle — pure chemical sale
+  G.h2CapMWh = 100; G.h2MWh = 60; G.offtakeCapMW = 4;
+  const before = G.money;
+  tickGrid(1);
+  assert.ok(Math.abs(G.h2OfftakeMW - 4) < 1e-6, 'sells at full offtake capacity');
+  assert.ok(Math.abs(G.h2MWh - 56) < 1e-6);
+  assert.ok(Math.abs(G.money - before - 4 * H2OFFTAKE.pricePerMWh) < 1e-6);
+  assert.ok(Math.abs(G.h2SoldMWhToday - 4) < 1e-6);
+  assert.ok(Math.abs(G.h2SoldMWh - 4) < 1e-6);
+  assert.ok(Math.abs(G.co2SavedTons - 4 * H2OFFTAKE.co2PerMWh) < 1e-6, 'displaced fossil fuel is avoided CO₂');
+});
+
+test('H₂ offtake never touches the reserve — the flaute insurance stays', () => {
+  G.minutes = MIDNIGHT; G.wind = 0;
+  G.h2CapMWh = 100; G.offtakeCapMW = 4;
+  // just above the 40-MWh reserve: only the excess sells (rate-limited by it)
+  G.h2MWh = 41.5;
+  tickGrid(1);
+  assert.ok(Math.abs(G.h2OfftakeMW - 1.5) < 1e-6, 'sells only down to the reserve');
+  assert.ok(Math.abs(G.h2MWh - 40) < 1e-6);
+  // at the reserve: sales pause entirely
+  tickGrid(1);
+  assert.equal(G.h2OfftakeMW, 0);
+  assert.ok(Math.abs(G.h2MWh - 40) < 1e-6);
+});
+
 // ---- grid-import interconnector (ADR 25) ---------------------------------
 // merit order gains a step: battery → fuel cell → IMPORT → gas → blackout
 
@@ -262,6 +292,11 @@ test('fossil-free streak: zero-gas days count up, any gas use resets it', () => 
   assert.equal(G.fossilFreeDays, 2, 'imports do not break the fossil-free streak');
   assert.equal(G.importMWhToday, 0, 'daily import counters reset');
   assert.equal(G.importCostToday, 0);
+  // H₂ sales roll daily too (lifetime counter untouched)
+  G.h2SoldMWhToday = 12; G.h2SoldMWh = 40;
+  rollFossilFreeDay();
+  assert.equal(G.h2SoldMWhToday, 0);
+  assert.equal(G.h2SoldMWh, 40);
 });
 
 test('dailyUpkeep bills plants and vehicles', () => {

@@ -36,6 +36,7 @@ export function snapshot() {
     carbonPrice: G.carbonPrice, co2Emitted: G.co2EmittedTons,
     gasMWhToday: G.gasMWhToday, gasCostToday: G.gasCostToday,
     importMWhToday: G.importMWhToday, importCostToday: G.importCostToday,
+    h2SoldMWh: G.h2SoldMWh, h2SoldMWhToday: G.h2SoldMWhToday,
     fossilFreeDays: G.fossilFreeDays, gasDecommissioned: G.gasDecommissioned,
     reports: G.reports,
     wind: G.wind, cloud: G.cloud, dunkelflaute: G.dunkelflaute,
@@ -82,6 +83,8 @@ export function restore(d) {
   G.gasCostToday = d.gasCostToday || 0;
   G.importMWhToday = d.importMWhToday || 0;
   G.importCostToday = d.importCostToday || 0;
+  G.h2SoldMWh = d.h2SoldMWh || 0;
+  G.h2SoldMWhToday = d.h2SoldMWhToday || 0;
   G.fossilFreeDays = d.fossilFreeDays || 0;
   G.gasDecommissioned = !!d.gasDecommissioned;
   if (d.reports) G.reports = d.reports;

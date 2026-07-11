@@ -260,6 +260,15 @@ export function buildPlantMesh(type) {
     smoke.visible = false;
     g.add(smoke);
     g.userData.smoke = smoke;
+  } else if (type === 'efuel') {
+    // e-fuel refinery: synthesis columns, pipe rack, horizontal product tank
+    const colM = M('#c8ccd0', { metalness: 0.55, roughness: 0.3 });
+    for (const [x, h] of [[-1.6, 3.6], [-0.4, 4.2], [0.8, 3.2]]) g.add(cyl(0.55, h, colM, x, 0, -0.8));
+    g.add(box(3.2, 0.16, 0.16, M('#9aa1a7', { metalness: 0.5 }), -0.4, 2.7, -0.8)); // pipe rack
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 2.4, 14), M('#d8b84a', { metalness: 0.35, roughness: 0.5 }));
+    tank.rotation.z = Math.PI / 2; tank.position.set(1.4, 1.0, 1.6); tank.castShadow = true;
+    g.add(tank);                                                          // e-fuel product tank
+    g.add(box(2.2, 1.4, 1.4, M('#dde2e6'), -1.6, 0, 1.8));               // control building
   } else if (type === 'interconnector') {
     // HVDC converter station: valve hall, transformer yard, terminal pylon
     const hall = Mtex(makeStripeTexture('#aeb6be', '#9ca4ac', 20), { metalness: 0.3, roughness: 0.5 });

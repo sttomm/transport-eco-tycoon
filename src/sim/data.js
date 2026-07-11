@@ -62,6 +62,10 @@ export const BUILDINGS = {
     name: 'Fuel Cell Plant', icon: '♻️', cost: 52000, upkeep: 130, footprint: 2, category: 'storage', fcMW: 5,
     desc: '5 MW fuel-cell plant. Converts stored hydrogen back to power (~58% efficient). Your insurance for dark, windless weeks.',
   },
+  efuel: {
+    name: 'E-Fuel Refinery', icon: '🛢', cost: 70000, upkeep: 150, footprint: 2, category: 'storage', offtakeMW: 4,
+    desc: 'Sells up to 4 MW of your hydrogen into e-fuel contracts at €95/MWh — but only above a 40% tank reserve: your Dunkelflaute insurance is never for sale. Surplus power → H₂ → product: sector coupling.',
+  },
   gas: {
     // legacy: true → hidden from the build palette. Every new game inherits
     // exactly ONE of these (placed in main.js); players can never build more
@@ -139,6 +143,18 @@ export const INTERCONNECT = {
   eventCapFactor: 0.3, // fraction of link capacity available during such events
   co2PerMWh: 0.25,     // t CO₂/MWh — the neighbour's average (part-fossil) mix
   markup: 10,          // Smart Market: importing sets the price at cost + markup
+};
+
+// H₂ offtake (ADR 26): the e-fuel refinery sells grid hydrogen on long-term
+// contracts — but only the amount above a strategic tank reserve, so the
+// Dunkelflaute insurance is never sold out from under the fuel cells. The
+// €95/MWh chemical price sits deliberately between the value of surplus power
+// (€25 glut) and a scarcity fuel-cell discharge (0.58 × €240 ≈ €139/MWh):
+// selling routine surplus pays, hoarding for emergencies pays better.
+export const H2OFFTAKE = {
+  pricePerMWh: 95,   // €/MWh chemical (LHV) ≈ €3.2/kg — real green-H₂ offtake deals run €3-6/kg
+  reserveFrac: 0.4,  // fraction of tank capacity that is never sold
+  co2PerMWh: 0.25,   // t CO₂ avoided downstream per MWh chemical (e-fuel displaces fossil kerosene/diesel)
 };
 
 export const VEHICLES = {
@@ -273,6 +289,10 @@ export const TIPS = {
   firstGas: {
     title: 'Your legacy plant jumped in',
     text: 'Storage ran dry, so the inherited gas plant is covering the gap. Right now that\'s roughly break-even: ~€70/MWh fuel + 0.45 t CO₂ × the carbon price vs the €85/MWh you bill. But the carbon price rises €3 every day — soon every gas MWh is a loss. Real utilities face exactly this squeeze; build enough storage to stop needing it.',
+  },
+  firstOfftake: {
+    title: 'Hydrogen is now a product',
+    text: 'Your refinery just sold hydrogen into an e-fuel contract at €95/MWh. This is sector coupling: surplus wind and solar become molecules for ships, planes and chemistry — real projects sign exactly such offtake deals (≈€3–5/kg green H₂). Note the guard rail: it only sells above a 40% tank reserve, because selling your Dunkelflaute insurance would be a very expensive mistake. Every MWh sold displaces fossil fuel downstream and counts on your avoided-CO₂ ledger.',
   },
   firstImport: {
     title: 'Importing power',

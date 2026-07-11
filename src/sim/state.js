@@ -55,6 +55,10 @@ function initialState() {
     batteryMWh: 0, batteryCapMWh: 0, batteryRateMW: 0,
     h2MWh: 0, h2CapMWh: 0, elecCapMW: 0, fcCapMW: 0,
     importCapMW: 0,           // interconnector link capacity (ADR 25)
+    offtakeCapMW: 0,          // e-fuel refinery H₂ offtake capacity (ADR 26)
+    h2OfftakeMW: 0,           // live H₂ sales rate (MW chemical)
+    h2SoldMWh: 0,             // lifetime H₂ sold (quest)
+    h2SoldMWhToday: 0,        // today's H₂ sales (report card)
     curtailedTodayMWh: 0,
     blackoutHoursToday: 0,    // daily-report counters, owned by sim/reports.js
     flauteHoursToday: 0, stormHoursToday: 0, heatHoursToday: 0,

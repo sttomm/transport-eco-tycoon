@@ -86,6 +86,11 @@ export const QUESTS = [
     value: () => G.h2MWh, fmt: MWh,
   },
   {
+    id: 'h2Export', where: plants('efuel'), req: 'h2Reserve', title: '🛢 Hydrogen economy', target: 300, reward: 45000,
+    desc: 'Hydrogen isn\'t just storage — it\'s a product. Build an E-Fuel Refinery and sell 300 MWh of hydrogen into e-fuel contracts. It only sells above a 40% tank reserve, so your Dunkelflaute stash stays untouched.',
+    value: () => G.h2SoldMWh, fmt: MWh,
+  },
+  {
     id: 'researchOne', req: 'storagePlay', title: '🔬 Fund the lab', target: 1, reward: 20000,
     desc: 'Complete any research project (🔬 tab). Real-world solar got ~90% cheaper in a decade — research pays compound interest.',
     value: () => Object.keys(G.techs).length,

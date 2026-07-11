@@ -36,6 +36,21 @@ tandem (+30%) for solar; taller towers (+22%) and longer blades (+20%) for wind.
 and hydrogen for rare multi-day gaps. The game's weather makes the player
 discover this.
 
+### H₂ offtake (E-Fuel Refinery, ADR 26)
+
+| Number | Game | Anchor |
+|---|---|---|
+| Offtake rate | 4 MW chemical per refinery | e-fuel synthesis trains are tens of MW; scaled to the region |
+| Price | €95/MWh chemical ≈ €3.2/kg (`data.js` H2OFFTAKE) | real green-H₂ offtake deals run €3–6/kg |
+| Reserve | 40% of tank capacity is **never sold** | firm-capacity operators hold strategic reserves; the game hard-codes it so the Dunkelflaute insurance can't be sold off |
+| CO₂ | +0.25 t *avoided* per MWh sold | e-fuel displaces fossil kerosene/diesel (~0.26 t/MWh fuel) |
+
+Sales are chemical — they never enter the electricity merit order or the
+price. Economics by design: surplus power at €25 → H₂ at 68% costs ~€37/MWh
+chemical → selling at €95 pays; but a scarcity fuel-cell discharge is worth
+0.58 × €240 ≈ €139/MWh chemical, so the reserve is also the more *valuable*
+use. Selling routine surplus pays, hoarding for emergencies pays better.
+
 ## Weather
 
 - Wind & cloud are mean-reverting random walks (per-hour drift + noise).

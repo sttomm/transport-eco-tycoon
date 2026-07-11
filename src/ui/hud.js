@@ -2,7 +2,7 @@
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
-import { BUILDINGS, CARBON, CLIMATE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { BUILDINGS, CARBON, CLIMATE, H2OFFTAKE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas } from '../sim/grid.js';
 import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
@@ -259,6 +259,7 @@ function renderYesterday() {
     ${reportRow('<span class="dim">— fixed costs</span>', `<span class="dim small">upkeep ${fmtMoney(r.upkeep)}${r.loanInterest > 0 ? ' · interest ' + fmtMoney(r.loanInterest) : ''}</span>`)}
     ${r.gasMWh > 0.05 ? reportRow('<span class="dim">— gas</span>', `<span class="dim small">${r.gasMWh.toFixed(0)} MWh · ${fmtMoney(r.gasCost)}</span>`) : ''}
     ${(r.importMWh || 0) > 0.05 ? reportRow('<span class="dim">— imports</span>', `<span class="dim small">${r.importMWh.toFixed(0)} MWh · ${fmtMoney(r.importCost)}</span>`) : ''}
+    ${(r.h2SoldMWh || 0) > 0.05 ? reportRow('<span class="dim">— H₂ sold</span>', `<span class="dim small">${r.h2SoldMWh.toFixed(0)} MWh · ${fmtMoney(r.h2SoldMWh * H2OFFTAKE.pricePerMWh)}</span>`) : ''}
     <div class="report-advice small">${reportAdvice(r)}</div>`;
 }
 
@@ -483,7 +484,8 @@ function drawPowerChart() {
     kpi('Battery round trip', '92%') +
     kpi('Power price', `€${G.price.toFixed(0)}/MWh <span class="dim small">${G.marketLive ? `dynamic since day ${MARKET.liveDay}` : `flat until day ${MARKET.liveDay}`}</span>`) +
     kpi('Carbon price', `€${G.carbonPrice}/t <span class="dim small">▲ €${CARBON.perDay}/day</span>`) +
-    (G.gasCostToday > 0 ? kpi('Gas cost today', fmtMoney(-G.gasCostToday)) : '');
+    (G.gasCostToday > 0 ? kpi('Gas cost today', fmtMoney(-G.gasCostToday)) : '') +
+    (G.h2SoldMWhToday > 0.05 ? kpi('H₂ sold today', `${G.h2SoldMWhToday.toFixed(0)} MWh <span class="dim small">${fmtMoney(G.h2SoldMWhToday * H2OFFTAKE.pricePerMWh)}</span>`) : '');
   // emitted/avoided CO₂ moved into the 🌡 Climate box below (ADR 24)
 }
 const kpi = (n, v) => `<div class="kpi"><div class="kpi-v">${v}</div><div class="kpi-n">${n}</div></div>`;
@@ -972,6 +974,12 @@ function renderInfobox() {
         <div class="small dim">Today: ${G.gasMWhToday.toFixed(1)} MWh burned · ${fmtMoney(G.gasCostToday)} cost · fossil-free streak ${G.fossilFreeDays} days</div>
         <button id="decomgas" class="big" style="margin-top:5px">🌱 Decommission — collect ${fmtMoney(CARBON.exitGrant)} exit grant</button>
         <div class="small dim">Irreversible: no fossil backstop afterwards — deficits your storage can't cover become blackouts.</div>`;
+    }
+    if (s.type === 'efuel') {
+      const reserve = G.h2CapMWh * H2OFFTAKE.reserveFrac;
+      const above = Math.max(0, G.h2MWh - reserve);
+      html += `<div class="small" style="margin-top:4px">Selling <b>${(G.h2OfftakeMW || 0).toFixed(1)} / ${G.offtakeCapMW.toFixed(1)} MW</b> @ €${H2OFFTAKE.pricePerMWh}/MWh${above > 0.5 ? '' : ' <span class="warn">— tank at the reserve, sales paused</span>'}</div>
+        <div class="small dim">Reserve (never sold): ${reserve.toFixed(0)} MWh · today ${G.h2SoldMWhToday.toFixed(1)} MWh sold · ${fmtMoney(G.h2SoldMWhToday * H2OFFTAKE.pricePerMWh)}</div>`;
     }
     if (s.type === 'interconnector') {
       const event = G.dunkelflaute > 0 || G.heatwave > 0;
