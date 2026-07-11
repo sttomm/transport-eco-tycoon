@@ -11,6 +11,7 @@
 // heatHoursToday).
 import { G, emit } from './state.js';
 import { LOAN_RATE } from './loans.js';
+import { vehicleUpkeep } from './transport.js';
 
 export const REPORT_KEEP = 7;
 
@@ -33,7 +34,7 @@ export function closeDay() {
   // upkeep is booked into the NEW day right after the rollover)
   let upkeep = 0;
   for (const p of G.plants) upkeep += p.def.upkeep || 0;
-  for (const v of G.vehicles) upkeep += v.def.upkeep || 0;
+  for (const v of G.vehicles) upkeep += vehicleUpkeep(v); // age-ramped (ADR 27)
   const f = G.finance.today;
   const report = {
     day: G.day,

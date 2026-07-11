@@ -3,8 +3,8 @@
 // Pure logic — vehicle/wagon meshes and overlays live in src/render/, driven
 // by the events emitted here ('vehicleBought', 'wagonAdded', 'vehicleSold',
 // 'moneyFx').
-import { G, emit, hourOfDay } from './state.js';
-import { VEHICLES, WAGONS, CARGO } from './data.js';
+import { G, emit, hourOfDay, spend, fmtMoney } from './state.js';
+import { AGING, VEHICLES, WAGONS, CARGO } from './data.js';
 import { tile, isRoad, isRail, worldXZ } from './grid.js';
 import { contractDelivery } from './contracts.js';
 
@@ -224,7 +224,7 @@ export function buyVehicle(route, kind, opts = {}) {
     def, kind, route, stopIndex: 0, state: 'travel',
     i: road[0], j: road[1], path: null, pathPos: 0, prog: 0,
     battery: def.batteryKWh, cargo: {}, charging: false, waitTimer: 0,
-    wagons: [],
+    wagons: [], ageDays: 0,
   };
   route.vehicles.push(v);
   G.vehicles.push(v);
@@ -245,6 +245,49 @@ export function sellVehicle(v) {
   G.vehicles = G.vehicles.filter(x => x !== v);
   G.money += v.def.cost * 0.4;
   emit('vehicleSold', v);
+}
+
+// ---------- aging & fleet renewal (ADR 27) ----------
+// vehicles accrue calendar age in tickVehicles; past the grace period upkeep
+// ramps (vehicleUpkeep, billed by energy.js dailyUpkeep) and EV packs lose
+// usable capacity (effectiveBatteryKWh). Replacement resets the clock.
+const agePast = v => Math.max(0, (v.ageDays || 0) - AGING.graceDays);
+
+export function vehicleUpkeep(v) {
+  return (v.def.upkeep || 0) * Math.min(AGING.maxUpkeepMult, 1 + agePast(v) * AGING.upkeepPerDay);
+}
+
+export function effectiveBatteryKWh(v) {
+  if (!v.def.batteryKWh) return 0;
+  return v.def.batteryKWh * (1 - Math.min(AGING.battWearMax, agePast(v) * AGING.battWearPerDay));
+}
+
+// trade in the old vehicle for a factory-fresh one (same kind, wagons stay)
+export function replaceVehicle(v) {
+  if (!spend(v.def.cost * AGING.replaceFrac)) return false;
+  v.ageDays = 0;
+  v.battery = v.def.batteryKWh;
+  emit('vehicleReplaced', v);
+  return true;
+}
+
+// day-rollover hook (main.js): renew opted-in routes' aged vehicles
+export function autoReplaceFleet() {
+  let count = 0, cost = 0;
+  for (const r of G.routes) {
+    if (!r.autoReplace) continue;
+    for (const v of r.vehicles) {
+      if ((v.ageDays || 0) >= AGING.autoAtDays && replaceVehicle(v)) {
+        count++;
+        cost += v.def.cost * AGING.replaceFrac;
+      }
+    }
+  }
+  if (count) emit('toast', {
+    title: '🔧 Fleet renewal',
+    text: `${count} aged vehicle${count > 1 ? 's' : ''} auto-replaced overnight for ${fmtMoney(cost)} — fresh packs, base upkeep.`,
+  });
+  return count;
 }
 
 function payDelivery(v, cargoId, amount, dist) {
@@ -276,6 +319,9 @@ export function tickVehicles(dt, gameHours) {
   for (const v of G.vehicles) {
     const m = G.mult;
     const isTrain = v.kind === 'train';
+    // calendar aging (ADR 27) — the advisor tip is one-shot in the UI
+    v.ageDays = (v.ageDays || 0) + gameHours / 24;
+    if (v.ageDays > AGING.graceDays) emit('tip', 'vehicleAging');
     if (v.state === 'travel') {
       v.charging = false;
       if (!v.path) {
@@ -306,15 +352,17 @@ export function tickVehicles(dt, gameHours) {
       }
     } else if (v.state === 'loading') {
       // charge from the grid while loading (this demand hits the grid!)
-      // gate only on real blackouts — a slightly strained grid still charges
-      v.charging = !isTrain && v.battery < v.def.batteryKWh && G.servedFraction > 0.85;
+      // gate only on real blackouts — a slightly strained grid still charges.
+      // an aged pack holds less (ADR 27), so old vehicles run shorter legs
+      const packKWh = effectiveBatteryKWh(v);
+      v.charging = !isTrain && v.battery < packKWh && G.servedFraction > 0.85;
       if (v.charging) {
-        v.battery = Math.min(v.def.batteryKWh, v.battery + v.def.chargeMW * m.chargeRate * 1000 * gameHours);
+        v.battery = Math.min(packKWh, v.battery + v.def.chargeMW * m.chargeRate * 1000 * gameHours);
         emit('tip', 'chargingLoad');
       }
       v.waitTimer += gameHours;
       // trains don't charge — they just load and go
-      const charged = isTrain ? v.waitTimer > 0.6 : v.battery > v.def.batteryKWh * 0.85;
+      const charged = isTrain ? v.waitTimer > 0.6 : v.battery > packKWh * 0.85;
       if (v.waitTimer > 0.5 && (charged || v.waitTimer > 3)) {
         v.stopIndex = (v.stopIndex + 1) % v.route.stops.length;
         v.state = 'travel';
@@ -323,7 +371,7 @@ export function tickVehicles(dt, gameHours) {
     } else if (v.state === 'stranded') {
       // a service van tops it up slowly
       v.battery += 40 * gameHours;
-      if (v.battery > v.def.batteryKWh * 0.25) { v.state = 'travel'; v.path = null; }
+      if (v.battery > effectiveBatteryKWh(v) * 0.25) { v.state = 'travel'; v.path = null; }
     } else if (v.state === 'wait') {
       if (v.route.stops.length >= 2) { v.state = 'travel'; v.path = null; }
     }

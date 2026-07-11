@@ -57,6 +57,12 @@ sentence on the biggest issue (blackouts > gas losses > weather > curtailment).
 The 📊 dashboard keeps a "Yesterday" block with the full breakdown; the last
 7 days are stored in the save.
 
+**Fleet aging:** vehicles are cheap to run while young; past ~10 days of
+service their upkeep creeps up (to 3× at worst) and EV packs lose usable
+capacity (down to 65% — shorter legs, longer charging stops). Replace a
+clunker for 75% of list price (🔧 in the Routes tab) or tick **auto-replace**
+on a route and the depot renews aged vehicles overnight.
+
 **Bank loans (📊 tab → Finances):** borrow up to €500k in €50k steps at
 **1% interest per game day**, repay whenever you have the cash. Renewables are
 capital-intensive — all the cost is upfront and the fuel is free — so cheap

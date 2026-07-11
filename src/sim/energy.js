@@ -1,5 +1,6 @@
 import { G, emit, hourOfDay, season } from './state.js';
 import { BUILDINGS, CARBON, CLIMATE, FORECAST, H2OFFTAKE, INTERCONNECT, MARKET } from './data.js';
+import { vehicleUpkeep } from './transport.js';
 
 // Flat electricity tariff per MWh served — the price until the Smart Market
 // goes live on day MARKET.liveDay; after that G.price is set dynamically each
@@ -390,7 +391,7 @@ export function rollFossilFreeDay() {
 export function dailyUpkeep() {
   let cost = 0;
   for (const p of G.plants) cost += p.def.upkeep || 0;
-  for (const v of G.vehicles) cost += v.def.upkeep || 0;
+  for (const v of G.vehicles) cost += vehicleUpkeep(v); // age-ramped (ADR 27)
   G.money -= cost;
   G.expensesToday += cost;
   return cost;

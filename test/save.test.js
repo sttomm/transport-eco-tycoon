@@ -127,6 +127,42 @@ test('restore rejects unknown versions', () => {
   assert.equal(restore({ v: 99 }), false);
 });
 
+test('v4 round-trips vehicle age and route auto-replace; v3 saves grandfather in fresh', () => {
+  freshWorld();
+  buildRoad(2, J, 20, J);
+  const a = place('truckStop', 4, J - 1);
+  const b = place('truckStop', 16, J - 1);
+  const r = createRoute();
+  r.stops.push(a, b);
+  r.autoReplace = true;
+  const v = buyVehicle(r, 'truck');
+  v.ageDays = 17.5;
+  G.importMWhToday = 6; G.importCostToday = 570;
+  G.h2SoldMWh = 220; G.h2SoldMWhToday = 14;
+
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.equal(G.routes[0].autoReplace, true);
+  assert.equal(G.routes[0].vehicles[0].ageDays, 17.5);
+  assert.equal(G.importMWhToday, 6);
+  assert.equal(G.importCostToday, 570);
+  assert.equal(G.h2SoldMWh, 220);
+  assert.equal(G.h2SoldMWhToday, 14);
+
+  // a v3-era save has none of these fields → safe defaults, age 0
+  delete snap.routes[0].autoReplace;
+  delete snap.routes[0].vehicles[0].age;
+  delete snap.importMWhToday; delete snap.importCostToday;
+  delete snap.h2SoldMWh; delete snap.h2SoldMWhToday;
+  snap.v = 3;
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.equal(G.routes[0].autoReplace, false);
+  assert.equal(G.routes[0].vehicles[0].ageDays, 0, 'pre-aging vehicles grandfather in fresh');
+  assert.equal(G.h2SoldMWh, 0);
+});
+
 test('v3 round-trips the energy-transition fields', () => {
   freshWorld();
   G.carbonPrice = 54;
@@ -138,7 +174,7 @@ test('v3 round-trips the energy-transition fields', () => {
   G.reports = [{ day: 4, energyIncome: 1000 }];
 
   const snap = JSON.parse(JSON.stringify(snapshot()));
-  assert.equal(snap.v, 3);
+  assert.equal(snap.v, 4);
   assert.ok(!('forecast' in snap), 'forecast is derived — never saved, rebuilt by updateWeather after load');
 
   freshWorld();

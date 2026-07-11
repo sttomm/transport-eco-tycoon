@@ -14,6 +14,9 @@ import { createRoute, buyVehicle, addWagon } from './transport.js';
 // reports). Same world seed, so v2 saves still restore — they just load
 // without a gas plant (it is only placed for new games) and get the new
 // fields' defaults.
+// v4: backlog round (interconnector/offtake counters, vehicle ageDays,
+// per-route autoReplace). v2/v3 saves still restore with the defaults —
+// existing vehicles are grandfathered in at age 0.
 const KEY = 'transport-eco-tycoon-save-v2';
 const storage = () => (typeof localStorage === 'undefined' ? null : localStorage);
 
@@ -30,7 +33,7 @@ export function clearSave() {
 export function snapshot() {
   const stIx = st => G.stations.indexOf(st);
   return {
-    v: 3,
+    v: 4,
     minutes: G.minutes, day: G.day, money: G.money, co2: G.co2SavedTons,
     loan: G.loan, contracts: G.contracts, // contracts hold only indices → plain JSON
     carbonPrice: G.carbonPrice, co2Emitted: G.co2EmittedTons,
@@ -60,9 +63,11 @@ export function snapshot() {
     })),
     routes: G.routes.map(r => ({
       name: r.name, stops: r.stops.map(stIx), cargoCarried: r.cargoCarried || {},
+      autoReplace: r.autoReplace || false,
       vehicles: r.vehicles.map(v => ({
         kind: v.kind, battery: v.battery, cargo: v.cargo,
         stopIndex: v.stopIndex, wagons: v.wagons.map(w => w.type),
+        age: v.ageDays || 0,
       })),
     })),
   };
@@ -70,7 +75,7 @@ export function snapshot() {
 
 // apply a snapshot onto a freshly generated world; returns true on success
 export function restore(d) {
-  if (!d || (d.v !== 2 && d.v !== 3)) return false;
+  if (!d || (d.v !== 2 && d.v !== 3 && d.v !== 4)) return false;
 
   G.minutes = d.minutes; G.day = d.day; G.money = d.money;
   G.co2SavedTons = d.co2 || 0;
@@ -134,6 +139,7 @@ export function restore(d) {
     r.name = rd.name;
     r.stops = rd.stops.map(ix => placed[ix]).filter(Boolean);
     r.cargoCarried = rd.cargoCarried || {}; // pre-routeKind saves: rebuilt on next delivery
+    r.autoReplace = !!rd.autoReplace;
     for (const vd of rd.vehicles || []) {
       // skipKindCheck grandfathers vehicles whose kind no longer matches the
       // route's derived kind — validation applies to new purchases only
@@ -142,6 +148,7 @@ export function restore(d) {
       v.battery = vd.battery;
       v.cargo = vd.cargo || {};
       v.stopIndex = Math.min(vd.stopIndex || 0, Math.max(0, r.stops.length - 1));
+      v.ageDays = vd.age || 0; // pre-aging saves: everything starts fresh
       for (const w of vd.wagons || []) addWagon(v, w);
     }
   }

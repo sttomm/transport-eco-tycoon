@@ -2,9 +2,9 @@
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
-import { BUILDINGS, CARBON, CLIMATE, H2OFFTAKE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { AGING, BUILDINGS, CARBON, CLIMATE, H2OFFTAKE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas } from '../sim/grid.js';
-import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND } from '../sim/transport.js';
+import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
 import { solarFactor, climateRiskMult, POWER_PRICE } from '../sim/energy.js';
@@ -751,7 +751,9 @@ function routeCard(r) {
     <div class="small">${stops}</div>
     <div class="route-veh">
       ${kinds.map(k => `<button data-a="${k}">+ ${VEHICLES[k].icon} ${fmtMoney(VEHICLES[k].cost)}</button>`).join('')}
-    </div><div class="vehlist" data-r="${r.id}"></div>`;
+    </div>
+    ${r.vehicles.length ? `<label class="small dim" style="display:block;margin-top:3px"><input type="checkbox" data-a="auto"${r.autoReplace ? ' checked' : ''}> 🔧 auto-replace aged vehicles (at ${AGING.autoAtDays} days, ${Math.round(AGING.replaceFrac * 100)}% of list price)</label>` : ''}
+    <div class="vehlist" data-r="${r.id}"></div>`;
   d.querySelector('[data-a=del]').onclick = () => {
     [...r.vehicles].forEach(sellVehicle);
     G.routes = G.routes.filter(x => x !== r);
@@ -762,6 +764,8 @@ function routeCard(r) {
   if (eb) eb.onclick = () => { G.routeEdit = r; renderRoutes(); };
   const db = d.querySelector('[data-a=done]');
   if (db) db.onclick = () => { G.routeEdit = null; renderRoutes(); };
+  const ab = d.querySelector('[data-a=auto]');
+  if (ab) ab.onchange = e => { r.autoReplace = e.target.checked; };
   for (const kind of kinds) {
     d.querySelector(`[data-a=${kind}]`).onclick = () => {
       if (r.stops.length < 2) { showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).'); return; }
@@ -780,8 +784,15 @@ function routeCard(r) {
       renderRoutes();
     };
   }
-  // wagon buttons live inside the constantly re-rendered vehlist → delegate clicks
+  // wagon & replace buttons live inside the constantly re-rendered vehlist → delegate clicks
   d.querySelector('.vehlist').onclick = e => {
+    const rv = e.target.dataset.rv;
+    if (rv !== undefined) {
+      const v = r.vehicles[+rv];
+      if (v && !replaceVehicle(v)) showTipText('Too expensive', 'Not enough funds to replace this vehicle.');
+      renderRoutesLive();
+      return;
+    }
     const w = e.target.dataset.w;
     if (!w) return;
     const v = r.vehicles[+e.target.dataset.vi];
@@ -804,16 +815,22 @@ function renderRoutesLive() {
       const freight = Object.entries(v.cargo).filter(([, a]) => a > 0).map(([c, a]) => `${CARGO[c].name} ${a.toFixed(0)}`).join(', ');
       if (freight) parts.push(freight);
       const carg = parts.join(' · ') || 'empty';
+      // aging (ADR 27): show the age; past grace, upkeep ramps → offer a trade-in
+      const aged = (v.ageDays || 0) > AGING.graceDays;
+      const ageTag = ` · ${Math.floor(v.ageDays || 0)}d${aged ? ` <span class="warn" title="upkeep ${fmtMoney(vehicleUpkeep(v))}/day">⛭</span>` : ''}`;
+      const repBtn = aged ? ` <button data-rv="${vi}" title="Trade in for a factory-fresh vehicle">🔧 Replace ${fmtMoney(v.def.cost * AGING.replaceFrac)}</button>` : '';
       if (v.kind === 'train') {
         const st = v.state === 'stranded' ? '⚠️ no rail connection!' : v.state === 'loading' ? 'loading' : G.blackout ? '🚫 no traction power!' : '▶';
         const nPax = v.wagons.filter(w => w.type === 'pax').length, nFr = v.wagons.length - nPax;
         const wag = v.wagons.length ? `${nPax ? nPax + '×🧍' : ''} ${nFr ? nFr + '×📦' : ''}`.trim() : '<span class="warn">no wagons!</span>';
-        return `<div class="veh small">${v.def.icon} ${st} · ${wag} · ${carg}<br>
+        return `<div class="veh small">${v.def.icon} ${st} · ${wag} · ${carg}${ageTag}<br>
           <button data-w="pax" data-vi="${vi}">+ ${WAGONS.pax.icon} Car ${fmtMoney(WAGONS.pax.cost)}</button>
-          <button data-w="freight" data-vi="${vi}">+ ${WAGONS.freight.icon} Wagon ${fmtMoney(WAGONS.freight.cost)}</button></div>`;
+          <button data-w="freight" data-vi="${vi}">+ ${WAGONS.freight.icon} Wagon ${fmtMoney(WAGONS.freight.cost)}</button>${repBtn}</div>`;
       }
       const st = v.state === 'stranded' ? (v.noRoute ? '⚠️ no road connection!' : '🪫 stranded!') : v.state === 'loading' ? (v.charging ? '⚡charging' : 'loading') : '▶';
-      return `<div class="veh small">${v.def.icon} ${st} · 🔋${Math.round(v.battery / v.def.batteryKWh * 100)}% · ${carg}</div>`;
+      const packKWh = effectiveBatteryKWh(v);
+      const wear = packKWh < v.def.batteryKWh - 0.5 ? ` <span class="warn" title="pack worn to ${Math.round(packKWh / v.def.batteryKWh * 100)}% of original">▾</span>` : '';
+      return `<div class="veh small">${v.def.icon} ${st} · 🔋${Math.round(v.battery / packKWh * 100)}%${wear} · ${carg}${ageTag}${repBtn}</div>`;
     }).join('');
   }
 }

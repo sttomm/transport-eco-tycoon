@@ -167,7 +167,7 @@ test('active heatwave, heat hours and a scheduled heatwave front survive save/lo
   G.heatHoursToday = 3.5;
   G.weatherFront = { type: 'heatwave', inHours: 11, durationH: 24 };
   const snap = JSON.parse(JSON.stringify(snapshot()));
-  assert.equal(snap.v, 3, 'save version NOT bumped — fields are backwards-safe additions');
+  assert.equal(snap.v, 4, 'current save version (v4 since the vehicle-aging round)');
 
   freshWorld();
   assert.equal(restore(snap), true);

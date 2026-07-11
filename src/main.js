@@ -7,6 +7,7 @@ import { updateWeather, tickGrid, sampleHistory, dailyUpkeep, rollFossilFreeDay 
 import {
   tickIndustries, tickVehicles, tickCities,
   createRoute, buyVehicle, addWagon, findPath, nameStation,
+  replaceVehicle, autoReplaceFleet,
 } from './sim/transport.js';
 import { tickContracts, signContract } from './sim/contracts.js';
 import { takeLoan, repayLoan, dailyLoanInterest } from './sim/loans.js';
@@ -91,6 +92,7 @@ function frame(now) {
       G.finance.today = { bus: 0, truck: 0, train: 0, routes: {} };
       dailyUpkeep(); // after the reset, so upkeep shows in today's expenses
       dailyLoanInterest();
+      autoReplaceFleet(); // renew opted-in routes' aged vehicles (ADR 27)
     }
     updateWeather(gh);
     tickGrid(gh);
@@ -116,4 +118,4 @@ requestAnimationFrame(frame);
 
 // expose for debugging & programmatic play-testing (see the playtest-game skill)
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, decommissionGas, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, signContract, tickContracts, takeLoan, repayLoan, scene, camera, controls, renderer, setPostFX, PFX };
+window.DEBUG = { place, canPlace, tile, bulldoze, decommissionGas, createRoute, buyVehicle, addWagon, findPath, nameStation, replaceVehicle, autoReplaceFleet, saveGame, signContract, tickContracts, takeLoan, repayLoan, scene, camera, controls, renderer, setPostFX, PFX };

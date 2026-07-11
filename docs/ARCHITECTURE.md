@@ -470,6 +470,25 @@ hoarding for emergencies pays better; the hard reserve keeps the teaching
 invariant that a Dunkelflaute must remain survivable — the game never lets
 the player's insurance be quietly sold out from under the fuel cells.
 
+### 27. Vehicle aging & fleet renewal (save v4)
+**Decision:** vehicles accrue calendar age (`v.ageDays`, ticked in
+`tickVehicles`). Past a 10-day grace period, daily upkeep ramps +10 % of the
+base rate per day (capped 3×, billed via `transport.js#vehicleUpkeep` from
+`dailyUpkeep` and the report card) and EV packs lose 1.5 %/day of usable
+capacity (floored at 65 %, `effectiveBatteryKWh`) — old trucks run shorter
+legs and charge longer. `replaceVehicle()` trades in for 75 % of list price
+and resets the clock; a per-route **auto-replace** flag renews ≥22-day
+vehicles on the day rollover (`autoReplaceFleet`, called from `main.js`).
+Constants in `data.js` AGING. Save format bumps to **v4** (same key): vehicle
+`age` and route `autoReplace` persist; v2/v3 saves restore with everything
+grandfathered in at age 0.
+**Why:** without depreciation, a bought vehicle was a solved problem forever;
+now fleets have the real operator's renewal trade-off (maintain vs replace),
+and pack degradation ties transport back into the energy game — worn EVs
+spend more time on the chargers your grid feeds. Numbers are gentle: a
+never-replaced truck costs ~€90/day extra at the cap, noticeable in the
+report card, never fatal.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

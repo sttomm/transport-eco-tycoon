@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, resetState } from '../src/sim/state.js';
 import { solarFactor, windFactor, tickGrid, dailyUpkeep, rollFossilFreeDay, cityDemandCurve, POWER_PRICE } from '../src/sim/energy.js';
-import { BUILDINGS, CARBON, H2OFFTAKE, INTERCONNECT, MARKET } from '../src/sim/data.js';
+import { AGING, BUILDINGS, CARBON, H2OFFTAKE, INTERCONNECT, MARKET } from '../src/sim/data.js';
 
 // energy tests run on an empty world: no cities/industries unless we add them
 beforeEach(() => resetState());
@@ -299,7 +299,7 @@ test('fossil-free streak: zero-gas days count up, any gas use resets it', () => 
   assert.equal(G.h2SoldMWh, 40);
 });
 
-test('dailyUpkeep bills plants and vehicles', () => {
+test('dailyUpkeep bills plants and vehicles — aged vehicles at their ramped rate', () => {
   G.plants.push({ def: { upkeep: 120 } });
   G.vehicles.push({ def: { upkeep: 45 } });
   const before = G.money;
@@ -307,4 +307,7 @@ test('dailyUpkeep bills plants and vehicles', () => {
   assert.equal(cost, 165);
   assert.equal(G.money, before - 165);
   assert.equal(G.expensesToday, 165);
+  // an aged vehicle costs more (ADR 27): 15 days past grace → 45 × 2.5
+  G.vehicles[0].ageDays = AGING.graceDays + 15;
+  assert.equal(dailyUpkeep(), 120 + 45 * 2.5);
 });

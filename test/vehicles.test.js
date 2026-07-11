@@ -4,7 +4,8 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
 import { place } from '../src/sim/grid.js';
-import { tickVehicles, createRoute, buyVehicle, addWagon, sellVehicle, paxCapacity, freightCapacity, routeKind } from '../src/sim/transport.js';
+import { tickVehicles, createRoute, buyVehicle, addWagon, sellVehicle, paxCapacity, freightCapacity, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, autoReplaceFleet } from '../src/sim/transport.js';
+import { AGING } from '../src/sim/data.js';
 import { freshWorld, buildRoad, buildRail } from './helpers.js';
 
 const J = 90;
@@ -152,6 +153,68 @@ test('a blackout stops trains; a healthy grid moves them', () => {
   G.servedFraction = 1;
   step(50);
   assert.ok(train.pathPos > 0, 'train moves again');
+});
+
+// ---- aging & fleet renewal (ADR 27) ---------------------------------------
+
+test('vehicles age with game time; upkeep ramps after the grace period, capped', () => {
+  const r = roadRoute();
+  const v = buyVehicle(r, 'truck');
+  assert.equal(v.ageDays, 0);
+  step(90); // 90 × 0.1333 gh = 12 gh = half a day
+  assert.ok(Math.abs(v.ageDays - 0.5) < 0.01, 'calendar age accrues');
+  v.ageDays = AGING.graceDays;
+  assert.equal(vehicleUpkeep(v), v.def.upkeep, 'list upkeep through the grace period');
+  v.ageDays = AGING.graceDays + 10;
+  assert.ok(Math.abs(vehicleUpkeep(v) - v.def.upkeep * 2) < 1e-9, '+10%/day past grace');
+  v.ageDays = 999;
+  assert.equal(vehicleUpkeep(v), v.def.upkeep * AGING.maxUpkeepMult, 'capped at 3×');
+});
+
+test('EV packs wear with age, floored at 65% of original capacity', () => {
+  const r = roadRoute();
+  const v = buyVehicle(r, 'truck');
+  assert.equal(effectiveBatteryKWh(v), v.def.batteryKWh);
+  v.ageDays = AGING.graceDays + 10;
+  assert.ok(Math.abs(effectiveBatteryKWh(v) - v.def.batteryKWh * 0.85) < 1e-9);
+  v.ageDays = 999;
+  assert.ok(Math.abs(effectiveBatteryKWh(v) - v.def.batteryKWh * (1 - AGING.battWearMax)) < 1e-9);
+});
+
+test('replaceVehicle: trade-in price, resets age and pack; refuses without funds', () => {
+  const r = roadRoute();
+  const v = buyVehicle(r, 'truck');
+  v.ageDays = 30; v.battery = 12;
+  G.money = 100;
+  assert.equal(replaceVehicle(v), false, 'no funds, no trade-in');
+  assert.equal(v.ageDays, 30);
+  G.money = 100000;
+  const before = G.money;
+  assert.equal(replaceVehicle(v), true);
+  assert.equal(G.money, before - v.def.cost * AGING.replaceFrac);
+  assert.equal(v.ageDays, 0);
+  assert.equal(v.battery, v.def.batteryKWh, 'factory-fresh pack');
+});
+
+test('autoReplaceFleet renews only opted-in routes and only aged vehicles', () => {
+  const rA = roadRoute();
+  const young = buyVehicle(rA, 'truck');
+  const old = buyVehicle(rA, 'truck');
+  old.ageDays = AGING.autoAtDays + 1;
+  const rB = createRoute();
+  rB.stops.push(rA.stops[0], rA.stops[1]);
+  const oldB = buyVehicle(rB, 'truck', { skipKindCheck: true });
+  oldB.ageDays = AGING.autoAtDays + 5;
+
+  rA.autoReplace = true; // rB stays opted out
+  assert.equal(autoReplaceFleet(), 1, 'one vehicle qualified');
+  assert.equal(old.ageDays, 0, 'aged vehicle on the opted-in route renewed');
+  assert.equal(young.ageDays, 0, 'young vehicle untouched (was already 0)');
+  assert.equal(oldB.ageDays, AGING.autoAtDays + 5, 'opted-out route keeps its clunker');
+
+  G.money = 0;
+  old.ageDays = AGING.autoAtDays + 1;
+  assert.equal(autoReplaceFleet(), 0, 'no funds, no renewal');
 });
 
 test('selling a vehicle refunds 40% and removes it everywhere', () => {

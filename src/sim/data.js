@@ -175,6 +175,20 @@ export const VEHICLES = {
   },
 };
 
+// Vehicle aging (ADR 27): vehicles run at list conditions while young, then
+// O&M creeps up and EV packs lose capacity — fleet renewal becomes a real
+// decision. Replacement (Routes tab, or per-route auto-replace on the day
+// rollover) costs a fraction of list price and resets the clock.
+export const AGING = {
+  graceDays: 10,         // no wear before this age
+  upkeepPerDay: 0.10,    // +10% of base upkeep per day past grace…
+  maxUpkeepMult: 3,      // …capped at 3×
+  battWearPerDay: 0.015, // EV pack capacity lost per day past grace…
+  battWearMax: 0.35,     // …floored at 65% of original capacity
+  replaceFrac: 0.75,     // replacement cost as fraction of list price (trade-in)
+  autoAtDays: 22,        // per-route auto-replace triggers at this age
+};
+
 // Wagons hooked behind a locomotive. A train's capacity = sum of its wagons.
 export const WAGONS = {
   pax: { name: 'Passenger Car', icon: '🧍', cost: 9000, capacity: 40 },
@@ -361,6 +375,10 @@ export const TIPS = {
   firstTrain: {
     title: 'No battery — straight from the catenary',
     text: 'Most electric railways skip the battery entirely: power flows from the grid through the overhead line to the motors. Your locomotive draws ~1 MW while moving (see the "Charging" slice in the Dashboard) — and during a blackout, trains roll to a stop. Reliable grid, reliable railway.',
+  },
+  vehicleAging: {
+    title: 'Your fleet is aging',
+    text: 'A vehicle just passed 10 days of service. From here its daily upkeep creeps up (to 3× at worst) and EV packs lose usable capacity (down to 65%) — shorter legs, longer charging stops. Fleet economics: at some point replacing (75% of list price, 🔧 in the Routes tab) beats maintaining — real fleet operators plan exactly this trade-off. Tick "auto-replace" on a route to let your depot handle it overnight.',
   },
   chargingLoad: {
     title: 'Vehicle charging hits the grid',
