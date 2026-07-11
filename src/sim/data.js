@@ -88,6 +88,21 @@ export const FORECAST = {
   slotH: 3, horizonH: 24,         // forecast outlook: 8 slots of 3 h
 };
 
+// Smart Market (ADR 22): announced on day `announceDay`, live from `liveDay`.
+// From then on the flat €85/MWh tariff is replaced by a dynamic price set each
+// tick by pay-as-clear merit-order rules (see energy.js#tickGrid):
+// scarcity → gas marginal + markup → surplus → €bandLo..bandHi by residual load.
+export const MARKET = {
+  announceDay: 8,     // regulator announcement (2-day warning to prepare storage)
+  liveDay: 10,        // dynamic pricing starts
+  scarcity: 240,      // €/MWh while any demand goes unserved (scarcity pricing)
+  gasMarkup: 15,      // €/MWh above gas marginal cost when gas sets the price
+  surplusPrice: 25,   // €/MWh while clean surplus is being curtailed (glut)
+  bandLo: 45,         // €/MWh at zero residual load (renewables cover everything)
+  bandHi: 120,        // €/MWh at full residual load (renewables cover nothing)
+  peakMW: 45,         // reference evening peak incl. industry for the interpolation
+};
+
 export const VEHICLES = {
   truck: {
     name: 'E-Truck', icon: '🚚', cost: 32000, upkeep: 45, capacity: 18, speed: 9,
@@ -224,11 +239,23 @@ export const TIPS = {
   },
   carbon80: {
     title: 'Carbon price hits €80/t',
-    text: 'Gas generation now costs over €106/MWh against €85 revenue — a €21 loss per MWh, and rising. If the plant still runs regularly, your storage is undersized. Consider decommissioning it (click the plant) once your batteries and hydrogen can carry a Dunkelflaute alone.',
+    text: 'Gas generation now costs over €106/MWh to produce, and rising €1.35/MWh every day. On the Smart Market the plant sets the price when it runs (cost + €15), but its €400/day upkeep and CO₂ keep piling up — and every hour it runs is an hour your storage could have sold at scarcity prices instead. If it still runs regularly, your storage is undersized. Consider decommissioning it (click the plant) once your batteries and hydrogen can carry a Dunkelflaute alone.',
   },
   gasDecommissioned: {
     title: 'Fossil-free — no safety net',
     text: 'The gas plant is gone and the exit grant is in your account. The trade-off: deficits now go straight from fuel cells to blackout — there is no fossil backstop anymore. Keep your H₂ tanks stocked before winter and Dunkelflautes. This is the real endgame of the energy transition: firm clean capacity replaces fossil reserve.',
+  },
+  marketAnnounce: {
+    title: 'Smart Market announced',
+    text: 'Pressure on the energy market is rising: in 2 days the regulator introduces the Smart Market — prices will follow supply and demand, making intelligent use of energy profitable. Scarce hours will pay up to €240/MWh, glut hours as little as €25. Two days to prepare: charged batteries and full H₂ tanks are about to become a business.',
+  },
+  marketLive: {
+    title: 'The Smart Market is live!',
+    text: 'The flat €85/MWh tariff is history — the price now moves with supply and demand (watch the 💶 ticker in the top bar). The most expensive running source sets the price: blackouts spike it to €240/MWh, the gas plant sets it at its cost + €15, and curtailed surplus crashes it to €25. Discharge storage into expensive hours, charge in cheap ones — flexibility now earns real money.',
+  },
+  scarcitySale: {
+    title: 'Your storage just sold at €240/MWh!',
+    text: 'Demand outran supply, the price hit the €240/MWh scarcity cap — and your battery/fuel cell discharged straight into it, earning almost 3× the old flat tariff. This is storage arbitrage, the business model of real grid batteries: buy (charge) when power is nearly free, sell when the grid is desperate.',
   },
   dunkelflaute: {
     // fires at SCHEDULE time (~10-14 h before arrival), not at arrival — the

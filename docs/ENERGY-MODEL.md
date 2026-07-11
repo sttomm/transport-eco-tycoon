@@ -106,9 +106,38 @@ the plant was decommissioned or merely idle.
 Blackout (`served < 97%`): industry halts, charging stops, city happiness
 falls (population shrinks), energy revenue lost.
 
+## Pricing (Smart Market, ADR 22)
+
+Until game day 10 every served MWh bills at a flat **€85/MWh** (`POWER_PRICE`).
+On day 8 the regulator announces, and on day 10 activates, the **Smart
+Market**: `G.price` is set every tick after dispatch, in priority order —
+the most expensive running source sets the price, as in real pay-as-clear
+(merit-order) electricity markets. All constants live in `data.js` `MARKET`.
+
+| Rule (priority order) | Game | Real-world anchor |
+|---|---|---|
+| Scarcity: unserved demand > 0 | **€240/MWh** | scarcity pricing when supply can't clear demand; real day-ahead caps are €3,000-15,000/MWh — compressed to game scale |
+| Gas running | **gas marginal cost + €15** = €70 + 0.45 × carbonPrice + 15 | pay-as-clear: the most expensive dispatched plant sets the clearing price for *everyone* — in Europe that plant is usually gas, which is why gas prices drove power prices in 2022 |
+| Curtailing surplus | **€25/MWh** | renewable-glut hours drive day-ahead prices to near zero or below; €25 stands in for the negative-price hours real markets see on sunny Sundays |
+| Otherwise | **€45→€120** linear in residual load: `clamp((demand − renewables)/45 MW, 0, 1)` | day-ahead prices track residual load (demand minus wind+solar); 45 MW is the region's reference evening peak incl. industry |
+
+Revenue = billable MW × hours × `G.price`. Consequences, all intended
+teaching: storage discharge into scarcity hours earns ~3× the old tariff
+(storage arbitrage — the business model of real grid batteries); the gas
+plant briefly earns its €15 markup as the price-setter (real peakers live off
+exactly such hours) but the €3/day carbon ramp, its €400/day upkeep and the
+fossil-free quest still make phasing it out the winning strategy; and heavy
+solar overbuild now sees its midday revenue crash to €25 (price cannibalization).
+`marketLive` and `price` are derived from `G.day` each tick — nothing is
+saved, loaded saves price correctly from the first tick. Balance is pinned by
+a 15-day headless starter-kit run: total energy income within ±30% of the
+flat-tariff baseline (measured ≈ −0.3% on average across 5 seeds, spread
+−12%…+16% depending on weather).
+
 ## Economics
 
-- Energy price: €85/MWh served (cities + industry pay; your own fleet charges free).
+- Energy price: flat €85/MWh until day 10, then the Smart Market price above
+  (cities + industry pay; your own fleet charges free).
 - CO₂ avoided: 0.4 t/MWh served (typical displaced fossil mix) — purely a
   score/teaching metric.
 - Cargo payment: `base × amount × (1 + distance/45)`.

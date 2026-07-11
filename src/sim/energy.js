@@ -1,7 +1,9 @@
 import { G, emit, hourOfDay, season } from './state.js';
-import { BUILDINGS, CARBON, FORECAST } from './data.js';
+import { BUILDINGS, CARBON, FORECAST, MARKET } from './data.js';
 
-// Electricity price paid by cities & industries per MWh served.
+// Flat electricity tariff per MWh served — the price until the Smart Market
+// goes live on day MARKET.liveDay; after that G.price is set dynamically each
+// tick in tickGrid (ADR 22).
 export const POWER_PRICE = 85;
 export const CO2_PER_MWH = 0.4; // tonnes avoided vs fossil mix
 
@@ -133,6 +135,8 @@ export function tickGrid(gameHours) {
   G.carbonPrice = CARBON.start + CARBON.perDay * (G.day - 1);
   if (G.carbonPrice >= 50) emit('tip', 'carbon50');
   if (G.carbonPrice >= 80) emit('tip', 'carbon80');
+  // Smart Market timeline (ADR 22) — one-shot tips, deduped by the UI
+  if (G.day >= MARKET.announceDay && G.day < MARKET.liveDay) emit('tip', 'marketAnnounce');
   // --- supply available from renewables
   const solarMW = capacity('solar') * solarFactor() * m.solar;
   const windMW = capacity('wind') * windFactor() * m.wind;
@@ -213,9 +217,33 @@ export function tickGrid(gameHours) {
   G.servedFraction = inflex > 0.01 ? servedMW / inflex : 1;
   G.blackout = G.servedFraction < 0.97;
 
+  // --- Smart Market price (ADR 22): flat tariff until day MARKET.liveDay,
+  // then the most expensive running source sets the price each tick
+  // (pay-as-clear merit-order pricing), in priority order:
+  G.marketLive = G.day >= MARKET.liveDay;
+  if (!G.marketLive) {
+    G.price = POWER_PRICE;
+  } else if (unservedMW > 0) {
+    G.price = MARKET.scarcity;                 // scarcity: demand goes unserved
+  } else if (gasMW > 0) {
+    const d = BUILDINGS.gas;                   // gas is the marginal plant → it sets the price
+    G.price = d.fuelPerMWh + d.co2PerMWh * G.carbonPrice + MARKET.gasMarkup;
+  } else if (curtailMW > 0) {
+    G.price = MARKET.surplusPrice;             // glut: clean power is being thrown away
+  } else {
+    // normal band, interpolated by residual load (demand renewables don't cover)
+    const residual = Math.max(0, Math.min(1, (inflex - renewable) / MARKET.peakMW));
+    G.price = MARKET.bandLo + (MARKET.bandHi - MARKET.bandLo) * residual;
+  }
+  if (G.marketLive) {
+    emit('tip', 'marketLive');
+    // storage discharging into the scarcity price: the arbitrage teaching moment
+    if (G.price === MARKET.scarcity && (batteryMW > 0.05 || fcMW > 0.05)) emit('tip', 'scarcitySale');
+  }
+
   // --- money: cities & industries pay for served energy; charging is your own cost (free)
   const billableMW = (cityMW + indMW) * G.servedFraction;
-  const revenue = billableMW * gameHours * POWER_PRICE;
+  const revenue = billableMW * gameHours * G.price;
   G.money += revenue;
   G.incomeEnergyToday += revenue;
   // gas-served MWh is fossil generation — it avoids nothing
@@ -241,6 +269,7 @@ export function sampleHistory(gameMinutes) {
     elec: G.demand.electrolyzer, unserved: G.unservedMW, curtailed: G.curtailedMW,
     batt: G.batteryCapMWh ? G.batteryMWh / G.batteryCapMWh : 0,
     h2: G.h2CapMWh ? G.h2MWh / G.h2CapMWh : 0,
+    price: G.price,
   });
   if (G.history.length > G.histMax) G.history.shift();
   G.moneyHistory.push(G.money);

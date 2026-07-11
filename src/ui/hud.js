@@ -2,7 +2,7 @@
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
-import { BUILDINGS, CARBON, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { BUILDINGS, CARBON, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas } from '../sim/grid.js';
 import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
@@ -127,7 +127,18 @@ function liveTip(el, fn) {
 
 // ---------- topbar explainer tooltips ----------
 function initTopbarTooltips() {
-  liveTip($('money'), () => `<b>💰 Company funds</b><br>Cash for building, vehicles and research. You earn from transport deliveries and from selling every served MWh of electricity (€${POWER_PRICE}/MWh).`);
+  liveTip($('money'), () => `<b>💰 Company funds</b><br>Cash for building, vehicles and research. You earn from transport deliveries and from selling every served MWh of electricity (currently €${G.price.toFixed(0)}/MWh).`);
+  liveTip($('pricestat'), () => G.marketLive
+    ? `<b>💶 Smart Market price: €${G.price.toFixed(0)}/MWh</b><br>
+      Set every moment by the most expensive running source (pay-as-clear merit order):<br>
+      <span class="bad">€${MARKET.scarcity}</span> scarcity (demand unserved) ·
+      <span class="warn">gas cost + €${MARKET.gasMarkup}</span> while the gas plant runs ·
+      <span class="good">€${MARKET.surplusPrice}</span> while clean surplus is curtailed ·
+      otherwise €${MARKET.bandLo}–€${MARKET.bandHi} rising with residual load (demand minus renewables).<br>
+      <span class="dim">Sell storage into expensive hours, charge in cheap ones — flexibility is the business model.</span>`
+    : `<b>💶 Power price: flat €${POWER_PRICE}/MWh</b><br>${G.day >= MARKET.announceDay
+      ? `The regulator switches on the <b>Smart Market</b> on day ${MARKET.liveDay} — the price will then follow supply and demand (€${MARKET.surplusPrice} in a glut, up to €${MARKET.scarcity} in scarcity). Charge your storage!`
+      : `Every served MWh is billed at a flat tariff — for now. Word is the regulator is planning a market reform…`}`);
   liveTip($('clock'), () => {
     const s = season();
     const into = ((G.day - 1) % DAYS_PER_SEASON) + 1;
@@ -282,6 +293,14 @@ export function updateUI(dt) {
     const grid = $('gridstat');
     grid.innerHTML = `⚡ ${totalSup.toFixed(1)} / ${totalDem.toFixed(1)} MW`;
     grid.className = G.blackout ? 'bad blink' : (G.curtailedMW > 0.5 ? 'warn' : 'good');
+    // €/MWh ticker: dim flat tariff → countdown once announced → color-coded live price
+    const pr = $('pricestat');
+    pr.innerHTML = `💶 €${G.price.toFixed(0)}/MWh` +
+      (!G.marketLive && G.day >= MARKET.announceDay ? ` <span class="warn">market day ${MARKET.liveDay}</span>` : '');
+    pr.className = 'small ' + (!G.marketLive ? 'dim'
+      : G.price >= MARKET.scarcity ? 'bad blink'
+      : G.supply.gas > 0.05 ? 'warn'
+      : G.price <= MARKET.bandLo ? 'good' : '');
     const sf = solarFactor();
     $('solarstat').innerHTML = `${sf <= 0 ? '🌙' : G.cloud > 0.6 ? '☁️' : G.cloud > 0.3 ? '🌤' : '☀️'} ${(sf * 100).toFixed(0)}%`;
     $('windstat').innerHTML = `🌬 ${(G.wind * 90).toFixed(0)} km/h` +
@@ -391,15 +410,24 @@ function drawPowerChart() {
   // unserved = red ticks
   ctx.fillStyle = '#ff5555';
   hist.forEach((s, i) => { if (s.unserved > 0.2) ctx.fillRect(x(i), 0, 2, 8); });
+  // electricity price line (own right-hand scale: 0 → scarcity price, ADR 22)
+  const priceOf = s => s.price ?? POWER_PRICE; // pre-market samples have no price field
+  const yP = v => H - v / (MARKET.scarcity * 1.08) * H;
+  ctx.strokeStyle = '#e86fc3'; ctx.lineWidth = 1.4; ctx.beginPath();
+  hist.forEach((s, i) => i ? ctx.lineTo(x(i), yP(priceOf(s))) : ctx.moveTo(x(0), yP(priceOf(s))));
+  ctx.stroke();
   // labels
   ctx.fillStyle = '#ccc'; ctx.font = '10px sans-serif';
   ctx.fillText(maxY.toFixed(0) + ' MW', 4, 10);
+  const lastP = priceOf(hist[hist.length - 1]);
+  ctx.fillStyle = '#e86fc3';
+  ctx.fillText(`€${lastP.toFixed(0)}`, W - 30, Math.max(10, Math.min(H - 3, yP(lastP) - 4)));
   // legend
   const lg = $('chartlegend');
   if (!lg.dataset.done) {
     lg.dataset.done = 1;
     lg.innerHTML = SERIES.map(([k, c, n]) => `<span><i style="background:${c}"></i>${n}</span>`).join('') +
-      '<span><i style="background:#fff"></i>Demand</span><span><i style="background:#3fae9c"></i>+Electrolyzer</span><span><i style="background:#ff5555"></i>Unserved</span>';
+      '<span><i style="background:#fff"></i>Demand</span><span><i style="background:#3fae9c"></i>+Electrolyzer</span><span><i style="background:#ff5555"></i>Unserved</span><span><i style="background:#e86fc3"></i>Price €/MWh</span>';
   }
   // storage bars
   drawBar($('battbar'), G.batteryCapMWh ? G.batteryMWh / G.batteryCapMWh : 0, '#7ed87e',
@@ -416,7 +444,7 @@ function drawPowerChart() {
     kpi('Grid served', Math.round(G.servedFraction * 100) + '%') +
     kpi('H₂ round trip', Math.round(G.mult.elecEff * G.mult.fcEff * 100) + '%') +
     kpi('Battery round trip', '92%') +
-    kpi('Power price', '€85/MWh') +
+    kpi('Power price', `€${G.price.toFixed(0)}/MWh <span class="dim small">${G.marketLive ? `dynamic since day ${MARKET.liveDay}` : `flat until day ${MARKET.liveDay}`}</span>`) +
     kpi('Carbon price', `€${G.carbonPrice}/t <span class="dim small">▲ €${CARBON.perDay}/day</span>`) +
     kpi('CO₂ emitted (gas)', G.co2EmittedTons.toFixed(0) + ' t') +
     kpi('CO₂ avoided', G.co2SavedTons.toFixed(0) + ' t') +
@@ -900,10 +928,11 @@ function renderInfobox() {
     html = `<b>${d.icon} ${d.name}</b><div class="small">${d.desc}</div>`;
     if (s.type === 'gas' && !G.gasDecommissioned) {
       const marginal = d.fuelPerMWh + d.co2PerMWh * G.carbonPrice;
-      const margin = POWER_PRICE - marginal;
+      const priceRef = G.marketLive ? G.price : POWER_PRICE; // live market: current price, else flat tariff
+      const margin = priceRef - marginal;
       html += `<div class="small" style="margin-top:4px">Marginal cost: <b class="${margin < 0 ? 'bad' : 'warn'}">€${marginal.toFixed(1)}/MWh</b>
-          (€${d.fuelPerMWh} fuel + €${(d.co2PerMWh * G.carbonPrice).toFixed(1)} carbon @ €${G.carbonPrice}/t) vs €${POWER_PRICE} price
-          → ${margin < 0 ? `<b class="bad">−€${(-margin).toFixed(1)}/MWh loss</b>` : `€${margin.toFixed(1)}/MWh margin`}</div>
+          (€${d.fuelPerMWh} fuel + €${(d.co2PerMWh * G.carbonPrice).toFixed(1)} carbon @ €${G.carbonPrice}/t) vs €${priceRef.toFixed(0)} ${G.marketLive ? 'market price' : 'price'}
+          → ${margin < 0 ? `<b class="bad">−€${(-margin).toFixed(1)}/MWh loss</b>` : `€${margin.toFixed(1)}/MWh margin`}${G.marketLive ? `<span class="dim"> — while it runs, it sets the market price at its cost + €${MARKET.gasMarkup}</span>` : ''}</div>
         <div class="small dim">Today: ${G.gasMWhToday.toFixed(1)} MWh burned · ${fmtMoney(G.gasCostToday)} cost · fossil-free streak ${G.fossilFreeDays} days</div>
         <button id="decomgas" class="big" style="margin-top:5px">🌱 Decommission — collect ${fmtMoney(CARBON.exitGrant)} exit grant</button>
         <div class="small dim">Irreversible: no fossil backstop afterwards — deficits your storage can't cover become blackouts.</div>`;

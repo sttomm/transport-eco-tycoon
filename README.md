@@ -87,6 +87,16 @@ phase this plant out: build storage until it never runs, or decommission it
 for a one-time exit grant. Seven consecutive fossil-free days complete the
 **Fossil-free week** objective — the closest thing the region has to victory.
 
+**The Smart Market:** on day 8 the regulator announces — and on day 10
+activates — dynamic electricity pricing. The flat €85/MWh tariff is replaced
+by a live price set by the most expensive running source (pay-as-clear merit
+order, like real power exchanges): blackout hours spike to **€240/MWh**, the
+gas plant sets the price at its cost + €15 while it runs, and curtailed
+surplus crashes it to **€25/MWh**; in between it tracks residual load
+(€45–120). Watch the 💶 ticker in the top bar and the price line in the
+dashboard chart — discharging storage into scarce hours now earns real money,
+so storage arbitrage becomes the business model.
+
 The weather brings real phenomena: multi-day **Dunkelflaute** (dark calm) events
 that batteries can't bridge, and storms that force turbine cut-outs. Fronts
 announce themselves 10–14 h ahead in the dashboard **weather forecast** and a
