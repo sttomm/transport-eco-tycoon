@@ -19,8 +19,12 @@ teaches something. Every addition extends `test/` (see CLAUDE.md).
      solar/wind/hydro exist, a new type needs a term there)
    - battery-like: `storeMWh` + `rateMW` · electrolyzer-like: `elecMW`
    - H₂ tank: `h2MWh` · fuel cell: `fcMW`
+   - grid import: `importMW` (ADR 25) · H₂ offtake: `offtakeMW` (ADR 26)
    - station: `nearRoad: true` (or `nearRail`) · water-bound: `nearWater: true`
    - `desc` doubles as tooltip AND teaching text — include the real-world fact.
+   - if the building should be *earned*, add an entry to `UNLOCKS` (data.js,
+     ADR 28) with a `when(G)` predicate + player-facing `hint` — the palette
+     greys it out until then; `place()` itself is never gated.
 2. **`src/render/meshes.js` → `buildPlantMesh(type)`**: add a low-poly mesh branch.
    Use the `box()`/`cyl()`/`M()` helpers; sizes ~1-14 units, origin at ground
    center. Animated parts: expose via `group.userData` like the wind turbine's

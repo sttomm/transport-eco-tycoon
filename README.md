@@ -155,11 +155,12 @@ Plain ES modules, no framework, no build, no dependencies. Three layers
 npm test        # Node's built-in runner, ~100 ms, zero dependencies
 ```
 
-130 tests pin the simulation: dispatch merit order (incl. the legacy gas
-step), storage efficiencies, placement rules, pathfinding, freight & passenger
-economics, route-kind validation, quests, special contracts, loans, weather
-fronts & forecast, dynamic pricing, climate feedback, daily reports, and the
-save round trip. New features extend the suite (see [CLAUDE.md](CLAUDE.md)).
+145 tests pin the simulation: dispatch merit order (incl. the legacy gas,
+import and H₂-offtake steps), storage efficiencies, placement rules & palette
+unlocks, pathfinding, freight & passenger economics, route-kind validation,
+vehicle aging, quests, special contracts, loans, weather fronts & forecast,
+dynamic pricing, climate feedback, daily reports, and the save round trip.
+New features extend the suite (see [CLAUDE.md](CLAUDE.md)).
 
 ## Documentation
 

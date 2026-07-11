@@ -30,6 +30,7 @@ can serve a stale old/new mix.** Always force-refresh first:
   const files = ['index.html','styles.css','src/main.js',
     'src/sim/state.js','src/sim/data.js','src/sim/noise.js','src/sim/grid.js',
     'src/sim/energy.js','src/sim/transport.js','src/sim/quests.js','src/sim/save.js',
+    'src/sim/reports.js','src/sim/contracts.js','src/sim/loans.js',
     'src/render/meshes.js','src/render/world.js','src/render/vehicles.js','src/render/scene.js','src/render/postfx.js',
     'src/render/assets.js','src/render/textures.js','assets/models/wind_turbine.glb','assets/models/buildings.glb',
     'assets/models/vehicles.glb','assets/models/plants.glb','assets/models/industries.glb',

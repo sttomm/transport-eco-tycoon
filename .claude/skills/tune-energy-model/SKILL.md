@@ -16,9 +16,14 @@ change model and tests together, and `npm test` before any browser check.
 ## Invariants to preserve
 
 1. **Merit order** (`tickGrid`): renewables → battery → electrolyzer → curtail
-   on surplus; battery → fuel cell → unserved on deficit. The electrolyzer
-   must remain a *flexible load that only consumes surplus* — that's the
-   core teaching mechanic. Don't let it draw from batteries or cause blackouts.
+   on surplus; battery → fuel cell → interconnector import (ADR 25) → legacy
+   gas (ADR 21) → unserved on deficit. The electrolyzer must remain a
+   *flexible load that only consumes surplus* — that's the core teaching
+   mechanic. Don't let it draw from batteries or cause blackouts. Imports are
+   throttled to 30% at €220/MWh while a flaute/heatwave is active (weather is
+   continental) — an interconnector must never trivialise a Dunkelflaute.
+   The H₂ offtake (ADR 26) sells tank hydrogen above a 40% reserve — a
+   chemical sale AFTER dispatch, never a supply term, never a price setter.
 2. **Units**: power MW, energy MWh, integration `MW × gameHours`. H₂ is MWh
    chemical (LHV); electrolyzer multiplies by `mult.elecEff` going in, fuel
    cell divides by `mult.fcEff` coming out. 1 t H₂ = 33.3 MWh (UI conversion).
@@ -34,7 +39,9 @@ change model and tests together, and `npm test` before any browser check.
 
 - `solarFactor()`: sine arc 05:30–18:30 × `(1 − 0.82·cloud)`
 - `windFactor()`: 0 below w=0.12, `min(1, ((w−0.12)/0.55)³·3.2)`, 0 above 0.96
-- `cityDemandCurve()`: 0.62 base + Gaussians at 08:00 (0.5) and 19:30 (0.75)
+- `cityDemandCurve()`: 0.62 base + Gaussians at 08:00 (0.5) and 19:30 (0.75);
+  the demand-response tech compresses it toward the 0.822 mean
+  (`mult.demandResponse`, energy-neutral — pinned by test)
 - Weather: mean-reverting walks; Dunkelflaute event (wind→0.06, cloud→0.92,
   36-54 h, ~0.6%/h after day 3); storm event (wind→1.0 → cut-out); summer
   heatwave event (18-30 h, city demand ×1.3, wind target capped 0.25, clear
@@ -44,8 +51,10 @@ change model and tests together, and `npm test` before any browser check.
   scheduled 10-14 h ahead on `G.weatherFront` (data.js FORECAST, ADR 23) and
   applied when the countdown ends; `G.forecast` is derived each tick. The
   forced paths `G.dunkelflaute = 40` / `G.heatwave = 20` still apply immediately.
-- Money: `(cityMW + indMW) × servedFraction × hours × €85`; fleet charging is
-  unbilled; CO₂ counter +0.4 t/MWh served
+- Money: `(cityMW + indMW) × servedFraction × hours × G.price` (flat €85
+  until day 10, then Smart Market rules — ADR 22); fleet charging is
+  unbilled; CO₂ counter +0.4 t/MWh served (gas- and import-served MWh avoid
+  nothing; gas and imports book onto `G.co2EmittedTons` instead)
 
 ## Verification recipe
 
