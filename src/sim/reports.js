@@ -54,6 +54,8 @@ export function closeDay() {
     importMWh: G.importMWhToday,
     importCost: G.importCostToday,
     h2SoldMWh: G.h2SoldMWhToday,
+    compCost: G.compCostToday,
+    gridFee: G.gridFeeToday,
     // CO₂: daily deltas + lifetime cumulatives (the latter anchor the deltas)
     co2Emitted: G.co2EmittedTons - (prev ? prev.co2EmittedTotal || 0 : 0),
     co2Saved: G.co2SavedTons - (prev ? prev.co2SavedTotal || 0 : 0),

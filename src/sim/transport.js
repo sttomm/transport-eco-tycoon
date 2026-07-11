@@ -111,6 +111,7 @@ export function tickIndustries(gameHours) {
     const def = ind.def;
     let can = true;
     if (def.accepts && ind.inStock < 0.5) can = false;
+    if (G.indCurtailed) can = false; // demand response: paused while prices are at crisis levels
     ind.wantsPower = can;
     ind.running = can && G.servedFraction > 0.5;
     if (!ind.running) continue;

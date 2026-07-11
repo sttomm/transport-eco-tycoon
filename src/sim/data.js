@@ -30,40 +30,40 @@ export const BUILDINGS = {
     desc: 'Serves BOTH passengers and freight in radius 7. Must touch a rail track. Connect two stations with track, then buy a locomotive in the Routes tab.',
   },
   solar: {
-    name: 'Solar Farm', icon: '☀️', cost: 42000, upkeep: 120, footprint: 3, category: 'energy', capMW: 5,
+    name: 'Solar Farm', icon: '☀️', cost: 34000, upkeep: 120, footprint: 3, category: 'energy', capMW: 5,
     desc: '5 MWp photovoltaic park. Output follows the sun and drops with cloud cover. Zero output at night — pair with storage.',
   },
   wind: {
-    name: 'Wind Turbine', icon: '🌬', cost: 38000, upkeep: 160, footprint: 1, category: 'energy', capMW: 4,
+    name: 'Wind Turbine', icon: '🌬', cost: 30000, upkeep: 160, footprint: 1, category: 'energy', capMW: 4,
     desc: '4 MW onshore turbine. Needs wind: cut-in ~11 km/h, rated ~43 km/h, storm cut-out ~90 km/h.',
   },
   hydro: {
-    name: 'Hydro Plant', icon: '💧', cost: 130000, upkeep: 250, footprint: 2, category: 'energy', capMW: 8, nearWater: true,
+    name: 'Hydro Plant', icon: '💧', cost: 110000, upkeep: 250, footprint: 2, category: 'energy', capMW: 8, nearWater: true,
     desc: '8 MW run-of-river plant. Steady renewable baseload. Must be built at the river.',
   },
   interconnector: {
-    name: 'Interconnector', icon: '🔌', cost: 90000, upkeep: 200, footprint: 2, category: 'energy', importMW: 12,
+    name: 'Interconnector', icon: '🔌', cost: 75000, upkeep: 200, footprint: 2, category: 'energy', importMW: 12,
     desc: '12 MW HVDC link to the neighbouring region. Imports power when your grid runs short — at the neighbour\'s price (~€95/MWh) and with the CO₂ of their part-fossil mix. Beware: Dunkelflauten are continental — during one the link thins to 30% and the price nears scarcity.',
   },
   battery: {
-    name: 'Battery Storage', icon: '🔋', cost: 52000, upkeep: 90, footprint: 2, category: 'storage',
+    name: 'Battery Storage', icon: '🔋', cost: 40000, upkeep: 90, footprint: 2, category: 'storage',
     storeMWh: 20, rateMW: 10,
     desc: '20 MWh / 10 MW lithium grid battery, ~92% round trip. Perfect for shifting solar noon → evening peak.',
   },
   electrolyzer: {
-    name: 'Electrolyzer', icon: '⚡', cost: 60000, upkeep: 140, footprint: 2, category: 'storage', elecMW: 5,
+    name: 'Electrolyzer', icon: '⚡', cost: 48000, upkeep: 140, footprint: 2, category: 'storage', elecMW: 5,
     desc: '5 MW PEM electrolyzer. Turns surplus power into hydrogen (~68% efficient). A flexible load that soaks up cheap midday solar.',
   },
   h2tank: {
-    name: 'H₂ Storage Tank', icon: '🫧', cost: 28000, upkeep: 60, footprint: 2, category: 'storage', h2MWh: 150,
+    name: 'H₂ Storage Tank', icon: '🫧', cost: 24000, upkeep: 60, footprint: 2, category: 'storage', h2MWh: 150,
     desc: 'Stores 150 MWh of hydrogen (chemical energy). Cheap per MWh — built for days or weeks of reserve, not hours.',
   },
   fuelcell: {
-    name: 'Fuel Cell Plant', icon: '♻️', cost: 52000, upkeep: 130, footprint: 2, category: 'storage', fcMW: 5,
+    name: 'Fuel Cell Plant', icon: '♻️', cost: 42000, upkeep: 130, footprint: 2, category: 'storage', fcMW: 5,
     desc: '5 MW fuel-cell plant. Converts stored hydrogen back to power (~58% efficient). Your insurance for dark, windless weeks.',
   },
   efuel: {
-    name: 'E-Fuel Refinery', icon: '🛢', cost: 70000, upkeep: 150, footprint: 2, category: 'storage', offtakeMW: 4,
+    name: 'E-Fuel Refinery', icon: '🛢', cost: 58000, upkeep: 150, footprint: 2, category: 'storage', offtakeMW: 4,
     desc: 'Sells up to 4 MW of your hydrogen into e-fuel contracts at €95/MWh — but only above a 40% tank reserve: your Dunkelflaute insurance is never for sale. Surplus power → H₂ → product: sector coupling.',
   },
   gas: {
@@ -81,9 +81,11 @@ export const BUILDINGS = {
 };
 
 // Carbon price (€/t CO₂): starts at `start` on day 1 and rises `perDay` each
-// game day — an EU-ETS-style ramp that turns the legacy gas plant from
-// break-even (~€33/t) into a growing loss. `exitGrant` is the one-time payout
-// for decommissioning it (see grid.js#decommissionGas).
+// game day — an EU-ETS-style ramp. Even at the starting price a gas MWh
+// (~€83.5) costs more than the net tariff (€85 − €18 grid fee), and the ramp
+// deepens the loss ~€1.35/MWh per day: the inherited status quo is a bleed
+// the player must build their way out of. `exitGrant` is the one-time payout
+// for decommissioning the plant (see grid.js#decommissionGas).
 export const CARBON = { start: 30, perDay: 3, exitGrant: 60000 };
 
 // Weather fronts & forecast (ADR 23): events are scheduled `leadHmin`–`leadHmax`
@@ -129,6 +131,29 @@ export const MARKET = {
   bandHi: 120,        // €/MWh at full residual load (renewables cover nothing)
   peakMW: 45,         // reference evening peak incl. industry for the interpolation
 };
+
+// Retail economics: what the player actually keeps per MWh billed.
+// - gridFeePerMWh: wires, metering, balancing, service — network costs are
+//   ~40% of a real retail bill. Booked as a cost on every MWh served, so
+//   selling energy has a margin, not a jackpot.
+// - Windfall levy (EU, 2022): when the market price spikes past levyStart,
+//   the regulator skims most of the excess from inframarginal generators.
+//   The player keeps levyKeep of everything above the threshold — high
+//   prices still reward storage, but scarcity is no longer a business model.
+export const TARIFF = { gridFeePerMWh: 18, levyStart: 100, levyKeep: 0.2 };
+
+// Blackout compensation (VoLL): every unserved MWh costs the utility real
+// money — regulators fine outages and industry claims damages. Real "value of
+// lost load" studies land at €4,000-10,000/MWh; the game uses a gentler figure
+// that still makes any blackout a clear net loss even while the scarcity
+// price (€240) is being billed for the load that IS served.
+export const VOLL = 500; // €/MWh unserved, booked as "blackout compensation"
+
+// Industrial demand response: factories are price-sensitive — when the market
+// spikes to crisis levels they pause production rather than pay (real-world
+// aluminium smelters and steel mills curtail exactly like this). Hysteresis
+// keeps the flag from flapping tick to tick.
+export const IND_CURTAIL = { pauseAt: 150, resumeAt: 100 }; // €/MWh
 
 // Grid interconnector (ADR 25): an HVDC link to the neighbouring region.
 // Imports fill deficits BEFORE the legacy gas plant (they displace your own
@@ -235,48 +260,51 @@ export const INDUSTRY_TYPES = {
 };
 
 export const CARGO = {
-  ore:   { name: 'Iron Ore', color: '#b07050', pay: 28 },
-  grain: { name: 'Grain', color: '#d8b84a', pay: 24 },
-  steel: { name: 'Green Steel', color: '#8fa8c0', pay: 75 },
-  food:  { name: 'Food', color: '#7ec97e', pay: 55 },
-  pax:   { name: 'Passengers', color: '#e8e0d0', pay: 24, payLocal: 9 }, // pay = intercity rate
+  ore:   { name: 'Iron Ore', color: '#b07050', pay: 42 },
+  grain: { name: 'Grain', color: '#d8b84a', pay: 36 },
+  steel: { name: 'Green Steel', color: '#8fa8c0', pay: 110 },
+  food:  { name: 'Food', color: '#7ec97e', pay: 80 },
+  pax:   { name: 'Passengers', color: '#e8e0d0', pay: 34, payLocal: 13 }, // pay = intercity rate
 };
 
 export const TECHS = [
-  { id: 'topcon', name: 'TOPCon Solar Cells', cost: 45000, days: 3, cat: 'Solar',
+  { id: 'topcon', name: 'TOPCon Solar Cells', cost: 30000, days: 3, cat: 'Solar',
     fx: m => m.solar *= 1.18,
     desc: 'Tunnel-oxide passivated contacts push panel efficiency from ~21% to ~24%. +18% solar output.' },
-  { id: 'perovskite', name: 'Perovskite Tandem', cost: 110000, days: 6, cat: 'Solar', req: 'topcon',
+  { id: 'perovskite', name: 'Perovskite Tandem', cost: 75000, days: 6, cat: 'Solar', req: 'topcon',
     fx: m => m.solar *= 1.3,
     desc: 'Perovskite-on-silicon tandem cells reach ~30% lab efficiency. +30% solar output.' },
-  { id: 'tallTowers', name: 'Taller Wind Towers', cost: 50000, days: 3, cat: 'Wind',
+  { id: 'tallTowers', name: 'Taller Wind Towers', cost: 34000, days: 3, cat: 'Wind',
     fx: m => m.wind *= 1.22,
     desc: 'Higher hubs reach steadier wind — capacity factor rises sharply with height. +22% wind output.' },
-  { id: 'bladeAero', name: 'Advanced Blade Aero', cost: 95000, days: 5, cat: 'Wind', req: 'tallTowers',
+  { id: 'bladeAero', name: 'Advanced Blade Aero', cost: 64000, days: 5, cat: 'Wind', req: 'tallTowers',
     fx: m => m.wind *= 1.2,
     desc: 'Longer carbon blades sweep more area; power scales with the square of rotor diameter. +20% wind.' },
-  { id: 'lfp', name: 'LFP Cell Density', cost: 60000, days: 4, cat: 'Storage',
+  { id: 'lfp', name: 'LFP Cell Density', cost: 40000, days: 4, cat: 'Storage',
     fx: m => m.batteryCap *= 1.35,
+    // retrofit already-built batteries on LIVE completion only; on save-restore
+    // the multiplier is applied before placements replay, so apply must not run
+    apply: G => { G.batteryCapMWh *= 1.35; },
     desc: 'Lithium-iron-phosphate packs got ~3x cheaper in a decade. +35% capacity on all batteries.' },
-  { id: 'pemEff', name: 'PEM Stack Efficiency', cost: 70000, days: 4, cat: 'Hydrogen',
+  { id: 'pemEff', name: 'PEM Stack Efficiency', cost: 47000, days: 4, cat: 'Hydrogen',
     fx: m => m.elecEff = 0.75,
     desc: 'Better catalysts & membranes: electrolyzer efficiency 68% → 75%. More H₂ per surplus MWh.' },
-  { id: 'sofc', name: 'Solid Oxide Fuel Cells', cost: 80000, days: 5, cat: 'Hydrogen',
+  { id: 'sofc', name: 'Solid Oxide Fuel Cells', cost: 54000, days: 5, cat: 'Hydrogen',
     fx: m => m.fcEff = 0.64,
     desc: 'High-temperature SOFC raises reconversion efficiency 58% → 64%. H₂ round trip reaches ~48%.' },
-  { id: 'heatpumps', name: 'City Heat Pumps & LED', cost: 55000, days: 4, cat: 'Efficiency',
+  { id: 'heatpumps', name: 'City Heat Pumps & LED', cost: 37000, days: 4, cat: 'Efficiency',
     fx: m => m.cityDemand *= 0.85,
     desc: 'Heat pumps deliver 3-4 units of heat per unit of electricity. City demand −15%.' },
-  { id: 'indEff', name: 'Industrial Efficiency', cost: 65000, days: 4, cat: 'Efficiency',
+  { id: 'indEff', name: 'Industrial Efficiency', cost: 44000, days: 4, cat: 'Efficiency',
     fx: m => m.industryDemand *= 0.85,
     desc: 'Waste-heat recovery & process electrification. Industry demand −15%.' },
-  { id: 'demandResponse', name: 'Demand Response', cost: 75000, days: 5, cat: 'Efficiency', req: 'heatpumps',
+  { id: 'demandResponse', name: 'Demand Response', cost: 50000, days: 5, cat: 'Efficiency', req: 'heatpumps',
     fx: m => m.demandResponse = 0.25,
     desc: 'Smart meters shift flexible loads (EV charging, heat pumps, cold storage) out of the peaks into the valleys. City peaks shrink 25% toward the daily average — the energy moves in time, it doesn\'t disappear.' },
-  { id: 'fastCharge', name: 'Megawatt Charging', cost: 48000, days: 3, cat: 'Transport',
+  { id: 'fastCharge', name: 'Megawatt Charging', cost: 32000, days: 3, cat: 'Transport',
     fx: m => m.chargeRate *= 2,
     desc: 'MCS megawatt charging standard: trucks charge twice as fast (and spike your grid harder).' },
-  { id: 'lightVeh', name: 'Efficient Drivetrains', cost: 52000, days: 3, cat: 'Transport',
+  { id: 'lightVeh', name: 'Efficient Drivetrains', cost: 35000, days: 3, cat: 'Transport',
     fx: m => { m.vehicleUse *= 0.78; m.vehicleSpeed *= 1.15; },
     desc: 'Better motors, SiC inverters, aero. −22% energy per km, +15% speed.' },
 ];
@@ -301,7 +329,11 @@ export const TIPS = {
   },
   firstBlackout: {
     title: 'Blackout!',
-    text: 'Demand exceeded supply and the grid went down: factories halted, charging stopped, citizens are furious. A reliable grid needs dispatchable power for when sun and wind are away — batteries for hours, hydrogen for days.',
+    text: 'Demand exceeded supply and the grid went down: factories halted, charging stopped, citizens are furious — and every unserved MWh costs you €500 in blackout compensation (regulators fine outages, industry claims damages; real "value of lost load" studies say €4,000+). A reliable grid needs dispatchable power for when sun and wind are away — batteries for hours, hydrogen for days.',
+  },
+  indCurtail: {
+    title: 'Factories are fleeing the price',
+    text: 'The electricity price hit crisis levels (≥€150/MWh), so your industries paused production rather than pay it — exactly what real aluminium smelters and steel mills do. They restart below €100/MWh. Note the chain reaction: idle factories produce nothing, so your trucks and trains soon run empty. Cheap, stable power isn\'t just grid hygiene — it is what keeps your whole transport business fed.',
   },
   firstBattery: {
     title: 'Batteries: the daily workhorse',
@@ -317,7 +349,7 @@ export const TIPS = {
   },
   firstGas: {
     title: 'Your legacy plant jumped in',
-    text: 'Storage ran dry, so the inherited gas plant is covering the gap. Right now that\'s roughly break-even: ~€70/MWh fuel + 0.45 t CO₂ × the carbon price vs the €85/MWh you bill. But the carbon price rises €3 every day — soon every gas MWh is a loss. Real utilities face exactly this squeeze; build enough storage to stop needing it.',
+    text: 'Storage ran dry, so the inherited gas plant is covering the gap. Do the math: ~€70/MWh fuel + 0.45 t CO₂ × the carbon price, against the €85/MWh tariff minus €18 grid costs. It\'s already underwater — and the carbon price rises €3 every day, so the hole deepens ~€1.35/MWh daily. Real utilities face exactly this squeeze; every renewable MWh you add displaces a gas MWh and pockets the difference.',
   },
   firstOfftake: {
     title: 'Hydrogen is now a product',
@@ -329,11 +361,11 @@ export const TIPS = {
   },
   carbon50: {
     title: 'Carbon price hits €50/t',
-    text: 'A gas MWh now costs ~€70 fuel + €22.50 carbon ≈ €93 — you sell it for €85. Your legacy plant loses money every hour it runs, and the price keeps climbing €3/day. This is the EU-ETS mechanism in miniature: emitting gets steadily more expensive until clean alternatives win.',
+    text: 'A gas MWh now costs ~€70 fuel + €22.50 carbon ≈ €93 — while a billed MWh nets you ~€67 after grid costs. Your legacy plant loses ~€26 every MWh it runs, and the carbon price keeps climbing €3/day. This is the EU-ETS mechanism in miniature: emitting gets steadily more expensive until clean alternatives win.',
   },
   carbon80: {
     title: 'Carbon price hits €80/t',
-    text: 'Gas generation now costs over €106/MWh to produce, and rising €1.35/MWh every day. On the Smart Market the plant sets the price when it runs (cost + €15), but its €400/day upkeep and CO₂ keep piling up — and every hour it runs is an hour your storage could have sold at scarcity prices instead. If it still runs regularly, your storage is undersized. Consider decommissioning it (click the plant) once your batteries and hydrogen can carry a Dunkelflaute alone.',
+    text: 'Gas generation now costs over €106/MWh to produce, rising €1.35/MWh every day — deep in loss territory. If it still runs regularly, your storage is undersized. But careful with the wrecking ball: an idle plant costs only €400/day and every blackout it prevents saves €500/MWh in compensation. Decommission it (click the plant, €60k exit grant) only once batteries, hydrogen and the interconnector can carry a winter Dunkelflaute alone — that is the real endgame.',
   },
   gasDecommissioned: {
     title: 'Fossil-free — no safety net',
@@ -345,11 +377,11 @@ export const TIPS = {
   },
   marketLive: {
     title: 'The Smart Market is live!',
-    text: 'The flat €85/MWh tariff is history — the price now moves with supply and demand (watch the 💶 ticker in the top bar). The most expensive running source sets the price: blackouts spike it to €240/MWh, the gas plant sets it at its cost + €15, and curtailed surplus crashes it to €25. Discharge storage into expensive hours, charge in cheap ones — flexibility now earns real money.',
+    text: 'The flat €85/MWh tariff is history — the price now moves with supply and demand (watch the 💶 ticker in the top bar). The most expensive running source sets the price: blackouts spike it to €240/MWh, the gas plant sets it at its cost + €15, and curtailed surplus crashes it to €25. One catch, straight from the EU\'s 2022 playbook: a windfall levy skims 80% of any price above €100/MWh — flexibility earns real money, engineered scarcity doesn\'t.',
   },
   scarcitySale: {
     title: 'Your storage just sold at €240/MWh!',
-    text: 'Demand outran supply, the price hit the €240/MWh scarcity cap — and your battery/fuel cell discharged straight into it, earning almost 3× the old flat tariff. This is storage arbitrage, the business model of real grid batteries: buy (charge) when power is nearly free, sell when the grid is desperate.',
+    text: 'Demand outran supply, the price hit the €240/MWh scarcity cap — and your battery/fuel cell discharged straight into it. After the windfall levy that still nets ~€128/MWh, roughly double a normal hour. This is storage arbitrage, the business model of real grid batteries: buy (charge) when power is nearly free, sell when the grid is desperate — and every MWh it delivers also spares you €500 in blackout compensation.',
   },
   dunkelflaute: {
     // fires at SCHEDULE time (~10-14 h before arrival), not at arrival — the
@@ -432,4 +464,8 @@ export const LEARN = [
   ['Electrified rail', 'Steel-on-steel rolling resistance is ~10× lower than tyre-on-road, so rail moves a tonne-km on a fraction of the energy. Most electric trains have no battery: traction power flows live from the grid via the catenary (overhead line) — grid reliability IS railway reliability.'],
   ['Efficiency', 'Heat pumps (300-400% "efficient"), LED, waste-heat recovery: every MWh not consumed needs no generation, no storage, no grid. Cheapest energy is the energy you don\'t use.'],
   ['CO₂ accounting', 'Each renewable MWh that replaces fossil generation avoids roughly 0.4-0.8 t CO₂ (this game uses 0.4 t/MWh, a typical gas/coal-mix figure).'],
+  ['Value of lost load', 'What one undelivered MWh costs society — studies say €4,000-10,000. Utilities pay fines and damages for outages (this game: €500/MWh "blackout compensation"), which is why grids hold reserves that rarely run.'],
+  ['Windfall levy', 'In the 2022 price crisis the EU capped "inframarginal" revenues: generators whose costs hadn\'t risen were skimmed above a threshold. Here: above €100/MWh you keep 20 cents on the euro — reliability pays, scarcity profiteering doesn\'t.'],
+  ['Grid fees', 'Roughly 40% of a real electricity bill is not energy: wires, transformers, metering, balancing. Your €18/MWh grid operations cost models that — selling power is a margin business, and efficiency techs widen the margin.'],
+  ['Industrial demand response', 'Electricity-intensive industry (aluminium, steel, chlorine) pauses production when prices spike — cheaper than paying crisis prices. In the game your factories halt above €150/MWh and restart below €100: keep power cheap or your freight dries up.'],
 ];

@@ -24,6 +24,9 @@ function initialState() {
     gasDecommissioned: false, // legacy plant bought out (irreversible)
     price: 85,                // live electricity price €/MWh (flat until the Smart Market)
     marketLive: false,        // Smart Market active (dynamic pricing, day 10+)
+    compCostToday: 0,         // today's blackout compensation (VoLL, energy.js)
+    gridFeeToday: 0,          // today's grid operating costs (per MWh served)
+    indCurtailed: false,      // industries paused by crisis prices (demand response)
     reports: [],              // last 7 daily report cards (closeDay())
     // special transport offers & signed contracts (see sim/contracts.js)
     contracts: { offers: [], active: [], completed: 0, failed: 0, offerTimer: 0, seq: 1 },

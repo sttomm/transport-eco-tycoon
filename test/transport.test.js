@@ -112,3 +112,17 @@ test('steel boost: the works sips grid hydrogen for +50% output', () => {
   tickIndustries(1);
   assert.ok(Math.abs(boosted - steel.stock * 1.5) < 1e-6, '+50% with H₂');
 });
+
+// ---- industrial demand response (crisis prices pause production) ----------
+test('industries pause while G.indCurtailed and resume when it clears', () => {
+  G.indCurtailed = true;
+  tickIndustries(1);
+  assert.equal(farm.wantsPower, false, 'paused industry draws no power');
+  assert.equal(farm.running, false);
+  assert.equal(farm.stock, 0, 'no production while curtailed');
+  G.indCurtailed = false;
+  tickIndustries(1);
+  assert.equal(farm.running, true);
+  // the depot in range sweeps fresh stock within the same tick
+  assert.ok(farm.stock + (depotA.cargo.grain || 0) > 0, 'production resumes below the resume threshold');
+});

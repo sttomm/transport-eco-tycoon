@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, resetState } from '../src/sim/state.js';
 import { solarFactor, windFactor, tickGrid, dailyUpkeep, rollFossilFreeDay, cityDemandCurve, POWER_PRICE } from '../src/sim/energy.js';
-import { AGING, BUILDINGS, CARBON, H2OFFTAKE, INTERCONNECT, MARKET } from '../src/sim/data.js';
+import { AGING, BUILDINGS, CARBON, H2OFFTAKE, INTERCONNECT, MARKET, TARIFF, TECHS, VOLL } from '../src/sim/data.js';
 
 // energy tests run on an empty world: no cities/industries unless we add them
 beforeEach(() => resetState());
@@ -15,6 +15,9 @@ const NOON = 12 * 60, MIDNIGHT = 0;
 const solarPlant = mw => G.plants.push({ type: 'solar', def: { capMW: mw } });
 const gasPlant = () => G.plants.push({ type: 'gas', def: BUILDINGS.gas });
 const industry = mw => G.industries.push({ wantsPower: true, def: { powerMW: mw } });
+// what the player nets per served MWh: price (levy-skimmed above levyStart) minus grid fee
+const netPerMWh = (p = POWER_PRICE) =>
+  Math.min(p, TARIFF.levyStart) + TARIFF.levyKeep * Math.max(0, p - TARIFF.levyStart) - TARIFF.gridFeePerMWh;
 
 test('solar follows the sun: full at clear spring noon, zero at night', () => {
   G.minutes = NOON; G.cloud = 0;
@@ -69,11 +72,11 @@ test('deficit: battery discharges, then fuel cell burns H₂, no blackout', () =
   assert.ok(Math.abs(G.h2MWh - (10 - 5 / G.mult.fcEff)) < 1e-6);  // 58% efficient out
   assert.equal(G.unservedMW, 0);
   assert.equal(G.servedFraction, 1);
-  // industry pays for every served MWh
-  assert.ok(Math.abs(G.money - moneyBefore - 10 * POWER_PRICE) < 1e-6);
+  // industry pays for every served MWh — net of the grid operations fee
+  assert.ok(Math.abs(G.money - moneyBefore - 10 * netPerMWh()) < 1e-6);
 });
 
-test('blackout: demand unserved without storage, revenue forfeited, flag set', () => {
+test('blackout: unserved demand earns nothing and costs VoLL compensation', () => {
   G.minutes = MIDNIGHT; G.wind = 0;
   industry(10);
   const moneyBefore = G.money;
@@ -81,7 +84,18 @@ test('blackout: demand unserved without storage, revenue forfeited, flag set', (
   assert.ok(Math.abs(G.unservedMW - 10) < 1e-6);
   assert.equal(G.servedFraction, 0);
   assert.equal(G.blackout, true);
-  assert.ok(Math.abs(G.money - moneyBefore) < 1e-6); // nothing served, nothing earned
+  // nothing served, nothing earned — and every unserved MWh is compensated
+  assert.ok(Math.abs(G.money - moneyBefore + 10 * VOLL) < 1e-6);
+  assert.ok(Math.abs(G.compCostToday - 10 * VOLL) < 1e-6, 'compensation booked for the report card');
+});
+
+test('grid operations fee is booked per served MWh', () => {
+  G.minutes = MIDNIGHT; G.wind = 0;
+  industry(10);
+  G.batteryCapMWh = 40; G.batteryRateMW = 20; G.batteryMWh = 40;
+  tickGrid(1);
+  assert.ok(Math.abs(G.gridFeeToday - 10 * TARIFF.gridFeePerMWh) < 1e-6);
+  assert.ok(Math.abs(G.incomeEnergyToday - 10 * POWER_PRICE) < 1e-6, 'income shows the gross tariff');
 });
 
 test('vehicle charging is own consumption — never billed', () => {
@@ -152,8 +166,8 @@ test('gas economics: fuel + carbon cost deducted, demand still billed, CO₂ boo
   // 10 MWh × (€70 fuel + 0.45 t × €30/t carbon) = €835 cost, €850 revenue
   const cost = 10 * (70 + 0.45 * 30);
   assert.ok(Math.abs(G.gasCostToday - cost) < 1e-6);
-  assert.ok(Math.abs(G.money - before - (10 * POWER_PRICE - cost)) < 1e-6);
-  assert.ok(Math.abs(G.expensesToday - cost) < 1e-6, 'gas cost shows in expenses');
+  assert.ok(Math.abs(G.money - before - (10 * netPerMWh() - cost)) < 1e-6);
+  assert.ok(Math.abs(G.expensesToday - cost - 10 * TARIFF.gridFeePerMWh) < 1e-6, 'gas cost + grid fee show in expenses');
   assert.ok(Math.abs(G.gasMWhToday - 10) < 1e-6);
   assert.ok(Math.abs(G.co2EmittedTons - 4.5) < 1e-6);          // 10 MWh × 0.45 t
   assert.equal(G.co2SavedTons, 0, 'gas-served MWh avoids nothing');
@@ -240,8 +254,8 @@ test('imported MWh bill normally but avoid no CO₂', () => {
   tickGrid(1);
   assert.ok(Math.abs(G.supply.import - 10) < 1e-6);
   assert.equal(G.unservedMW, 0);
-  // revenue 10 × €85 flat, cost 10 × €95 import → net −€100 (insurance, not profit)
-  assert.ok(Math.abs(G.money - before - (10 * POWER_PRICE - 10 * INTERCONNECT.price)) < 1e-6);
+  // revenue 10 × net tariff, cost 10 × €95 import → a loss (insurance, not profit)
+  assert.ok(Math.abs(G.money - before - (10 * netPerMWh() - 10 * INTERCONNECT.price)) < 1e-6);
   assert.equal(G.co2SavedTons, 0, 'imports avoid nothing');
 });
 
@@ -310,4 +324,14 @@ test('dailyUpkeep bills plants and vehicles — aged vehicles at their ramped ra
   // an aged vehicle costs more (ADR 27): 15 days past grace → 45 × 2.5
   G.vehicles[0].ageDays = AGING.graceDays + 15;
   assert.equal(dailyUpkeep(), 120 + 45 * 2.5);
+});
+
+// ---- research retrofits (data contract for hud.js tickResearch) -----------
+test('LFP research retrofits already-built batteries via its apply hook', () => {
+  const lfp = TECHS.find(t => t.id === 'lfp');
+  G.batteryCapMWh = 40;
+  lfp.fx(G.mult);
+  lfp.apply(G);
+  assert.ok(Math.abs(G.batteryCapMWh - 54) < 1e-6, 'existing capacity scaled by +35%');
+  assert.ok(Math.abs(G.mult.batteryCap - 1.35) < 1e-6, 'future placements scaled too');
 });

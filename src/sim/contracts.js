@@ -75,8 +75,9 @@ function makeOffer(rnd = Math.random) {
     c.amount = Math.round(size.base * (0.75 + rnd() * 0.5));
     c.days = size.days;
     c.mult = PREMIUM;
-    // completion bonus ≈ what the cargo itself would pay — helps, not a jackpot
-    c.bonus = Math.round(c.amount * (CARGO[cargoId].pay || 24) * 1.2 / 500) * 500;
+    // completion bonus ≈ 2× what the cargo itself would pay — a real prize
+    // for rearranging your network before the deadline, not a jackpot
+    c.bonus = Math.round(c.amount * (CARGO[cargoId].pay || 24) * 2 / 500) * 500;
     c.progress = 0;
     c.expires = G.minutes + OFFER_DAYS * 1440;
     c.deadline = null;

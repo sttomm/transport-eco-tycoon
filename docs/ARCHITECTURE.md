@@ -533,6 +533,33 @@ step can be completed out of order (checks are cumulative and cascade), and
 it is skippable at any moment. Detection-by-state means the tutorial needs
 no special hooks in game rules — it reads the same counters quests do.
 
+### 30. Retail economics: grid fee, windfall levy, VoLL, industrial demand response
+**Decision:** energy billing nets `min(P,100) + 0.2·max(0, P−100) − €18/MWh`
+(windfall levy + grid operations fee, `data.js` TARIFF), every unserved MWh
+costs €500 blackout compensation (VOLL), and all industries pause while
+`G.price ≥ 150`, restarting below €100 (hysteresis on `G.indCurtailed`, set in
+`tickGrid`, consumed by `tickIndustries` one tick later). The starter grid
+shrank (4 wind, 3 solar, 1 battery) so the gas plant runs nightly from day 1;
+energy capex, research costs, cargo pays, contract bonuses and energy-quest
+rewards were re-tuned around the new margins.
+**Why:** 30-day headless policy runs (passive vs scripted "smart player")
+showed the old economy rewarded failure: scarcity pricing billed the player's
+own captive customers with no cost for unserved load, so the most profitable
+days were the ones with 6+ h of blackouts, a passive player nearly tripled
+their money doing nothing, and gas setting the price inflated revenue on every
+renewable MWh (inframarginal windfall). All three counter-mechanisms are real
+policies (EU 2022 revenue cap, VoLL-based outage fines, industrial
+curtailment), so the fix deepens the teaching instead of patching around it.
+The re-tuned reward channels move the profit engine to things only an active
+player does: transport chains (pays > passive grid margin), displacement of
+gas/import costs, storage arbitrage, quest/contract completion. Verified by
+re-running the policy harness: passive ends ~+75% over 30 days with scary
+negative event days; a thorough player ends ~+130-155% in cash **plus** the
+infrastructure. Trade-off: the fossil-free endgame is intentionally hard —
+decommissioning gas before firm clean capacity exists now hurts (keeping the
+plant idle is the smart bridge), which mirrors reality's capacity-reserve
+debates.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

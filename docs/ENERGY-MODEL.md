@@ -131,7 +131,7 @@ the last dispatchable before blackout and the whole game arc is phasing it out.
 | Fuel cost | €70/MWh | gas peaker fuel cost at recent European gas prices (~€35-40/MWh_th ÷ ~40% OCGT efficiency, incl. O&M) |
 | Emissions | 0.45 t CO₂/MWh | open-cycle gas turbine ~0.4-0.5 t/MWh |
 | Carbon price | starts €30/t, +€3 per game day (`data.js` CARBON) | EU-ETS-style rising CO₂ price; the ramp is compressed to game pace |
-| Break-even | (85 − 70) / 0.45 ≈ **€33.3/t** → day 2-3 | above that, every gas MWh sells at a loss (pinned by test: margin < 0 for >€35/t) |
+| Margin | day-1 cost €83.5/MWh vs €85 tariff − €18 grid fee = **€67 net** → underwater from day 1, deepening €1.35/MWh per day | the 2021-22 gas + ETS squeeze pushed European OCGT power above retail-net margins; (85 − 70)/0.45 ≈ €33/t is still the gross break-even pinned by test |
 
 Mechanics: gas-served demand bills normally at €85/MWh, but the plant burns
 `fuel + 0.45 × carbonPrice` per MWh (booked into expenses and
@@ -143,7 +143,12 @@ tracked by `G.fossilFreeDays`) is the de-facto win condition and works whether
 the plant was decommissioned or merely idle.
 
 Blackout (`served < 97%`): industry halts, charging stops, city happiness
-falls (population shrinks), energy revenue lost.
+falls (population shrinks), energy revenue lost — and every unserved MWh
+costs **€500 blackout compensation** (`data.js` VOLL). Anchor: value-of-lost-load
+studies put one undelivered MWh at €4,000-10,000; regulators fine outages and
+industry claims damages. Compressed to game scale, it still guarantees a
+blackout is a net loss even while the €240 scarcity price is billed for the
+load that *is* served.
 
 ## Grid imports (Interconnector, ADR 25)
 
@@ -153,7 +158,7 @@ storage and **before** the legacy gas plant:
 | Number | Game | Real-world anchor |
 |---|---|---|
 | Capacity | 12 MW per interconnector | HVDC links (NordLink, Viking Link…) are GW-class; scaled to the region |
-| Import price | €95/MWh normal (`data.js` INTERCONNECT) | neighbour day-ahead price + fees; above your €85 flat tariff → imports are insurance, not profit |
+| Import price | €95/MWh normal (`data.js` INTERCONNECT) | neighbour day-ahead price + fees; well above your ~€67 net tariff → imports are insurance, not profit |
 | Import CO₂ | 0.25 t/MWh onto `co2EmittedTons` (no avoided credit, climate dice included) | average European grid mix ~0.2–0.3 t/MWh — imported power is only as clean as the neighbour's mix |
 | Event throttle | during a Dunkelflaute/heatwave: capacity × 0.3, price €220/MWh | Dunkelflauten are synoptic-scale (continental): interconnected neighbours are short in the same hours, and scarcity propagates through coupled markets |
 | Smart Market | importing sets the price at import cost + €10 if it is the most expensive running source | pay-as-clear across coupled zones |
@@ -178,23 +183,54 @@ the most expensive running source sets the price, as in real pay-as-clear
 | Curtailing surplus | **€25/MWh** | renewable-glut hours drive day-ahead prices to near zero or below; €25 stands in for the negative-price hours real markets see on sunny Sundays |
 | Otherwise | **€45→€120** linear in residual load: `clamp((demand − renewables)/45 MW, 0, 1)` | day-ahead prices track residual load (demand minus wind+solar); 45 MW is the region's reference evening peak incl. industry |
 
-Revenue = billable MW × hours × `G.price`. Consequences, all intended
-teaching: storage discharge into scarcity hours earns ~3× the old tariff
-(storage arbitrage — the business model of real grid batteries); the gas
-plant briefly earns its €15 markup as the price-setter (real peakers live off
-exactly such hours) but the €3/day carbon ramp, its €400/day upkeep and the
-fossil-free quest still make phasing it out the winning strategy; and heavy
-solar overbuild now sees its midday revenue crash to €25 (price cannibalization).
+Revenue = billable MW × hours × the **levy-skimmed** price (see the retail
+economics section below). Consequences, all intended teaching: storage
+discharge into scarcity hours earns ~€128/MWh net (≈2× a normal hour —
+storage arbitrage, the business model of real grid batteries) *and* avoids
+€500/MWh compensation; the gas plant briefly earns its €15 markup as the
+price-setter (real peakers live off exactly such hours) but the €3/day carbon
+ramp, its €400/day upkeep and the fossil-free quest still make phasing it out
+the winning strategy; and heavy solar overbuild now sees its midday revenue
+crash to €25 (price cannibalization).
 `marketLive` and `price` are derived from `G.day` each tick — nothing is
 saved, loaded saves price correctly from the first tick. Balance is pinned by
 a 15-day headless starter-kit run: total energy income within ±30% of the
 flat-tariff baseline (measured ≈ −0.3% on average across 5 seeds, spread
 −12%…+16% depending on weather).
 
+## Retail economics & reliability (ADR 30)
+
+Selling energy is a **margin business**, not a jackpot — three mechanisms
+(`data.js` TARIFF, VOLL, IND_CURTAIL) keep the incentive gradient pointing at
+"serve everyone, cleanly and cheaply":
+
+| Mechanism | Game | Real-world anchor |
+|---|---|---|
+| Grid operations fee | **€18 per served MWh**, booked as an expense (`gridFeeToday`) | ~40% of a real retail bill is network cost: wires, transformers, metering, balancing |
+| Windfall levy | billing price = `min(P, 100) + 0.2 × max(0, P − 100)` | the EU's 2022 inframarginal revenue cap: generators whose costs hadn't risen were skimmed above a threshold |
+| Blackout compensation | **€500 per unserved MWh** (`compCostToday`) | value of lost load €4,000-10,000/MWh; fines + damage claims |
+| Industrial demand response | all industries pause while `G.price ≥ 150` and restart below `€100` (hysteresis flag `G.indCurtailed`) | aluminium smelters, steel mills and chlorine plants curtail at crisis prices — cheaper than paying them |
+
+Combined effect (verified by 30-day headless policy runs): a passive player
+coasts on a thin, decaying margin and bleeds during winter and weather events;
+under-supplying on purpose no longer pays (scarcity revenue is skimmed *and*
+compensated away, and crisis prices idle the very factories that feed the
+transport business); building renewables pays twice (billed MWh + displaced
+gas/import costs) and storage pays three ways (arbitrage, avoided VoLL,
+avoided crisis-pauses).
+
 ## Economics
 
 - Energy price: flat €85/MWh until day 10, then the Smart Market price above
-  (cities + industry pay; your own fleet charges free).
+  (cities + industry pay; your own fleet charges free). Net of the €18 grid
+  fee and, above €100, the windfall levy.
+- The starter grid is deliberately undersized (4 wind, 3 solar, 1 battery,
+  hydro + the 30 MW gas plant): the legacy plant must run every evening from
+  day 1, so the carbon ramp makes the inherited status quo a bleed the player
+  builds their way out of.
 - CO₂ avoided: 0.4 t/MWh served (typical displaced fossil mix) — purely a
   score/teaching metric.
-- Cargo payment: `base × amount × (1 + distance/45)`.
+- Cargo payment: `base × amount × (1 + distance/45)`; base pays (ore 42,
+  grain 36, steel 110, food 80, pax 34 intercity / 13 local) are sized so a
+  well-run transport network out-earns passive grid income — effort is the
+  main profit channel.

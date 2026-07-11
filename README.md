@@ -49,8 +49,13 @@ locked while it runs.
    where — central towns make natural transfer hubs). Every cargo chain has
    several producers and processors spread across the region — both mines lie
    east of the river, so western steel routes need a bridge.
-2. **Energy** — every home, factory and charging vehicle pays you €85 per MWh
-   served. Blackouts cost you revenue, halt industry and shrink your cities.
+2. **Energy** — every home and factory pays you €85 per MWh served (your own
+   fleet charges free). It's a margin business: each served MWh carries
+   **€18 grid operating costs**, and blackouts don't just lose revenue — every
+   unserved MWh costs **€500 blackout compensation** and unhappy cities
+   shrink. Keep prices out of crisis territory, too: above **€150/MWh** your
+   industries pause production rather than pay (restarting below €100), and
+   idle factories starve your freight routes.
 
 **Special contracts (📜 tab):** cities and industries post up to three
 time-limited offers to move a specific cargo or passenger relation (à la
@@ -100,13 +105,17 @@ All numbers are anchored to real-world magnitudes:
 | Interconnector | 12 MW import link, €95/MWh + neighbour-mix CO₂; throttled to 30% at €220 during region-wide events | HVDC interconnection helps — but Dunkelflauten are continental, everyone is short at once |
 | E-Fuel Refinery | sells H₂ at €95/MWh above a hard 40% tank reserve | sector coupling: green H₂ offtake deals (€3–6/kg) turn surplus power into molecules |
 
-**The fossil bridge:** every new game inherits one 30 MW **legacy gas plant**.
-It jumps in when your storage runs dry and keeps the early game alive — but a
-carbon price that starts at €30/t and rises €3 per day makes every gas MWh a
-growing loss (break-even ≈ €33/t). You can't build more fossil capacity, only
-phase this plant out: build storage until it never runs, or decommission it
-for a one-time exit grant. Seven consecutive fossil-free days complete the
-**Fossil-free week** objective — the closest thing the region has to victory.
+**The fossil bridge:** every new game inherits one 30 MW **legacy gas plant**
+and a deliberately undersized renewable fleet — the plant has to run every
+evening from day 1. A carbon price that starts at €30/t and rises €3 per day
+makes every gas MWh a deepening loss against your ~€67/MWh net tariff. You
+can't build more fossil capacity, only build your way out: each renewable MWh
+you add displaces a gas MWh and pockets the difference. Decommissioning pays
+a one-time exit grant, but an idle plant costs only €400/day — cheap insurance
+against €500/MWh blackout compensation until your storage, hydrogen and
+interconnector can carry a winter Dunkelflaute alone. Seven consecutive
+fossil-free days complete the **Fossil-free week** objective — the closest
+thing the region has to victory.
 
 **The Smart Market:** on day 8 the regulator announces — and on day 10
 activates — dynamic electricity pricing. The flat €85/MWh tariff is replaced
@@ -116,7 +125,9 @@ gas plant sets the price at its cost + €15 while it runs, and curtailed
 surplus crashes it to **€25/MWh**; in between it tracks residual load
 (€45–120). Watch the 💶 ticker in the top bar and the price line in the
 dashboard chart — discharging storage into scarce hours now earns real money,
-so storage arbitrage becomes the business model.
+so storage arbitrage becomes the business model. One rule from the EU's 2022
+playbook: a **windfall levy** skims 80% of any price above €100/MWh, so
+flexibility pays but engineered scarcity doesn't.
 
 The weather brings real phenomena: multi-day **Dunkelflaute** (dark calm) events
 that batteries can't bridge, storms that force turbine cut-outs, and summer
@@ -163,7 +174,7 @@ Plain ES modules, no framework, no build, no dependencies. Three layers
 npm test        # Node's built-in runner, ~100 ms, zero dependencies
 ```
 
-155 tests pin the simulation: dispatch merit order (incl. the legacy gas,
+160 tests pin the simulation: dispatch merit order (incl. the legacy gas,
 import and H₂-offtake steps), storage efficiencies, placement rules & palette
 unlocks, pathfinding, freight & passenger economics, route-kind validation,
 vehicle aging, quests, the guided tutorial, special contracts, loans, weather

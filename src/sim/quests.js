@@ -69,24 +69,24 @@ export const QUESTS = [
   },
   // --- energy chain
   {
-    id: 'fossilFree', where: plants('gas'), title: '🌱 Fossil-free week', target: 7, reward: 50000,
+    id: 'fossilFree', where: plants('gas'), title: '🌱 Fossil-free week', target: 7, reward: 100000,
     desc: 'Your inherited gas plant keeps the lights on — at a rising carbon cost. Go 7 consecutive days without a single gas MWh: build enough storage that it never has to run, or decommission it outright (click the plant). This is the energy transition in one objective.',
     value: () => G.fossilFreeDays, fmt: v => v.toFixed(0) + ' days',
     win: true,
     winText: 'Seven straight days of 100% clean power — the region\'s energy transition is complete. Real grids call this the endgame: firm renewables and storage made the fossil bridge obsolete.',
   },
   {
-    id: 'storagePlay', where: plants('battery', 'solar'), title: '🔋 Store the sun', target: 80, reward: 25000,
+    id: 'storagePlay', where: plants('battery', 'solar'), title: '🔋 Store the sun', target: 80, reward: 35000,
     desc: 'Solar peaks at noon, demand peaks in the evening. Reach 80 MWh of battery capacity to shift the surplus (build batteries or research LFP).',
     value: () => G.batteryCapMWh, fmt: MWh,
   },
   {
-    id: 'h2Reserve', where: plants('electrolyzer', 'h2tank'), req: 'storagePlay', title: '🫧 Hydrogen reserve', target: 80, reward: 40000,
+    id: 'h2Reserve', where: plants('electrolyzer', 'h2tank'), req: 'storagePlay', title: '🫧 Hydrogen reserve', target: 80, reward: 60000,
     desc: 'Batteries cover hours, not weeks. Build an Electrolyzer and an H₂ tank, then stockpile 80 MWh of hydrogen for the next Dunkelflaute.',
     value: () => G.h2MWh, fmt: MWh,
   },
   {
-    id: 'h2Export', where: plants('efuel'), req: 'h2Reserve', title: '🛢 Hydrogen economy', target: 300, reward: 45000,
+    id: 'h2Export', where: plants('efuel'), req: 'h2Reserve', title: '🛢 Hydrogen economy', target: 300, reward: 60000,
     desc: 'Hydrogen isn\'t just storage — it\'s a product. Build an E-Fuel Refinery and sell 300 MWh of hydrogen into e-fuel contracts. It only sells above a 40% tank reserve, so your Dunkelflaute stash stays untouched.',
     value: () => G.h2SoldMWh, fmt: MWh,
   },
@@ -96,7 +96,7 @@ export const QUESTS = [
     value: () => Object.keys(G.techs).length,
   },
   {
-    id: 'co2', req: 'h2Reserve', title: '🌍 Climate dividend', target: 2500, reward: 50000,
+    id: 'co2', req: 'h2Reserve', title: '🌍 Climate dividend', target: 2500, reward: 60000,
     desc: 'Avoid 2,500 t of CO₂ by serving the region with renewables (top bar counter).',
     value: () => G.co2SavedTons, fmt: v => v.toFixed(0) + ' t',
   },

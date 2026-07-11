@@ -1,5 +1,5 @@
 import { G, emit, hourOfDay, season } from './state.js';
-import { BUILDINGS, CARBON, CLIMATE, FORECAST, H2OFFTAKE, INTERCONNECT, MARKET } from './data.js';
+import { BUILDINGS, CARBON, CLIMATE, FORECAST, H2OFFTAKE, IND_CURTAIL, INTERCONNECT, MARKET, TARIFF, VOLL } from './data.js';
 import { vehicleUpkeep } from './transport.js';
 
 // Flat electricity tariff per MWh served — the price until the Smart Market
@@ -279,9 +279,17 @@ export function tickGrid(gameHours) {
       G.co2EmittedTons += gasMW * gameHours * d.co2PerMWh;
       if (gasMW > 0.3) emit('tip', 'firstGas');
     }
-    // 5) blackout
+    // 5) blackout — unserved load costs blackout compensation (VoLL): fines
+    // and damage claims make every blackout a net loss, even while the
+    // scarcity price is billed for the load that IS served.
     unservedMW = Math.max(0, deficit);
     if (unservedMW > 0.3) emit('tip', 'firstBlackout');
+    if (unservedMW > 0) {
+      const comp = unservedMW * gameHours * VOLL;
+      G.money -= comp;
+      G.expensesToday += comp;
+      G.compCostToday += comp;
+    }
   }
   G.batteryMWh = Math.min(G.batteryMWh, G.batteryCapMWh);
   G.h2MWh = Math.min(G.h2MWh, G.h2CapMWh);
@@ -338,11 +346,29 @@ export function tickGrid(gameHours) {
     if (G.price === MARKET.scarcity && (batteryMW > 0.05 || fcMW > 0.05)) emit('tip', 'scarcitySale');
   }
 
-  // --- money: cities & industries pay for served energy; charging is your own cost (free)
+  // --- industrial demand response: factories pause at crisis prices rather
+  // than pay them (hysteresis so the flag doesn't flap tick to tick).
+  // tickIndustries reads the flag; the demand drop registers next tick.
+  if (!G.indCurtailed && G.price >= IND_CURTAIL.pauseAt) {
+    G.indCurtailed = true;
+    emit('tip', 'indCurtail');
+  } else if (G.indCurtailed && G.price <= IND_CURTAIL.resumeAt) {
+    G.indCurtailed = false;
+  }
+
+  // --- money: cities & industries pay for served energy; charging is your own cost (free).
+  // The windfall levy skims most of any price above levyStart (EU 2022-style
+  // inframarginal cap), and every served MWh carries grid operating costs —
+  // so revenue is a margin business, and scarcity prices are not a jackpot.
   const billableMW = (cityMW + indMW) * G.servedFraction;
-  const revenue = billableMW * gameHours * G.price;
+  const effPrice = Math.min(G.price, TARIFF.levyStart) + TARIFF.levyKeep * Math.max(0, G.price - TARIFF.levyStart);
+  const revenue = billableMW * gameHours * effPrice;
   G.money += revenue;
   G.incomeEnergyToday += revenue;
+  const gridFee = billableMW * gameHours * TARIFF.gridFeePerMWh;
+  G.money -= gridFee;
+  G.expensesToday += gridFee;
+  G.gridFeeToday += gridFee;
   // gas-served and imported MWh are not your renewables — they avoid nothing
   G.co2SavedTons += Math.max(0, servedMW - gasMW - impMW) * gameHours * CO2_PER_MWH;
 
@@ -386,6 +412,8 @@ export function rollFossilFreeDay() {
   G.importMWhToday = 0;
   G.importCostToday = 0;
   G.h2SoldMWhToday = 0;
+  G.compCostToday = 0;
+  G.gridFeeToday = 0;
 }
 
 export function dailyUpkeep() {

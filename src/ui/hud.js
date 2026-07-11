@@ -225,7 +225,7 @@ export function showTipText(title, text) {
 // blackout > gas losses > weather recap > curtailment > all green.
 function reportAdvice(r) {
   if (r.blackoutHours > 0.05)
-    return `⚠ ${r.blackoutHours.toFixed(1)} h of blackout — add generation or storage before the evening peak.`;
+    return `⚠ ${r.blackoutHours.toFixed(1)} h of blackout${(r.compCost || 0) > 500 ? ` — ${fmtMoney(r.compCost)} paid in compensation` : ''} — add generation or storage before the evening peak.`;
   if (r.gasCost > 1000)
     return `🏭 The gas plant burned ${fmtMoney(r.gasCost)} in fuel and carbon costs — every renewable MWh you add shrinks that bill.`;
   if (r.flauteHours > 0.05 || r.stormHours > 0.05 || (r.heatHours || 0) > 0.05)
@@ -283,6 +283,8 @@ function renderYesterday() {
     ${reportRow('<span class="dim">— fixed costs</span>', `<span class="dim small">upkeep ${fmtMoney(r.upkeep)}${r.loanInterest > 0 ? ' · interest ' + fmtMoney(r.loanInterest) : ''}</span>`)}
     ${r.gasMWh > 0.05 ? reportRow('<span class="dim">— gas</span>', `<span class="dim small">${r.gasMWh.toFixed(0)} MWh · ${fmtMoney(r.gasCost)}</span>`) : ''}
     ${(r.importMWh || 0) > 0.05 ? reportRow('<span class="dim">— imports</span>', `<span class="dim small">${r.importMWh.toFixed(0)} MWh · ${fmtMoney(r.importCost)}</span>`) : ''}
+    ${(r.gridFee || 0) > 0.5 ? reportRow('<span class="dim">— grid operations</span>', `<span class="dim small">${fmtMoney(r.gridFee)}</span>`) : ''}
+    ${(r.compCost || 0) > 0.5 ? reportRow('<span class="dim">— blackout compensation</span>', `<span class="bad small">${fmtMoney(r.compCost)}</span>`) : ''}
     ${(r.h2SoldMWh || 0) > 0.05 ? reportRow('<span class="dim">— H₂ sold</span>', `<span class="dim small">${r.h2SoldMWh.toFixed(0)} MWh · ${fmtMoney(r.h2SoldMWh * H2OFFTAKE.pricePerMWh)}</span>`) : ''}
     <div class="report-advice small">${reportAdvice(r)}</div>`;
 }
@@ -607,6 +609,7 @@ export function tickResearch(gameHours) {
   if (G.research.progress >= 1) {
     const t = TECHS.find(x => x.id === G.research.id);
     t.fx(G.mult);
+    if (t.apply) t.apply(G); // retrofit existing builds (e.g. LFP upgrades placed batteries)
     G.techs[t.id] = true;
     G.research = null;
     showTipText('Research complete!', `${t.name} — ${t.desc}`);

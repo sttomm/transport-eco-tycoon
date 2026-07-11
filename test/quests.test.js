@@ -26,7 +26,7 @@ test('fossil-free week: 7 clean days complete the de-facto win condition with a 
   const before = G.money;
   checkQuests();
   assert.equal(G.questsDone.fossilFree, true);
-  assert.equal(G.money, before + 50000);
+  assert.equal(G.money, before + 100000);
   assert.equal(toasts.length, 1);
   assert.match(toasts[0].title, /🏆/, 'win toast, not a plain objective toast');
   assert.match(toasts[0].text, /clean power/);

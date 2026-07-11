@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, resetState, on } from '../src/sim/state.js';
 import { tickGrid, POWER_PRICE } from '../src/sim/energy.js';
-import { BUILDINGS, CARBON, MARKET } from '../src/sim/data.js';
+import { BUILDINGS, CARBON, IND_CURTAIL, MARKET, TARIFF } from '../src/sim/data.js';
 
 beforeEach(() => resetState());
 
@@ -119,7 +119,7 @@ test('interpolation midpoint: half the reference peak → halfway through the ba
   assert.ok(Math.abs(G.price - expected) < 1e-9); // €82.5
 });
 
-test('revenue bills at G.price once the market is live', () => {
+test('revenue bills at G.price once the market is live — minus levy and grid fee', () => {
   G.day = MARKET.liveDay;
   G.minutes = MIDNIGHT; G.wind = 0;
   industry(10);
@@ -129,8 +129,42 @@ test('revenue bills at G.price once the market is live', () => {
   const d = BUILDINGS.gas;
   const price = d.fuelPerMWh + d.co2PerMWh * carbonAt(MARKET.liveDay) + MARKET.gasMarkup;
   const gasCost = 10 * (d.fuelPerMWh + d.co2PerMWh * carbonAt(MARKET.liveDay));
-  assert.ok(Math.abs(G.incomeEnergyToday - 10 * price) < 1e-6, 'revenue = billable MWh × market price');
-  assert.ok(Math.abs(G.money - before - (10 * price - gasCost)) < 1e-6);
+  // the windfall levy skims most of the price above levyStart before billing
+  const eff = Math.min(price, TARIFF.levyStart) + TARIFF.levyKeep * Math.max(0, price - TARIFF.levyStart);
+  assert.ok(Math.abs(G.incomeEnergyToday - 10 * eff) < 1e-6, 'revenue = billable MWh × levy-skimmed price');
+  assert.ok(Math.abs(G.money - before - (10 * (eff - TARIFF.gridFeePerMWh) - gasCost)) < 1e-6);
+});
+
+test('windfall levy: scarcity billing is skimmed above levyStart', () => {
+  G.day = MARKET.liveDay;
+  G.minutes = MIDNIGHT; G.wind = 0;
+  industry(10);
+  battery(20, 5);                        // 5 MW served, 5 MW unserved → scarcity price
+  tickGrid(1);
+  assert.equal(G.price, MARKET.scarcity);
+  const eff = TARIFF.levyStart + TARIFF.levyKeep * (MARKET.scarcity - TARIFF.levyStart);
+  assert.ok(Math.abs(G.incomeEnergyToday - 5 * eff) < 1e-6, 'served half bills the skimmed scarcity price');
+  assert.ok(G.compCostToday > 0, 'the unserved half is compensated — scarcity is no jackpot');
+});
+
+test('industrial demand response: crisis prices pause industry, with hysteresis', () => {
+  G.day = MARKET.liveDay;
+  G.minutes = MIDNIGHT; G.wind = 0;
+  industry(10);                          // unserved → scarcity price 240
+  tickGrid(1);
+  assert.ok(G.price >= IND_CURTAIL.pauseAt, 'precondition: crisis price');
+  assert.equal(G.indCurtailed, true, 'flag raised at crisis price');
+  // price falls into the dead band — flag must hold (no flapping)
+  G.industries.length = 0;
+  solarPlant(0);                         // zero demand, zero supply → price in normal band
+  G.minutes = NOON; G.cloud = 0;
+  tickGrid(1);
+  if (G.price > IND_CURTAIL.resumeAt) assert.equal(G.indCurtailed, true, 'dead band holds the flag');
+  // deep price drop clears it
+  G.plants.push({ type: 'solar', def: { capMW: 30 } });
+  tickGrid(1);
+  assert.ok(G.price <= IND_CURTAIL.resumeAt, 'precondition: glut price');
+  assert.equal(G.indCurtailed, false, 'flag cleared below resume threshold');
 });
 
 test('announcement tip fires on day 8, activation tip on day 10, neither before', () => {

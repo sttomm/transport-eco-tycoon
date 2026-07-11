@@ -48,21 +48,19 @@ function placeStarter(type, ni, nj) {
 if (!loadedSave) {
   // suppress build-tips while placing the legacy grid, then re-arm them for the player's own builds
   for (const id of ['firstSolar', 'firstWind', 'firstBattery']) G.firedTips[id] = true;
-  // sized for the 8-city region (~23 MW evening peak): same rated-capacity
-  // margin as the original 3-city starter grid
+  // deliberately UNDERSIZED for the 8-city region (~23 MW evening peak): the
+  // legacy gas plant has to run every evening from day 1, so the rising
+  // carbon price turns the inherited status quo into a bleed the player must
+  // build their way out of — the energy transition as the profit motive.
   placeStarter('hydro', 22, 42);     // at the pond north of Windburg
   placeStarter('wind', 34, 50);
   placeStarter('wind', 37, 50);
   placeStarter('wind', 40, 48);
   placeStarter('wind', 56, 56);
-  placeStarter('wind', 59, 56);
-  placeStarter('wind', 62, 54);
   placeStarter('solar', 30, 70);
   placeStarter('solar', 36, 72);
   placeStarter('solar', 24, 66);
-  placeStarter('solar', 20, 60);
   placeStarter('battery', 34, 66);
-  placeStarter('battery', 38, 66);
   // the inherited legacy gas plant (ADR 21) on Solhaven's eastern outskirts —
   // the early-game safety net the whole energy-transition arc phases out
   placeStarter('gas', 57, 66);
