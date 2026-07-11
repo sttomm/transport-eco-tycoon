@@ -22,6 +22,7 @@ const { fbm, rand } = noise;
 let scene;
 let roadDirty = true;
 let railBallast, railSegs, railDirty = true;
+let curbMesh;
 const ambient = { cars: null, peds: null, carList: [], pedList: [] };
 const turbineRotors = [];
 const smokeStacks = [];        // gas-plant smoke groups (meshes.js userData.smoke)
@@ -1035,20 +1036,29 @@ function initLamps() {
 
 // ---------- roads (dynamic instanced meshes, one per connection mask) ----------
 // asphalt spans the whole tile so connected streets read as one seamless
-// surface; the sidewalk band is only drawn along edges that don't border
-// another road tile. 16 texture variants keyed by the neighbour bitmask
-// (bit0 = +x, bit1 = -x, bit2 = +z, bit3 = -z road neighbour).
+// surface. Every road tile — city street or inter-city/rural — shares the
+// same asphalt and gets a dashed centre line (WP9: unify, no gravel variant
+// anywhere). City streets (tile.cityStreet) additionally get a sidewalk band
+// + curb line baked into the texture, a raised 3D curb lip along the same
+// edges (curbMesh below), and zebra crosswalk bands at junction tiles.
+// Rural roads stay plain asphalt running flush to the grass, matching
+// board07-aerial.jpg. 32 texture variants: 16 neighbour bitmasks (bit0 = +x,
+// bit1 = -x, bit2 = +z, bit3 = -z road neighbour) x {rural, city}.
 export const SIDEWALK_W = 0.5;                    // world units, matches the texture border
 // like the rail ballast bed: terrain height varies within a tile, so a thin
 // slab at tile-center height clips into slopes. The deck top sits ROAD_TOP
 // above tile height (just below the rails of a level crossing at ~0.285).
 export const ROAD_TOP = 0.24;
 const ROAD_DECK_H = 0.4;                          // deck bottom h-0.16 hides dips
-const roadMeshes = [];                            // index = connection mask
+const ROAD_CAP = 4500;                            // instances per (mask, city) bucket — same headroom as pre-WP9
+const CITY_BIT = 16;                              // bucket index offset: mask + CITY_BIT for city streets
+const roadMeshes = [];                            // index = mask + (cityStreet ? CITY_BIT : 0)
+const CURB_W = 0.16, CURB_H = 0.10;                // raised curb strip: width x height, world units
+const CURB_CAP = 6000;                            // up to 4 curb strips per city street tile
 
 // canvas orientation on the box top face: right = +x, top = -z (box UVs put
 // z=-T/2 at v=1, which is the canvas top after flipY)
-function makeAsphaltTexture(mask) {
+function makeAsphaltTexture(mask, isCity) {
   return canvasTex(128, (cx, S) => {
     const B = Math.round(S * SIDEWALK_W / G.TILE); // sidewalk band px
     // asphalt base over the whole tile
@@ -1095,18 +1105,24 @@ function makeAsphaltTexture(mask) {
       }
       cx.setLineDash([]);
     }
-    // sidewalk bands on unconnected edges: [x, y, w, h] in canvas px
+    // sidewalk bands on unconnected edges: [x, y, w, h] in canvas px.
+    // Rural (inter-city) roads skip this entirely — asphalt runs flush to the
+    // edge, matching board07-aerial.jpg; only city streets get a sidewalk +
+    // curb (the raised 3D curb lip lives in curbMesh, built off the same
+    // neighbour mask in rebuildRoads).
     const bands = [];
-    if (!(mask & 1)) bands.push([S - B, 0, B, S]);  // +x → canvas right
-    if (!(mask & 2)) bands.push([0, 0, B, S]);      // -x → canvas left
-    if (!(mask & 4)) bands.push([0, S - B, S, B]);  // +z → canvas bottom
-    if (!(mask & 8)) bands.push([0, 0, S, B]);      // -z → canvas top
-    // corner patches where two connected edges meet (junction mouths, inner
-    // bend corners) — they join the neighbours' sidewalk bands around the turn
-    if ((mask & 1) && (mask & 4)) bands.push([S - B, S - B, B, B]);
-    if ((mask & 1) && (mask & 8)) bands.push([S - B, 0, B, B]);
-    if ((mask & 2) && (mask & 4)) bands.push([0, S - B, B, B]);
-    if ((mask & 2) && (mask & 8)) bands.push([0, 0, B, B]);
+    if (isCity) {
+      if (!(mask & 1)) bands.push([S - B, 0, B, S]);  // +x → canvas right
+      if (!(mask & 2)) bands.push([0, 0, B, S]);      // -x → canvas left
+      if (!(mask & 4)) bands.push([0, S - B, S, B]);  // +z → canvas bottom
+      if (!(mask & 8)) bands.push([0, 0, S, B]);      // -z → canvas top
+      // corner patches where two connected edges meet (junction mouths, inner
+      // bend corners) — they join the neighbours' sidewalk bands around the turn
+      if ((mask & 1) && (mask & 4)) bands.push([S - B, S - B, B, B]);
+      if ((mask & 1) && (mask & 8)) bands.push([S - B, 0, B, B]);
+      if ((mask & 2) && (mask & 4)) bands.push([0, S - B, B, B]);
+      if ((mask & 2) && (mask & 8)) bands.push([0, 0, B, B]);
+    }
     for (const [bx, by, bw, bh] of bands) {
       cx.fillStyle = '#8f959b'; cx.fillRect(bx, by, bw, bh);
       const grain = Math.max(12, 140 * (bw * bh) / (S * B) | 0);
@@ -1125,24 +1141,69 @@ function makeAsphaltTexture(mask) {
       if (bh < S) { const cy = by === 0 ? B : by; cx.moveTo(bx, cy); cx.lineTo(bx + bw, cy); }
       cx.stroke();
     }
+    // zebra crosswalk bands at city intersections: junction tiles (3-4 arms,
+    // the ones the dashed centre line above deliberately leaves unmarked) get
+    // a ladder of stripes near each connected arm, parallel to that arm's
+    // direction of travel and spread across the road width — same cream
+    // paint colour as the dashed line, kept off pure white per the ACES
+    // albedo rule.
+    if (isCity && arms.length >= 3) {
+      cx.fillStyle = 'rgba(225,222,206,0.85)';
+      const pad = 36, thick = 14, len = 34, nStripes = 4;
+      const rStart = B + 6, rEnd = S - B - 6, step = (rEnd - rStart) / (nStripes - 1);
+      for (const [bit] of arms) {
+        if (bit === 1 || bit === 2) { // x-arm: stripes parallel to X, spread along canvas Y (world z)
+          const cxA = bit === 1 ? S - pad : pad;
+          for (let k = 0; k < nStripes; k++) {
+            const cyA = rStart + k * step;
+            cx.fillRect(cxA - len / 2, cyA - thick / 2, len, thick);
+          }
+        } else { // z-arm: stripes parallel to canvas Y (world z), spread along X
+          const cyA = bit === 4 ? S - pad : pad;
+          for (let k = 0; k < nStripes; k++) {
+            const cxA = rStart + k * step;
+            cx.fillRect(cxA - thick / 2, cyA - len / 2, thick, len);
+          }
+        }
+      }
+    }
   });
+}
+
+// ---------- curbs (raised 3D strip, city streets only) ----------
+// A thin box along the outer edge of each city street tile that doesn't
+// border another road tile — no curb across a junction mouth, matching the
+// texture-baked sidewalk band above. Rural roads never get one.
+function initCurbMesh() {
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const mat = new THREE.MeshStandardMaterial({ color: '#9aa0a5', roughness: 0.85 });
+  curbMesh = noCull(new THREE.InstancedMesh(geo, mat, CURB_CAP));
+  curbMesh.castShadow = curbMesh.receiveShadow = true;
+  curbMesh.count = 0;
+  scene.add(curbMesh);
 }
 
 function initRoadMesh() {
   const geo = new THREE.BoxGeometry(G.TILE, ROAD_DECK_H, G.TILE);
-  for (let mask = 0; mask < 16; mask++) {
-    const mat = new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(mask), roughness: 0.95 });
-    const mesh = noCull(new THREE.InstancedMesh(geo, mat, 4500));
-    mesh.receiveShadow = true;
-    mesh.count = 0;
-    roadMeshes[mask] = mesh;
-    scene.add(mesh);
+  for (let city = 0; city < 2; city++) {
+    for (let mask = 0; mask < 16; mask++) {
+      const mat = new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(mask, !!city), roughness: 0.95 });
+      const mesh = noCull(new THREE.InstancedMesh(geo, mat, ROAD_CAP));
+      mesh.receiveShadow = true;
+      mesh.count = 0;
+      roadMeshes[mask + city * CITY_BIT] = mesh;
+      scene.add(mesh);
+    }
   }
+  initCurbMesh();
   roadDirty = true;
 }
 function rebuildRoads() {
   const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1);
+  const cm = new THREE.Matrix4(), cp = new THREE.Vector3(), cs = new THREE.Vector3();
   for (const mesh of roadMeshes) mesh.count = 0;
+  curbMesh.count = 0;
+  const inset = G.TILE / 2 - SIDEWALK_W; // world offset from tile centre to the curb line
   for (const t of G.tiles) {
     if (t.t !== 'road') continue;
     const mask = (isRoad(t.i + 1, t.j) ? 1 : 0) | (isRoad(t.i - 1, t.j) ? 2 : 0)
@@ -1150,10 +1211,22 @@ function rebuildRoads() {
     const [x, z] = worldXZ(t.i, t.j);
     p.set(x, t.h + ROAD_TOP - ROAD_DECK_H / 2, z);
     m.compose(p, q, s);
-    const mesh = roadMeshes[mask];
+    const mesh = roadMeshes[mask + (t.cityStreet ? CITY_BIT : 0)];
     mesh.setMatrixAt(mesh.count++, m);
+
+    // raised curb strips: city streets only, one per unconnected edge (a
+    // junction mouth toward another road tile never gets one). Bridges and
+    // player-placed rural roads never set cityStreet, so they stay curb-free.
+    if (t.cityStreet) {
+      const curbY = t.h + ROAD_TOP + CURB_H / 2;
+      if (!(mask & 1)) { cp.set(x + inset, curbY, z); cs.set(CURB_W, CURB_H, G.TILE); cm.compose(cp, q, cs); curbMesh.setMatrixAt(curbMesh.count++, cm); }
+      if (!(mask & 2)) { cp.set(x - inset, curbY, z); cs.set(CURB_W, CURB_H, G.TILE); cm.compose(cp, q, cs); curbMesh.setMatrixAt(curbMesh.count++, cm); }
+      if (!(mask & 4)) { cp.set(x, curbY, z + inset); cs.set(G.TILE, CURB_H, CURB_W); cm.compose(cp, q, cs); curbMesh.setMatrixAt(curbMesh.count++, cm); }
+      if (!(mask & 8)) { cp.set(x, curbY, z - inset); cs.set(G.TILE, CURB_H, CURB_W); cm.compose(cp, q, cs); curbMesh.setMatrixAt(curbMesh.count++, cm); }
+    }
   }
   for (const mesh of roadMeshes) mesh.instanceMatrix.needsUpdate = true;
+  curbMesh.instanceMatrix.needsUpdate = true;
   roadDirty = false;
 }
 
