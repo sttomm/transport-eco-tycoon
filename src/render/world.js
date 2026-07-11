@@ -81,110 +81,122 @@ function buildTerrainMesh() {
   const pos = geo.attributes.position;
   for (let k = 0; k < pos.count; k++) pos.setY(k, heightAt(pos.getX(k), pos.getZ(k)));
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ map: bakeTerrainTexture(), roughness: 0.95, metalness: 0 });
-  attachGroundDetail(mat);
+  // Flat base colour + roughness from the Board 07 look-dev terrain node graph;
+  // the real biome is computed procedurally in attachGroundShader's fragment
+  // chunks, so the material itself carries no baked albedo texture (that big
+  // canvas bake was the old "flat look" — it blurred badly at street level).
+  const mat = new THREE.MeshStandardMaterial({ color: '#33501f', roughness: 0.92, metalness: 0 });
+  attachGroundShader(mat);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   scene.add(mesh);
 }
 
-// integer hash → [0,1) — cheap per-pixel grain
+// integer hash → [0,1) — cheap per-pixel grain (micro-normal bake)
 function hash2(x, y) {
   let n = Math.imul(x, 374761393) + Math.imul(y, 668265263);
   n = Math.imul(n ^ (n >>> 13), 1274126177);
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
 }
 
-// Bake a biome texture over the whole map: river bed, wet/dry sand banks,
-// mottled grass with dirt patches, striated rock — plus slope shading.
-function bakeTerrainTexture() {
-  const PX = 3072, S = G.N * G.TILE; // 4× map area: 3072² keeps ~⅔ of the old texel density without quadrupling the bake time
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = PX;
-  const cx = cv.getContext('2d');
-  const img = cx.createImageData(PX, PX);
-  const d = img.data;
-  const C = s => { const c = new THREE.Color(s); return [c.r * 255, c.g * 255, c.b * 255]; };
-  const cBedHi = C('#9a9a72'), cBedLo = C('#4e5f55'), cWet = C('#a08a5e'), cSand = C('#d3c494'),
-    cGrassA = C('#6fae5c'), cGrassB = C('#558f47'), cDirt = C('#8a7a52'), cRock = C('#9aa0a3'), cRockD = C('#767c80');
-  const out = [0, 0, 0];
-  const mix = (a, b, t) => { t = Math.max(0, Math.min(1, t)); out[0] = a[0] + (b[0] - a[0]) * t; out[1] = a[1] + (b[1] - a[1]) * t; out[2] = a[2] + (b[2] - a[2]) * t; return out; };
-  const prevRow = new Float32Array(PX);
-  for (let py = 0; py < PX; py++) {
-    let left = 0;
-    for (let px = 0; px < PX; px++) {
-      const x = ((px + 0.5) / PX - 0.5) * S, z = ((py + 0.5) / PX - 0.5) * S;
-      const h = heightAt(x, z);
-      const slope = py && px ? Math.abs(h - left) + Math.abs(h - prevRow[px]) : 0;
-      prevRow[px] = h; left = h;
-      const grain = hash2(px, py) - 0.5;            // fine speckle
-      let c;
-      if (h < WATER_Y + 0.02) {                     // river bed, darker with depth
-        c = mix(cBedHi, cBedLo, (WATER_Y - h) / 1.1 + grain * 0.15);
-      } else if (h < WATER_Y + 0.24) {              // wet sand at the waterline
-        c = mix(cWet, cSand, (h - WATER_Y) / 0.24 * 0.5 + grain * 0.3);
-      } else {
-        // irregular sand→grass border driven by noise
-        const edge = (h - (WATER_Y + 0.65)) / 0.45 + (fbm(x * 0.22 + 31, z * 0.22, 2) - 0.5) * 1.4;
-        if (edge < 1) {
-          const sandC = mix(cSand, cWet, 0.18 + grain * 0.5);
-          if (edge <= 0) c = sandC;
-          else {
-            const g0 = mix(cGrassA, cGrassB, fbm(x * 0.05 + 9, z * 0.05, 3));
-            c = mix([sandC[0], sandC[1], sandC[2]], g0, edge);
-          }
-        } else {
-          // grass: large patches + fine mottling + occasional dirt
-          const patch = fbm(x * 0.05 + 9, z * 0.05, 3);
-          const mottle = fbm(x * 0.6 + 200, z * 0.6, 2) - 0.5;
-          c = mix(cGrassA, cGrassB, patch + mottle * 0.7 + grain * 0.35);
-          const dirt = fbm(x * 0.13 + 77, z * 0.13, 3);
-          if (dirt > 0.58) c = mix([c[0], c[1], c[2]], cDirt, (dirt - 0.58) * 6 + grain * 0.3);
-          if (h > 2.6) { // rocky highland blend with striations
-            const stria = Math.sin(h * 7 + fbm(x * 0.3, z * 0.3, 2) * 5) * 0.5 + 0.5;
-            const rockC = mix(cRock, cRockD, stria * 0.7 + grain * 0.4);
-            c = mix([c[0], c[1], c[2]], rockC, (h - 2.6) / 0.9);
-          }
-        }
-      }
-      // slope shading: steeper = darker (fake AO on river banks & hills)
-      const shade = 1 - Math.min(0.3, slope * 0.55) + grain * 0.06;
-      const k = (py * PX + px) * 4;
-      d[k] = c[0] * shade; d[k + 1] = c[1] * shade; d[k + 2] = c[2] * shade; d[k + 3] = 255;
-    }
-  }
-  cx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 16;
-  return tex;
-}
+// ---------- procedural ground shader (Board 07 look-dev port) ----------
+// The whole biome is a fragment-shader blend keyed off world position, ported
+// from lookdev-blender.py's terrain node graph:
+//   1. grass patchwork — two greens chosen by a macro noise field,
+//   2. dirt breaks     — occasional bare-earth patches from a second noise,
+//   3. rock on slopes  — where the geometric up-facing normal drops (look-dev
+//      keyed normal.z 0.88→0.72),
+//   4. sand at the shore — a height band just above the water plane.
+// It is injected as onBeforeCompile chunks on a stock MeshStandardMaterial, so
+// three's own fog / shadow-receive / lighting / envmap paths — and the
+// screen-space GTAO pass — all run unchanged over the result (they read the
+// final normal/depth and multiply fog last; none of that is touched here).
+// Every term is a pure function of world XZ / height, so the look is fully
+// deterministic from WORLD_SEED: nothing re-randomises per load. A tiling
+// normal map supplies the micro bump; a hue-neutral detail texture adds
+// close-up grain that fades out with distance so its repeat never shows.
+const DETAIL_REPEAT = G.N;                         // micro-normal: one repeat per tile (4 wu)
+const DETAIL_UV = 1 / G.TILE;                      // grain sampled per world unit → 1 tile / repeat
 
-// ---------- ground detail (close-up crispness) ----------
-// The biome bake covers the whole island in one texture, so at street level it
-// blurs no matter its resolution. A small tiling detail layer fixes that:
-// a hue-neutral grain multiplied into the albedo (reads as grass blades on
-// grass, granules on sand) plus a matching normal map for micro-relief.
-// It fades out with camera distance so the repeat never shows as a pattern.
-const DETAIL_REPEAT = G.N;                         // one repeat per tile (4 wu)
-
-function attachGroundDetail(mat) {
+function attachGroundShader(mat) {
   const { albedo, normal } = makeGroundDetailMaps();
-  mat.normalMap = normal;
-  mat.normalScale = new THREE.Vector2(0.45, 0.45);
+  mat.normalMap = normal;                          // micro bump (view-space, survives lighting)
+  mat.normalScale = new THREE.Vector2(0.4, 0.4);
+
   mat.onBeforeCompile = shader => {
     shader.uniforms.uGroundDetail = { value: albedo };
+    shader.uniforms.uWaterY = { value: WATER_Y };
+
+    // world position varying (independent of the shadow/envmap-conditional
+    // worldPosition three may or may not emit)
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vGroundPos;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vGroundPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <map_pars_fragment>',
-        '#include <map_pars_fragment>\nuniform sampler2D uGroundDetail;')
+      .replace('#include <common>', `#include <common>
+        varying vec3 vGroundPos;
+        uniform sampler2D uGroundDetail;
+        uniform float uWaterY;
+        float gHash(vec2 p){
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+        float gNoise(vec2 p){                       // smoothed value noise, [0,1]
+          vec2 i = floor(p), f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = gHash(i), b = gHash(i + vec2(1.0, 0.0));
+          float c = gHash(i + vec2(0.0, 1.0)), d = gHash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+        float gFbm(vec2 p){
+          float s = 0.0, a = 0.5;
+          for (int k = 0; k < 4; k++){ s += a * gNoise(p); p *= 2.0; a *= 0.5; }
+          return s;
+        }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
       {
+        vec2 wp = vGroundPos.xz;
+        // geometric slope from world-position derivatives — the true macro
+        // surface tilt, unaffected by the micro-bump normal map (y is up, so
+        // |faceN.y| == 1 on flat ground, dropping toward 0 on cliffs)
+        vec3 faceN = normalize(cross(dFdx(vGroundPos), dFdy(vGroundPos)));
+        float upness = abs(faceN.y);
+
+        // 1. grass patchwork: two greens over a macro noise field
+        float macro = gNoise(wp * 0.05);
+        vec3 col = mix(vec3(0.085, 0.22, 0.05), vec3(0.15, 0.30, 0.085),
+                       smoothstep(0.40, 0.60, macro));
+        col *= 0.92 + 0.16 * gFbm(wp * 0.35);       // within-patch mottle
+
+        // 2. dirt breaks
+        float dirt = gNoise(wp * 0.07 + 13.0);
+        col = mix(col, vec3(0.35, 0.25, 0.13), smoothstep(0.60, 0.70, dirt));
+
+        // 3. rock on steep slopes. Look-dev keyed normal.z 0.88 → 0.72, but this
+        // world's heightfield is far gentler (min up-facing ~0.80 off-water), so
+        // that ramp never fires here; shifted up to stay keyed to the genuinely
+        // steepest slopes (river shoulders, hillsides) rather than never showing.
+        col = mix(col, vec3(0.33, 0.32, 0.30), 1.0 - smoothstep(0.80, 0.92, upness));
+
+        // 4. sand ringing the shoreline: a height band just above the water,
+        // with a noisy edge so the waterline isn't a clean contour
+        float above = (vGroundPos.y - uWaterY) + (gNoise(wp * 0.15 + 5.0) - 0.5) * 0.5;
+        col = mix(col, vec3(0.52, 0.44, 0.27), 1.0 - smoothstep(0.15, 0.95, above));
+
+        diffuseColor.rgb = col;
+
+        // close-up grain (blade strokes on grass, granules on sand), faded out
+        // with distance so the tiling repeat never shows
         float fade = 1.0 - smoothstep(60.0, 170.0, length(vViewPosition));
         if (fade > 0.001) {
-          vec3 dA = texture2D(uGroundDetail, vMapUv * ${DETAIL_REPEAT}.0).rgb;
-          vec3 dB = texture2D(uGroundDetail, vMapUv * ${DETAIL_REPEAT / 4}.0 + 0.37).rgb;
-          diffuseColor.rgb *= mix(vec3(1.0), dA * dB * 4.0, 0.55 * fade);
+          vec3 dA = texture2D(uGroundDetail, wp * ${DETAIL_UV}).rgb;
+          vec3 dB = texture2D(uGroundDetail, wp * ${DETAIL_UV / 4.0} + 0.37).rgb;
+          diffuseColor.rgb *= mix(vec3(1.0), dA * dB * 4.0, 0.4 * fade);
         }
       }`);
   };
