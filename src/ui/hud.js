@@ -338,6 +338,11 @@ const pct = (v, c) => c > 0 ? Math.round(v / c * 100) + '%' : '—';
 // with the countdown, hidden when nothing is scheduled
 function updateWeatherBanner() {
   const el = $('weatherbanner');
+  // the topbar wraps to two lines on narrower viewports (it grew a price
+  // ticker) — anchor the under-topbar overlays to its real height
+  const tbH = $('topbar').offsetHeight + 'px';
+  el.style.top = tbH;
+  $('toolhint').style.top = tbH;
   const f = G.weatherFront;
   if (!f) { el.style.display = 'none'; return; }
   el.style.display = 'block';
