@@ -43,6 +43,17 @@ discover this.
   cloud→92% for 36-54 game hours. The defining stress test of renewable grids.
 - **Storm**: random gust to 100% wind → turbines cut out (zero output at
   maximum wind — counterintuitive and true).
+- **Fronts & forecast** (ADR 23): both events are *scheduled* 10–14 h ahead
+  on `G.weatherFront` and applied when the countdown hits zero — never
+  weakened, only visible. Mirrors reality: numerical weather prediction is
+  reliable on that horizon, and grid operators dispatch storage against the
+  day-ahead forecast. `G.forecast` (derived each tick, not saved) exposes a
+  24 h outlook — per-3h solar factor from the deterministic season/day curve
+  under cloud persistence, the wind mean-reversion target, and the inbound
+  front. The advisor's Dunkelflaute warning fires at schedule time: the lead
+  time is the window to top up batteries and H₂. Constants: `data.js`
+  FORECAST. Setting `G.dunkelflaute` directly (debug/playtest path) still
+  applies instantly, bypassing the front machinery.
 
 ## Demand
 

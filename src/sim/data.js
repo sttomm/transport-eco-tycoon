@@ -78,6 +78,16 @@ export const BUILDINGS = {
 // for decommissioning it (see grid.js#decommissionGas).
 export const CARBON = { start: 30, perDay: 3, exitGrant: 60000 };
 
+// Weather fronts & forecast (ADR 23): events are scheduled `leadHmin`–`leadHmax`
+// hours ahead on G.weatherFront, so the forecast can warn the player before a
+// Dunkelflaute or storm hits. Duration ranges match the classic events.
+export const FORECAST = {
+  leadHmin: 10, leadHmax: 14,     // hours between scheduling and arrival
+  flauteHmin: 36, flauteHmax: 54, // Dunkelflaute duration (h)
+  stormH: 2,                      // rough gust duration shown in the forecast (h)
+  slotH: 3, horizonH: 24,         // forecast outlook: 8 slots of 3 h
+};
+
 export const VEHICLES = {
   truck: {
     name: 'E-Truck', icon: '🚚', cost: 32000, upkeep: 45, capacity: 18, speed: 9,
@@ -221,8 +231,10 @@ export const TIPS = {
     text: 'The gas plant is gone and the exit grant is in your account. The trade-off: deficits now go straight from fuel cells to blackout — there is no fossil backstop anymore. Keep your H₂ tanks stocked before winter and Dunkelflautes. This is the real endgame of the energy transition: firm clean capacity replaces fossil reserve.',
   },
   dunkelflaute: {
-    title: 'Dunkelflaute warning!',
-    text: 'A high-pressure system brings ~2 days of thick clouds AND almost no wind. This is the hardest test of any renewable grid. Your batteries alone won\'t last — this is exactly what hydrogen reserves are for. Check your H₂ tank level!',
+    // fires at SCHEDULE time (~10-14 h before arrival), not at arrival — the
+    // lead time is the preparation window (see energy.js updateWeather, ADR 23)
+    title: 'Dunkelflaute inbound!',
+    text: 'The forecast shows a high-pressure system arriving in ~12 hours: ~2 days of thick clouds AND almost no wind. This is the hardest test of any renewable grid — your batteries alone won\'t last, this is exactly what hydrogen reserves are for. Use the lead time: charge everything now and check your H₂ tank level!',
   },
   storm: {
     title: 'Storm cut-out',

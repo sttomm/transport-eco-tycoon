@@ -36,7 +36,10 @@ change model and tests together, and `npm test` before any browser check.
 - `windFactor()`: 0 below w=0.12, `min(1, ((w−0.12)/0.55)³·3.2)`, 0 above 0.96
 - `cityDemandCurve()`: 0.62 base + Gaussians at 08:00 (0.5) and 19:30 (0.75)
 - Weather: mean-reverting walks; Dunkelflaute event (wind→0.06, cloud→0.92,
-  36-54 h, ~0.6%/h after day 3); storm event (wind→1.0 → cut-out)
+  36-54 h, ~0.6%/h after day 3); storm event (wind→1.0 → cut-out). Events are
+  scheduled 10-14 h ahead on `G.weatherFront` (data.js FORECAST, ADR 23) and
+  applied when the countdown ends; `G.forecast` is derived each tick. The
+  forced path `G.dunkelflaute = 40` below still applies immediately.
 - Money: `(cityMW + indMW) × servedFraction × hours × €85`; fleet charging is
   unbilled; CO₂ counter +0.4 t/MWh served
 

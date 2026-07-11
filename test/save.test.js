@@ -139,6 +139,7 @@ test('v3 round-trips the energy-transition fields', () => {
 
   const snap = JSON.parse(JSON.stringify(snapshot()));
   assert.equal(snap.v, 3);
+  assert.ok(!('forecast' in snap), 'forecast is derived — never saved, rebuilt by updateWeather after load');
 
   freshWorld();
   assert.equal(restore(snap), true);

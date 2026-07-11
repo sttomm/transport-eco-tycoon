@@ -38,6 +38,7 @@
     <span id="co2" class="small good"></span>
   </div>
   <div id="toolhint"></div>
+  <div id="weatherbanner" style="display:none"></div>
 
   <div id="tabbtns">
     <button data-tab="dashboard" title="Dashboard">📊</button>
@@ -50,6 +51,9 @@
   <div id="sidepanel">
     <div class="tabpage" id="tab-dashboard">
       <div id="yesterday" style="display:none"></div>
+      <h3>🔭 Weather Forecast <span class="dim small">(next 24 h)</span></h3>
+      <div id="forecastwind" class="small dim"></div>
+      <div id="forecaststrip"></div>
       <h3>📊 Grid Dashboard <span class="dim small">(last 48 h)</span></h3>
       <canvas id="powerchart" class="chart" width="336" height="170"></canvas>
       <div id="chartlegend"></div>

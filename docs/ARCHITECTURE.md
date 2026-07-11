@@ -402,6 +402,18 @@ basics on a predictable tariff first).
 15-day headless run against the flat-price baseline (±30 % band) — tune the
 band constants, not the mechanism.
 
+### 23. Weather fronts with lead time
+**Decision:** the hourly weather roll no longer applies Dunkelflaute/storm
+instantly; it schedules a front on `G.weatherFront` with 10–14 h lead time
+(`data.js` FORECAST), applied unchanged when the countdown ends, with a
+derived `G.forecast` outlook and a warning banner/advisor tip at schedule
+time. **Why:** this turns the Dunkelflaute from an ambush into a planning
+problem — the event stays exactly as hard, players just get the real-world
+day-ahead-forecast window to charge storage; it also softens the day-3 grace
+analysis of ADR 21, since the first flaute now announces itself ~half a day
+early. The forced-event debug path (`G.dunkelflaute = 40` applies on the next
+tick) is preserved and pinned by `test/weather.test.js`.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

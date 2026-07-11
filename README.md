@@ -88,7 +88,9 @@ for a one-time exit grant. Seven consecutive fossil-free days complete the
 **Fossil-free week** objective — the closest thing the region has to victory.
 
 The weather brings real phenomena: multi-day **Dunkelflaute** (dark calm) events
-that batteries can't bridge, and storms that force turbine cut-outs. The
+that batteries can't bridge, and storms that force turbine cut-outs. Fronts
+announce themselves 10–14 h ahead in the dashboard **weather forecast** and a
+warning banner — enough time to charge everything, never enough to escape. The
 **Energy Advisor** explains each concept (duck curve, curtailment, flexible
 demand, …) the moment it first happens to you, and the 📚 tab has a small
 encyclopedia.

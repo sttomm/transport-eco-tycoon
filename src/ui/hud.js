@@ -258,7 +258,7 @@ function buildTabs() {
       document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
       $('sidepanel').style.display = activeTab ? 'flex' : 'none';
       document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
-      if (activeTab === 'dashboard') renderYesterday();
+      if (activeTab === 'dashboard') { renderYesterday(); renderForecast(); }
       if (activeTab === 'contracts') renderContracts();
       if (activeTab === 'research') { renderResearch(); showTip('research'); }
       if (activeTab === 'routes') renderRoutes();
@@ -295,6 +295,7 @@ export function updateUI(dt) {
     $('storemini').innerHTML =
       `🔋 ${pct(G.batteryMWh, G.batteryCapMWh)} <span class="dim">${G.batteryMWh.toFixed(0)}/${G.batteryCapMWh.toFixed(0)} MWh</span>` +
       ` &nbsp; 🫧 ${pct(G.h2MWh, G.h2CapMWh)} <span class="dim">${G.h2MWh.toFixed(0)}/${G.h2CapMWh.toFixed(0)} MWh</span>`;
+    updateWeatherBanner();
     renderInfobox();
     if (activeTab === 'routes') renderRoutesLive();
     if (activeTab === 'research') renderResearchLive();
@@ -305,12 +306,46 @@ export function updateUI(dt) {
   chartTimer += dt;
   if (chartTimer > 0.6 && activeTab === 'dashboard') {
     chartTimer = 0;
+    renderForecast();
     drawPowerChart();
     drawFinance();
     updateLoanBox();
   }
 }
 const pct = (v, c) => c > 0 ? Math.round(v / c * 100) + '%' : '—';
+
+// ---------- weather forecast (ADR 23) ----------
+// warning banner under the topbar while a front is inbound — updates live
+// with the countdown, hidden when nothing is scheduled
+function updateWeatherBanner() {
+  const el = $('weatherbanner');
+  const f = G.weatherFront;
+  if (!f) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const eta = Math.max(1, Math.round(f.inHours));
+  el.textContent = f.type === 'dunkelflaute'
+    ? `⚠ Dunkelflaute in ~${eta} h — est. ${Math.round(f.durationH)} h of dark calm. Charge batteries & H₂ now!`
+    : `⚠ Storm front in ~${eta} h — turbines will cut out. Storage bridges the gap.`;
+}
+
+// dashboard strip: one cell per 3 h slot of G.forecast (see energy.js)
+function slotIcon(sl) {
+  if (sl.storm) return '🌪';
+  if (sl.flaute) return '🌫';
+  if (sl.night) return '🌙';
+  return sl.sun > 0.55 ? '☀️' : sl.sun > 0.25 ? '🌤' : '☁️';
+}
+function renderForecast() {
+  const fc = G.forecast;
+  if (!fc) return;
+  $('forecaststrip').innerHTML = fc.slots.map(sl =>
+    `<div class="fslot${sl.flaute || sl.storm ? ' warnslot' : ''}">
+      <div class="fi">${slotIcon(sl)}</div><div class="fh">${String(sl.hour).padStart(2, '0')}h</div></div>`).join('');
+  const dw = fc.windTrend - G.wind;
+  const arrow = dw > 0.06 ? '↗ picking up' : dw < -0.06 ? '↘ easing' : '→ steady';
+  $('forecastwind').innerHTML = `🌬 Wind trend: ${arrow}` +
+    (fc.front ? ` · <span class="warn">${fc.front.type === 'dunkelflaute' ? '🌫 Dunkelflaute' : '🌪 Storm'} in ~${Math.max(1, Math.round(fc.front.inHours))} h</span>` : '');
+}
 
 // ---------- dashboard charts ----------
 const SERIES = [

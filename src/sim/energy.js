@@ -1,5 +1,5 @@
 import { G, emit, hourOfDay, season } from './state.js';
-import { BUILDINGS, CARBON } from './data.js';
+import { BUILDINGS, CARBON, FORECAST } from './data.js';
 
 // Electricity price paid by cities & industries per MWh served.
 export const POWER_PRICE = 85;
@@ -7,7 +7,13 @@ export const CO2_PER_MWH = 0.4; // tonnes avoided vs fossil mix
 
 // ---- weather ----------------------------------------------------------
 // Wind & cloud are mean-reverting random walks; occasionally a multi-day
-// "Dunkelflaute" (dark calm) or a storm front rolls through.
+// "Dunkelflaute" (dark calm) or a storm front rolls through. Fronts are not
+// applied instantly: the hourly roll SCHEDULES them on G.weatherFront with
+// 10-14 h lead time (ADR 23) so the forecast can warn the player. The forced
+// debug path `G.dunkelflaute = 40` bypasses the front machinery and applies
+// on the very next tick (playtest recipes depend on it).
+const windTrendTarget = () => 0.42 * season().windMul + 0.25 * Math.sin(G.day * 0.7);
+
 let weatherTimer = 0;
 export function updateWeather(gameHours) {
   weatherTimer += gameHours;
@@ -19,22 +25,71 @@ export function updateWeather(gameHours) {
     G.cloud = drift(0.92, G.cloud, 0.5);
   } else {
     // windier in autumn/winter, calmer in summer (seasonal storm tracks)
-    G.wind = drift(0.42 * season().windMul + 0.25 * Math.sin(G.day * 0.7), G.wind, 0.15);
+    G.wind = drift(windTrendTarget(), G.wind, 0.15);
     G.cloud = drift(0.35, G.cloud, 0.12);
-    // rare events, evaluated roughly hourly
-    if (weatherTimer > 1) {
+    if (G.weatherFront) {
+      // a front is inbound: count the lead time down, apply at zero
+      G.weatherFront.inHours -= gameHours;
+      if (G.weatherFront.inHours <= 0) {
+        const f = G.weatherFront;
+        G.weatherFront = null;
+        if (f.type === 'dunkelflaute') G.dunkelflaute = f.durationH;
+        else { G.wind = 1.0; emit('tip', 'storm'); } // gust → cut-out on arrival
+      }
+    } else if (weatherTimer > 1) {
+      // rare events, evaluated roughly hourly — no new roll while a front is
+      // scheduled (branch above) or a dunkelflaute is active (outer branch)
       weatherTimer = 0;
+      const lead = FORECAST.leadHmin + Math.random() * (FORECAST.leadHmax - FORECAST.leadHmin);
       if (G.day > 3 && Math.random() < 0.006) {
-        G.dunkelflaute = 36 + Math.random() * 18;
-        emit('tip', 'dunkelflaute');
+        G.weatherFront = {
+          type: 'dunkelflaute', inHours: lead,
+          durationH: FORECAST.flauteHmin + Math.random() * (FORECAST.flauteHmax - FORECAST.flauteHmin),
+        };
+        emit('tip', 'dunkelflaute'); // warn at schedule time — charge everything now
       } else if (Math.random() < 0.005) {
-        G.wind = 1.0; // storm gust → cut-out
-        emit('tip', 'storm');
+        G.weatherFront = { type: 'storm', inHours: lead, durationH: FORECAST.stormH };
       }
     }
   }
   G.wind = Math.max(0, Math.min(1, G.wind));
   G.cloud = Math.max(0, Math.min(1, G.cloud));
+  buildForecast();
+}
+
+// ---- forecast -----------------------------------------------------------
+// Rebuilt every updateWeather call; derived, never saved (rebuilds on the
+// first tick after load). Deterministic short-term outlook, like real
+// numerical weather prediction: the day/season solar curve is known exactly,
+// clouds are assumed to persist, wind shows the mean-reversion target, and a
+// scheduled front (which IS deterministic once rolled) is passed through.
+function buildForecast() {
+  const s = season();
+  const now = hourOfDay();
+  // hours (from now) during which a dunkelflaute darkens the outlook
+  let flStart = Infinity, flEnd = -Infinity;
+  if (G.dunkelflaute > 0) { flStart = 0; flEnd = G.dunkelflaute; }
+  else if (G.weatherFront?.type === 'dunkelflaute') {
+    flStart = G.weatherFront.inHours; flEnd = flStart + G.weatherFront.durationH;
+  }
+  const stormAt = G.weatherFront?.type === 'storm' ? G.weatherFront.inHours : NaN;
+
+  const slots = [];
+  for (let t = 0; t < FORECAST.horizonH; t += FORECAST.slotH) {
+    const flaute = t < flEnd && t + FORECAST.slotH > flStart;
+    const storm = stormAt >= t && stormAt < t + FORECAST.slotH;
+    const h = (now + t + FORECAST.slotH / 2) % 24; // slot midpoint, wall-clock
+    const night = h < s.sunrise || h > s.sunset;
+    const cloud = flaute ? 0.92 : G.cloud; // cloud-persistence assumption
+    const sun = night ? 0
+      : Math.max(0, Math.sin(Math.PI * (h - s.sunrise) / (s.sunset - s.sunrise))) * s.solarAmp * (1 - cloud * 0.82);
+    slots.push({ hour: Math.floor(h), sun, night, flaute, storm });
+  }
+  G.forecast = {
+    slots,                        // 8 × 3 h: { hour, sun (relative factor), night, flaute, storm }
+    windTrend: windTrendTarget(), // where the wind walk is drifting (0..~1)
+    front: G.weatherFront ? { ...G.weatherFront } : null,
+  };
 }
 
 // ---- generation curves -------------------------------------------------
