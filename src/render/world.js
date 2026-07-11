@@ -545,14 +545,20 @@ function buildTrees() {
 }
 
 // glTF species (ADR 16): whole forest = one InstancedMesh per species.
-// Conifers cluster on high ground, oaks in the lowlands, poplars sprinkled.
+// Conifers cluster on high ground, oaks in the lowlands, birches and
+// poplars sprinkled in as minority accents.
 function buildTreesGLTF(lib, spots) {
   const byName = Object.fromEntries(lib.models.map(m => [m.name, m]));
   const lists = new Map(lib.models.map(m => [m, []]));
   for (const t of spots) {
     const r = rand();
     const conifer = t.h > 1.9 ? 0.75 : 0.35; // altitude bias
-    const m = r < conifer ? byName.tree_conifer : r < 0.9 ? byName.tree_oak : byName.tree_poplar;
+    let m;
+    if (r < conifer) m = byName.tree_conifer;
+    else {
+      const rr = (r - conifer) / (1 - conifer); // renormalize remainder to [0, 1)
+      m = rr < 0.72 ? byName.tree_oak : rr < 0.90 ? byName.tree_birch : byName.tree_poplar;
+    }
     lists.get(m).push(t);
   }
   const m4 = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(),
