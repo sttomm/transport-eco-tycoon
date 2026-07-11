@@ -3,6 +3,7 @@
 // definitions and completion logic live in src/sim/quests.js.
 import { G, emit } from '../sim/state.js';
 import { QUESTS, isQuestActive, initQuestState, checkQuests } from '../sim/quests.js';
+import { notifyTutorial } from '../sim/tutorial.js';
 
 const $ = id => document.getElementById(id);
 let dirty = true, tickTimer = 0;
@@ -53,7 +54,7 @@ function renderQuests() {
     (doneCount ? `<div class="small dim" style="margin-top:4px">✅ ${doneCount} of ${QUESTS.length} completed</div>` : '');
   // click a quest to expand/collapse its description
   list.querySelectorAll('.quest').forEach(el => {
-    el.onclick = () => el.classList.toggle('open');
+    el.onclick = () => { el.classList.toggle('open'); notifyTutorial('questOpened'); };
   });
   // 📍 flies the camera to the quest's destination; repeated clicks cycle
   // through multiple destinations (e.g. farm → food plant)

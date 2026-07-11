@@ -509,6 +509,30 @@ bookkeeping, and old saves simply start with whatever their progress already
 earned. ADR 12's principle survives: the sandbox isn't paused or railroaded —
 locked options are visible with a clear path to earn them.
 
+### 29. Guided onboarding tutorial (opt-in, state-detected, never gating)
+**Decision:** new games offer a 🎓 tutorial on the welcome screen (primary
+button; "Free play" skips it silently). Nine steps walk the core loop —
+camera, dashboard, first solar + battery, two bus stops, route, e-bus, first
+riders, the objectives panel. Step definitions and completion logic live in
+`sim/tutorial.js` (quest-style: polled `check()` predicates against `G`,
+relative to baselines captured at start so the starter grid never counts);
+the card UI, DOM highlighting and camera-move detection live in
+`ui/tutorial.js`. Steps the sim can't see (camera moved, tab opened, quest
+expanded) are reported by the UI via `notifyTutorial(flag)` — a plain sim
+function call, honoring the layering rule. Each step carries a semantic
+`highlight` key (`tool:solar`, `tab:routes`, …) that the UI maps to a
+selector and pulses. Every step pays cash (€5–15k) and completion pays a
+€25k graduation bonus, announced through the existing `toast` event.
+`G.tutorial` persists in the save (optional field, no version bump); saves
+without it restore as `done` so existing players are never onboarded.
+**Why:** the welcome card + advisor tips explained the game but never made
+the player DO anything — the first minutes decide whether a new player finds
+the loop. ADR 12's principle still holds, the same way ADR 28 amended it:
+the tutorial observes state, it never pauses or locks the sandbox, every
+step can be completed out of order (checks are cumulative and cascade), and
+it is skippable at any moment. Detection-by-state means the tutorial needs
+no special hooks in game rules — it reads the same counters quests do.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

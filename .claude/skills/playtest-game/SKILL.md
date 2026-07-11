@@ -18,7 +18,9 @@ mcp__Claude_Preview__preview_start name=game
 
 Then `preview_screenshot` for visuals and `preview_console_logs level=error` for errors.
 The welcome screen pauses the game — dismiss it first:
-`document.getElementById('w-start')?.click()` (or `w-continue`).
+`document.getElementById('w-start')?.click()` (or `w-continue`; a NEW game
+also offers `w-tutorial`, which starts the guided tutorial — `w-start` is
+free play and marks the tutorial done).
 
 ## CRITICAL: module cache
 
@@ -29,13 +31,13 @@ can serve a stale old/new mix.** Always force-refresh first:
 (async () => {
   const files = ['index.html','styles.css','src/main.js',
     'src/sim/state.js','src/sim/data.js','src/sim/noise.js','src/sim/grid.js',
-    'src/sim/energy.js','src/sim/transport.js','src/sim/quests.js','src/sim/save.js',
+    'src/sim/energy.js','src/sim/transport.js','src/sim/quests.js','src/sim/tutorial.js','src/sim/save.js',
     'src/sim/reports.js','src/sim/contracts.js','src/sim/loans.js',
     'src/render/meshes.js','src/render/world.js','src/render/vehicles.js','src/render/scene.js','src/render/postfx.js',
     'src/render/assets.js','src/render/textures.js','assets/models/wind_turbine.glb','assets/models/buildings.glb',
     'assets/models/vehicles.glb','assets/models/plants.glb','assets/models/industries.glb',
     'assets/models/trees.glb','assets/models/stations.glb',
-    'src/ui/hud.js','src/ui/quests.js','src/ui/input.js'];
+    'src/ui/hud.js','src/ui/quests.js','src/ui/tutorial.js','src/ui/input.js'];
   for (const f of files) await fetch('/' + f, { cache: 'reload' });
   location.reload();
 })()

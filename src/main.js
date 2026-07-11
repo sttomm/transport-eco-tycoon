@@ -20,6 +20,8 @@ import { initWorldRender, updateWorldRender } from './render/world.js';
 import { initVehicleRender, updateVehicleRender } from './render/vehicles.js';
 import { initUI, updateUI, tickResearch, showWelcome } from './ui/hud.js';
 import { initQuestPanel, updateQuestPanel } from './ui/quests.js';
+import { initTutorialPanel, updateTutorialPanel } from './ui/tutorial.js';
+import { startTutorial, skipTutorial } from './sim/tutorial.js';
 import { initInput } from './ui/input.js';
 
 // ---------- init (order matters: renderers subscribe to sim events before
@@ -33,6 +35,7 @@ initVehicleRender(scene);
 const loadedSave = loadGame();   // restore player progress before the UI reads it
 initUI();
 initQuestPanel();
+initTutorialPanel();
 initInput();
 
 // Starter infrastructure: a small legacy grid so the lights are on at game start.
@@ -107,6 +110,7 @@ function frame(now) {
   updateWorldRender(dt);
   updateVehicleRender(dt);
   updateQuestPanel(dt);
+  updateTutorialPanel(dt);
   updateDayNight();
   keyboardPan(dt);
   tickCamTween(dt);
@@ -118,4 +122,4 @@ requestAnimationFrame(frame);
 
 // expose for debugging & programmatic play-testing (see the playtest-game skill)
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, decommissionGas, createRoute, buyVehicle, addWagon, findPath, nameStation, replaceVehicle, autoReplaceFleet, saveGame, signContract, tickContracts, takeLoan, repayLoan, scene, camera, controls, renderer, setPostFX, PFX };
+window.DEBUG = { place, canPlace, tile, bulldoze, decommissionGas, createRoute, buyVehicle, addWagon, findPath, nameStation, replaceVehicle, autoReplaceFleet, saveGame, signContract, tickContracts, takeLoan, repayLoan, startTutorial, skipTutorial, scene, camera, controls, renderer, setPostFX, PFX };

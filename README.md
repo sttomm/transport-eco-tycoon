@@ -27,6 +27,14 @@ need internet on first load.)
 
 ## How to play
 
+**New here? Take the tutorial.** A new game offers a guided **🎓 tutorial**
+(~5 minutes, skippable any time): nine hands-on steps — move the camera, read
+the grid dashboard, build your first solar farm and battery, open a bus line
+and carry your first riders. Each step is completed by actually doing the
+thing, pays a cash reward (≈€90k total incl. the graduation bonus), and
+highlights the exact button it talks about. The sandbox is never paused or
+locked while it runs.
+
 **You earn money two ways:**
 1. **Transport** — build roads (drag; crossing the river builds bridges), place
    Freight Depots / Bus Stops next to roads, create routes (🚌 tab → New Route →
@@ -155,11 +163,12 @@ Plain ES modules, no framework, no build, no dependencies. Three layers
 npm test        # Node's built-in runner, ~100 ms, zero dependencies
 ```
 
-145 tests pin the simulation: dispatch merit order (incl. the legacy gas,
+155 tests pin the simulation: dispatch merit order (incl. the legacy gas,
 import and H₂-offtake steps), storage efficiencies, placement rules & palette
 unlocks, pathfinding, freight & passenger economics, route-kind validation,
-vehicle aging, quests, special contracts, loans, weather fronts & forecast,
-dynamic pricing, climate feedback, daily reports, and the save round trip.
+vehicle aging, quests, the guided tutorial, special contracts, loans, weather
+fronts & forecast, dynamic pricing, climate feedback, daily reports, and the
+save round trip.
 New features extend the suite (see [CLAUDE.md](CLAUDE.md)).
 
 ## Documentation

@@ -51,6 +51,7 @@ export function snapshot() {
     heatH: G.heatHoursToday,
     techs: G.techs, research: G.research,
     questsDone: G.questsDone || {}, stats: G.stats, firedTips: G.firedTips,
+    tutorial: G.tutorial || null,
     finance: G.finance,
     roads: G.tiles.filter(t => t.t === 'road' && !t.cityStreet).map(t => [t.i, t.j]),
     rails: G.tiles.filter(t => t.rail).map(t => [t.i, t.j]),
@@ -102,6 +103,8 @@ export function restore(d) {
   G.flauteHoursToday = d.flauteH || 0; G.stormHoursToday = d.stormH || 0;
   G.heatHoursToday = d.heatH || 0;
   G.questsDone = d.questsDone || {};
+  // pre-tutorial saves belong to players past onboarding — never show it to them
+  G.tutorial = d.tutorial || { active: false, done: true, step: 0, flags: {}, base: null };
   Object.assign(G.stats, d.stats);
   G.firedTips = d.firedTips || {};
   G.research = d.research || null;

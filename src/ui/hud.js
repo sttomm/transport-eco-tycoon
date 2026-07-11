@@ -9,6 +9,7 @@ import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } fro
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
 import { solarFactor, climateRiskMult, POWER_PRICE } from '../sim/energy.js';
 import { clearSave } from '../sim/save.js';
+import { startTutorial, skipTutorial, notifyTutorial } from '../sim/tutorial.js';
 
 const $ = id => document.getElementById(id);
 let activeTab = null;
@@ -296,6 +297,7 @@ function buildTabs() {
       document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
       $('sidepanel').style.display = activeTab ? 'flex' : 'none';
       document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
+      if (activeTab) notifyTutorial('tab:' + activeTab);
       if (activeTab === 'dashboard') { renderYesterday(); renderForecast(); renderClimate(); }
       if (activeTab === 'contracts') renderContracts();
       if (activeTab === 'research') { renderResearch(); showTip('research'); }
@@ -971,18 +973,24 @@ export function showWelcome(hasSaveFlag) {
     <div class="wbtns">
       ${hasSaveFlag
         ? '<button id="w-continue" class="wprimary">▶ Continue game</button><button id="w-new">↺ Start new game</button>'
-        : '<button id="w-start" class="wprimary">▶ Start playing</button>'}
+        : '<button id="w-tutorial" class="wprimary">🎓 Start the tutorial <span class="wsub">recommended · ~5 min · pays €90k</span></button><button id="w-start">▶ Free play <span class="wsub">I know tycoon games</span></button>'}
     </div>
   </div>`;
   document.body.appendChild(el);
-  const start = () => {
+  // withTutorial: guided steps for new players; otherwise the tutorial is
+  // marked done (silently) and the classic welcome tip fires instead
+  const start = withTutorial => {
     el.remove();
     setSpeed(1);
-    if (!hasSaveFlag) showTip('welcome');
+    if (hasSaveFlag) return;
+    if (withTutorial) startTutorial();
+    else { skipTutorial(); showTip('welcome'); }
   };
-  const bs = el.querySelector('#w-start'), bc = el.querySelector('#w-continue'), bn = el.querySelector('#w-new');
-  if (bs) bs.onclick = start;
-  if (bc) bc.onclick = start;
+  const bs = el.querySelector('#w-start'), bt = el.querySelector('#w-tutorial'),
+    bc = el.querySelector('#w-continue'), bn = el.querySelector('#w-new');
+  if (bs) bs.onclick = () => start(false);
+  if (bt) bt.onclick = () => start(true);
+  if (bc) bc.onclick = () => start(false);
   if (bn) bn.onclick = () => {
     if (!confirm('Delete the saved game and start over?')) return;
     clearSave();
