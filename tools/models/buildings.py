@@ -1,12 +1,19 @@
-# City building set: 3 styles (brick, plaster, glass) x 3 height tiers.
+# City building set: 3 styles (brick, plaster, glass) x 3 height tiers, plus
+# seeded variants per style/tier for suburb variety.
 #   blender --background --python tools/models/buildings.py -- assets/models/buildings.glb
 #
-# Each building exports as ONE object named "<style>_<tier>" at the ground
+# Each building exports as ONE object named "<style>_<tier>" (variants get a
+# "_vN" suffix — src/render/assets.js splits on '_' and only reads the first
+# two tokens, so variants still group under their style/tier) at the ground
 # center; node translations are layout-only and ignored at load. Windows use
 # the material "bldg_window" and have their UVs collapsed onto one cell of an
 # 8x8 atlas — at runtime a canvas texture with randomly lit cells becomes the
 # emissiveMap, so each window/floor is uniformly lit or dark at night
 # (see src/render/assets.js). Deterministic: seeded random only.
+#
+# Recipes below port tools/models/STYLE.md (lifted from docs/art-direction/
+# lookdev-blender.py build_hifi() make_house/make_apt/make_tower/
+# make_glasstower) verbatim where the game's window-atlas contract allows.
 import sys
 import os
 import random
@@ -17,7 +24,6 @@ from common import material, cube, cyl, gable, join_parts, export_glb, reset_sce
 
 out = sys.argv[sys.argv.index('--') + 1]
 reset_scene()
-R = random.Random(20260703)
 
 M = {
     'window': material('bldg_window', '#22303c', 0.18, 0.30),
@@ -37,29 +43,14 @@ M = {
     'chimney': material('bldg_chimney', '#4a2e24', 0.90),
 }
 
-FLOORS = {'low': 1, 'mid': 3, 'high': 6}
-W = 3.0    # footprint (tile is 4; instancing adds 0.88-1.08 scale jitter)
-GF = 3.0   # ground floor height
-FH = 2.7   # upper floor height
 
-
-def cell(zone='win'):
+def cell(rng, zone='win'):
     """Atlas rows 0-1: dim/sparse zone for large glazing (floor bands,
     shopfronts, lobbies) — a fully lit big quad must never bloom. Rows 2-7:
     normal window cells (see makeWindowLightsTexture in assets.js)."""
     if zone == 'band':
-        return (R.randrange(8), R.randrange(0, 2))
-    return (R.randrange(8), R.randrange(2, 8))
-
-
-def windows_ring(parts, z, ww, wh, name):
-    """Three windows on each of the four sides at height z."""
-    t = 0.12
-    for off in (-0.95, 0, 0.95):
-        parts.append(cube(f'{name}a', t, ww, wh, W / 2, off, z, M['window'], cell=cell()))
-        parts.append(cube(f'{name}b', t, ww, wh, -W / 2, off, z, M['window'], cell=cell()))
-        parts.append(cube(f'{name}c', ww, t, wh, off, W / 2, z, M['window'], cell=cell()))
-        parts.append(cube(f'{name}d', ww, t, wh, off, -W / 2, z, M['window'], cell=cell()))
+        return (rng.randrange(8), rng.randrange(0, 2))
+    return (rng.randrange(8), rng.randrange(2, 8))
 
 
 # ---- Board 07 window module: frame (flat) + proud inset glass (atlas) ------
@@ -69,15 +60,15 @@ def windows_ring(parts, z, ww, wh, name):
 _WN = [0]
 
 
-def window(parts, x, y, z, w=0.55, h=0.75, rz=0):
+def window(parts, rng, x, y, z, w=0.55, h=0.75, rz=0):
     _WN[0] += 1
     n = _WN[0]
     parts.append(cube(f'wfr{n}', w, 0.10, h, x, y, z, M['frame'], rot=(0, 0, rz)))
     parts.append(cube(f'wgl{n}', w * 0.8, 0.12, h * 0.82, x, y, z, M['window'],
-                      cell=cell(), rot=(0, 0, rz)))
+                      cell=cell(rng), rot=(0, 0, rz)))
 
 
-def facade_windows(parts, w, d, floors, fh, z0=0.0, inset=0.02, skip_ground=False):
+def facade_windows(parts, rng, w, d, floors, fh, z0=0.0, inset=0.02, skip_ground=False):
     for fl in range(floors):
         if skip_ground and fl == 0:
             continue
@@ -85,94 +76,156 @@ def facade_windows(parts, w, d, floors, fh, z0=0.0, inset=0.02, skip_ground=Fals
         nx = max(2, int(w / 0.95))
         for k in range(nx):
             xk = -w / 2 + (k + 0.5) * w / nx
-            window(parts, xk, d / 2 - inset, zc)
-            window(parts, xk, -d / 2 + inset, zc)
+            window(parts, rng, xk, d / 2 - inset, zc)
+            window(parts, rng, xk, -d / 2 + inset, zc)
         ny = max(2, int(d / 0.95))
         for k in range(ny):
             yk = -d / 2 + (k + 0.5) * d / ny
-            window(parts, w / 2 - inset, yk, zc, rz=90)
-            window(parts, -w / 2 + inset, yk, zc, rz=90)
+            window(parts, rng, w / 2 - inset, yk, zc, rz=90)
+            window(parts, rng, -w / 2 + inset, yk, zc, rz=90)
 
 
-def house(style, tier):
-    """Gabled detached house — Board 07 low tier (make_house). Wall carries the
-    style's facade material; plinth/roof/chimney/door/frames are flat parts."""
-    rng = random.Random(hash((style, tier)) & 0xffffffff)
-    w, d = 2.7, 2.4
-    floors = 2
+# ---------------- low: gabled detached house (make_house) — brick/plaster --
+def house(style, rng):
+    w, d = rng.uniform(2.3, 2.9), rng.uniform(2.0, 2.5)
+    floors = rng.choice([1, 2, 2])
     fh = 1.45
     H = floors * fh
-    wall = M[style] if style in ('brick', 'plaster') else M['plaster']
-    roofm = rng.choice([M['rooftile'], M['roof']])  # clay or slate-grey
+    wall = M[style]
+    roofm = rng.choice([M['rooftile'], M['roof']])
     parts = [cube('wall', w, d, H, 0, 0, H / 2, wall)]
     parts.append(cube('plinth', w + 0.14, d + 0.14, 0.16, 0, 0, 0.08, M['stone']))
-    parts.append(gable('roof', w + 0.42, d + 0.42, rng.uniform(0.95, 1.25), 0, 0, H, roofm))
+    parts.append(gable('roof', w + 0.42, d + 0.42, rng.uniform(0.9, 1.3), 0, 0, H, roofm))
     parts.append(cube('chimney', 0.26, 0.26, 0.9, rng.uniform(-w / 4, w / 4), -d / 5,
                       H + 0.55, M['chimney']))
-    facade_windows(parts, w, d, floors, fh)
+    facade_windows(parts, rng, w, d, floors, fh)
     parts.append(cube('door', 0.6, 0.1, 1.05, rng.uniform(-w / 4, w / 4), d / 2, 0.55, M['door']))
     return parts
 
 
-def masonry(style, tier):
-    n = FLOORS[tier]
-    H = GF + n * FH
-    wall, trim = M[style], M[f'{style}_trim']
-    parts = [cube('wall', W, W, H, 0, 0, H / 2, wall)]
-    parts.append(cube('roofslab', W - 0.2, W - 0.2, 0.15, 0, 0, H + 0.02, M['roof']))
-    parts.append(cube('parapet', W + 0.18, W + 0.18, 0.35, 0, 0, H + 0.14, trim))
-    # ground floor: entrance door (+y) and shopfront glazing
-    parts.append(cube('door', 1.0, 0.12, 2.3, 0, W / 2, 1.15, M['door']))
-    for sgn in (1, -1):
-        parts.append(cube('shop', 0.12, 2.0, 1.6, sgn * W / 2, 0, 1.25, M['window'], cell=cell('band')))
-    parts.append(cube('shop2', 2.0, 0.12, 1.6, 0, -W / 2, 1.25, M['window'], cell=cell('band')))
-    parts.append(cube('band0', W + 0.14, W + 0.14, 0.14, 0, 0, GF - 0.05, trim))
-    for f in range(n):
-        zc = GF + f * FH + 1.55
-        windows_ring(parts, zc, 0.62, 1.0, f'w{f}')
-        if f:
-            parts.append(cube(f'band{f}', W + 0.08, W + 0.08, 0.10, 0, 0, GF + f * FH, trim))
-    # rooftop clutter
-    parts.append(cube('ac', 0.7, 0.5, 0.45, 0.7, 0.4, H + 0.32, M['ac']))
-    if tier == 'high':
-        parts.append(cube('ac2', 0.5, 0.5, 0.6, -0.8, -0.6, H + 0.40, M['ac']))
-        parts.append(cyl('vent', 0.14, 0.9, -0.2, 0.9, H + 0.55, M['ac'], verts=10))
+# ---------------- low: small curtain-wall block — glass only ---------------
+# STYLE.md: "look-dev has no 'glass low'; give glass_low a small curtain-wall/
+# glazed low block, not a gable." Same window-atlas + mullion-fin language as
+# the taller glass tiers, just short.
+def glass_low(rng):
+    w, d = rng.uniform(2.3, 2.7), rng.uniform(2.0, 2.4)
+    floors = rng.choice([1, 2])
+    fh = 1.5
+    H = floors * fh
+    parts = [cube('plinth', w + 0.14, d + 0.14, 0.16, 0, 0, 0.08, M['stone'])]
+    for f in range(floors):
+        z0 = f * fh
+        gh = fh - 0.22
+        parts.append(cube(f'gl{f}', w + 0.02, d + 0.02, gh, 0, 0, z0 + gh / 2 + 0.11,
+                          M['window'], cell=cell(rng, 'band')))
+    for f in range(floors + 1):
+        parts.append(cube(f'slab{f}', w + 0.06, d + 0.06, 0.08, 0, 0,
+                          min(f * fh, H - 0.04), M['ac']))
+    nmul = max(2, int(w / 0.6))
+    for k in range(nmul + 1):
+        xk = -w / 2 + k * w / nmul
+        parts.append(cube(f'mv{k}', 0.05, d + 0.05, H, xk, 0, H / 2, M['mullion']))
+    parts.append(cube('parapet', w + 0.10, d + 0.10, 0.20, 0, 0, H + 0.10, M['mullion']))
+    parts.append(cube('pent', 0.9, 0.7, 0.4, rng.uniform(-0.3, 0.3), rng.uniform(-0.2, 0.2),
+                      H + 0.30, M['ac']))
     return parts
 
 
-def glassy(tier):
-    n = FLOORS[tier]
-    H = GF + n * FH
-    parts = [cube('core', W - 0.08, W - 0.08, H, 0, 0, H / 2, M['mullion'])]
-    parts.append(cube('lobby', W + 0.05, W + 0.05, 2.3, 0, 0, 1.25, M['window'], cell=cell('band')))
-    for f in range(n):
-        z0 = GF + f * FH
-        gh = FH - 0.8
-        parts.append(cube(f'gl{f}', W + 0.05, W + 0.05, gh, 0, 0, z0 + gh / 2 + 0.05, M['window'], cell=cell('band')))
-        parts.append(cube(f'sp{f}', W + 0.02, W + 0.02, 0.72, 0, 0, z0 + FH - 0.36, M['spandrel']))
-    for cx in (1, -1):
-        for cy in (1, -1):
-            parts.append(cube(f'post{cx}{cy}', 0.16, 0.16, H, cx * (W / 2 - 0.02), cy * (W / 2 - 0.02), H / 2, M['mullion']))
-    parts.append(cube('parapet', W + 0.10, W + 0.10, 0.30, 0, 0, H + 0.12, M['mullion']))
-    parts.append(cube('pent', 1.4, 1.1, 0.9, -0.4, 0.3, H + 0.45, M['ac']))
-    if tier == 'high':
-        parts.append(cyl('ant', 0.035, 2.4, 0.9, -0.9, H + 1.2, M['mullion'], verts=8))
+# ---------------- mid: apartment block (make_apt) — brick/plaster ----------
+def apt(style, rng):
+    w, d = rng.uniform(2.6, 3.0), rng.uniform(2.4, 2.8)
+    floors = rng.choice([3, 4])
+    fh = 1.15
+    H = floors * fh
+    wall = M[style]
+    parts = [cube('wall', w, d, H, 0, 0, H / 2, wall)]
+    parts.append(cube('plinth', w + 0.14, d + 0.14, 0.6, 0, 0, 0.3, M['stone']))
+    for fl in range(1, floors):
+        parts.append(cube(f'slab{fl}', w + 0.10, d + 0.10, 0.07, 0, 0, fl * fh, M['frame']))
+    facade_windows(parts, rng, w, d, floors, fh)
+    for fl in range(1, floors):
+        bx = rng.uniform(-w / 5, w / 5)
+        parts.append(cube(f'bslab{fl}', 1.05, 0.5, 0.06, bx, d / 2 + 0.25, fl * fh + 0.35, M['stone']))
+        parts.append(cube(f'brail{fl}', 1.05, 0.05, 0.4, bx, d / 2 + 0.48, fl * fh + 0.6, M['ac']))
+    parts.append(cube('par1', w + 0.1, 0.12, 0.35, 0, d / 2, H + 0.17, wall))
+    parts.append(cube('par2', w + 0.1, 0.12, 0.35, 0, -d / 2, H + 0.17, wall))
+    parts.append(cube('par3', 0.12, d + 0.1, 0.35, w / 2, 0, H + 0.17, wall))
+    parts.append(cube('par4', 0.12, d + 0.1, 0.35, -w / 2, 0, H + 0.17, wall))
+    parts.append(cube('ac', 0.8, 0.6, 0.45, rng.uniform(-0.6, 0.6), 0, H + 0.22, M['ac']))
+    parts.append(cube('achouse', 0.9, 0.9, 0.6, -w / 4, -d / 4, H + 0.3, M['stone']))
     return parts
 
 
+# ---------------- mid/high: curtain-wall tower (make_glasstower) — glass ----
+# STYLE.md's per-floor window-atlas contract splits the single look-dev glass
+# box into one banded pane per floor (each floor lights independently at
+# night); floor slabs + mullion fins are ported verbatim.
+def glasstower(tier, rng):
+    if tier == 'mid':
+        w, d = rng.uniform(2.6, 3.0), rng.uniform(2.4, 2.8)
+        n = rng.choice([3, 4])
+        fh = 1.15
+    else:
+        w, d = rng.uniform(2.6, 3.0), rng.uniform(2.5, 2.9)
+        n = rng.choice([6, 8, 9])
+        fh = 1.05
+    H = n * fh
+    parts = [cube('plinth', w + 0.2, d + 0.2, 0.5, 0, 0, 0.25, M['stone'])]
+    for f in range(n):
+        z0 = f * fh
+        gh = fh - 0.12
+        parts.append(cube(f'gl{f}', w + 0.02, d + 0.02, gh, 0, 0, z0 + gh / 2 + 0.10,
+                          M['window'], cell=cell(rng, 'band')))
+    for f in range(n + 1):
+        parts.append(cube(f'slab{f}', w + 0.08, d + 0.08, 0.10, 0, 0, min(f * fh, H - 0.05), M['ac']))
+    nmul = max(2, int(w / 0.5))
+    for k in range(nmul + 1):
+        xk = -w / 2 + k * w / nmul
+        yk = -d / 2 + k * d / nmul
+        parts.append(cube(f'mv{k}', 0.05, d + 0.06, H, xk, 0, H / 2, M['mullion']))
+        parts.append(cube(f'mh{k}', w + 0.06, 0.05, H, 0, yk, H / 2, M['mullion']))
+    parts.append(cube('mech', w * 0.5, d * 0.5, 0.8, 0, 0, H + 0.4, M['ac']))
+    if tier == 'high':
+        parts.append(cyl('ant', 0.035, 2.4, w / 2 - 0.3, -d / 2 + 0.3, H + 1.2, M['mullion'], verts=8))
+    return parts
+
+
+# ---------------- high: masonry tower (make_tower) — brick/plaster ---------
+def tower(style, rng):
+    w, d = rng.uniform(2.7, 3.0), rng.uniform(2.6, 2.9)
+    floors = rng.choice([6, 7, 8])
+    fh = 1.0
+    H = floors * fh
+    wall = M[style]
+    parts = [cube('wall', w, d, H, 0, 0, H / 2, wall)]
+    parts.append(cube('plinth', w + 0.16, d + 0.16, 0.9, 0, 0, 0.45, M['stone']))
+    facade_windows(parts, rng, w, d, floors, fh, skip_ground=True)
+    parts.append(cube('cornice', w + 0.08, d + 0.08, 0.25, 0, 0, H + 0.12, wall))
+    parts.append(cube('bulk1', 1.1, 0.8, 0.55, 0.5, 0.4, H + 0.4, M['ac']))
+    parts.append(cube('bulk2', 0.9, 0.9, 0.7, -0.6, -0.5, H + 0.45, M['stone']))
+    parts.append(cyl('mast', 0.06, 1.6, 0.8, -0.8, H + 0.9, M['ac'], verts=8))
+    return parts
+
+
+def build(style, tier, rng):
+    if tier == 'low':
+        return glass_low(rng) if style == 'glass' else house(style, rng)
+    if tier == 'mid':
+        return glasstower('mid', rng) if style == 'glass' else apt(style, rng)
+    return glasstower('high', rng) if style == 'glass' else tower(style, rng)
+
+
+VARIANTS = 3  # base + 2 seeded variants per style/tier, for suburb variety
 ox = 0
 for style in ('brick', 'plaster', 'glass'):
     for tier in ('low', 'mid', 'high'):
-        # WP1 pilot: only plaster_low is rebuilt to the Board 07 house spec.
-        # The other 8 keep the pre-phase-3 recipe until WP2 ports them.
-        if (style, tier) == ('plaster', 'low'):
-            parts = house(style, tier)
-        elif style == 'glass':
-            parts = glassy(tier)
-        else:
-            parts = masonry(style, tier)
-        obj = join_parts(parts, f'{style}_{tier}')
-        obj.location = (ox, 0, 0)  # layout only — ignored at load
-        ox += 8
+        for v in range(VARIANTS):
+            rng = random.Random(hash((style, tier, v)) & 0xffffffff)
+            _WN[0] = 0
+            parts = build(style, tier, rng)
+            name = f'{style}_{tier}' if v == 0 else f'{style}_{tier}_v{v + 1}'
+            obj = join_parts(parts, name)
+            obj.location = (ox, 0, 0)  # layout only — ignored at load
+            ox += 8
 
 export_glb(out)

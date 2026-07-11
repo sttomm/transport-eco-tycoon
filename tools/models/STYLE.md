@@ -90,6 +90,15 @@ Roof overhang ≈ **+0.4** over footprint. Cornice/plinth/parapet dims below.
 
 ## Pilot status
 
-WP1 rebuilt **`plaster_low`** to the house spec above; the other 8 models keep
-the pre-phase-3 recipe until WP2 ports them to `make_apt/make_tower/
-make_glasstower`. Verify lit night windows on the pilot before extending.
+WP2 ported all 9 models (`brick|plaster|glass` × `low|mid|high`) to the specs
+above, plus 2 seeded variants each (`_v2`/`_v3` suffixes) for suburb variety —
+27 nodes total, still resolving to the 9 canonical `<style>_<tier>` names for
+`src/render/assets.js`/`world.js` (which group by tier only, so variants slot
+in automatically). Notes on tiers without a direct look-dev counterpart:
+- `glass_low` has no `make_house` analog in look-dev — built as a small
+  curtain-wall block (1–2 floors) instead of a gable, per the plan.
+- `glass_mid` reuses the `make_glasstower` recipe at apartment-block floor
+  counts (3–4) rather than `make_apt`'s masonry-balcony shape, since balconies
+  don't fit a full-glass facade.
+Verified in-browser: all 9 base models render per the board07 references and
+light their windows per-cell (not per-floor blob) at night.
