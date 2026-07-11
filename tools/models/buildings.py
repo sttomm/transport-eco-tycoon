@@ -13,7 +13,7 @@ import random
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy  # noqa: E402
-from common import material, cube, cyl, join_parts, export_glb, reset_scene  # noqa: E402
+from common import material, cube, cyl, gable, join_parts, export_glb, reset_scene  # noqa: E402
 
 out = sys.argv[sys.argv.index('--') + 1]
 reset_scene()
@@ -30,6 +30,11 @@ M = {
     'roof': material('bldg_roof', '#6e6a64', 0.92),
     'door': material('bldg_door', '#4a3527', 0.70),
     'ac': material('bldg_ac', '#c3c9ce', 0.55, 0.30),
+    # phase-3 (Board 07) flat parts — see tools/models/STYLE.md
+    'frame': material('bldg_frame', '#e8e8e4', 0.55),      # window-reveal paint
+    'stone': material('bldg_stone', '#87837c', 0.90),      # plinth
+    'rooftile': material('bldg_rooftile', '#9c4a38', 0.85),  # gabled clay roof
+    'chimney': material('bldg_chimney', '#4a2e24', 0.90),
 }
 
 FLOORS = {'low': 1, 'mid': 3, 'high': 6}
@@ -55,6 +60,58 @@ def windows_ring(parts, z, ww, wh, name):
         parts.append(cube(f'{name}b', t, ww, wh, -W / 2, off, z, M['window'], cell=cell()))
         parts.append(cube(f'{name}c', ww, t, wh, off, W / 2, z, M['window'], cell=cell()))
         parts.append(cube(f'{name}d', ww, t, wh, off, -W / 2, z, M['window'], cell=cell()))
+
+
+# ---- Board 07 window module: frame (flat) + proud inset glass (atlas) ------
+# The glass part is the ONLY thing that may carry material 'bldg_window' +
+# set_uv_cell — the frame is a flat near-white paint part. Ported verbatim from
+# lookdev-blender.py window()/facade_windows(); see tools/models/STYLE.md.
+_WN = [0]
+
+
+def window(parts, x, y, z, w=0.55, h=0.75, rz=0):
+    _WN[0] += 1
+    n = _WN[0]
+    parts.append(cube(f'wfr{n}', w, 0.10, h, x, y, z, M['frame'], rot=(0, 0, rz)))
+    parts.append(cube(f'wgl{n}', w * 0.8, 0.12, h * 0.82, x, y, z, M['window'],
+                      cell=cell(), rot=(0, 0, rz)))
+
+
+def facade_windows(parts, w, d, floors, fh, z0=0.0, inset=0.02, skip_ground=False):
+    for fl in range(floors):
+        if skip_ground and fl == 0:
+            continue
+        zc = z0 + fl * fh + fh * 0.55
+        nx = max(2, int(w / 0.95))
+        for k in range(nx):
+            xk = -w / 2 + (k + 0.5) * w / nx
+            window(parts, xk, d / 2 - inset, zc)
+            window(parts, xk, -d / 2 + inset, zc)
+        ny = max(2, int(d / 0.95))
+        for k in range(ny):
+            yk = -d / 2 + (k + 0.5) * d / ny
+            window(parts, w / 2 - inset, yk, zc, rz=90)
+            window(parts, -w / 2 + inset, yk, zc, rz=90)
+
+
+def house(style, tier):
+    """Gabled detached house — Board 07 low tier (make_house). Wall carries the
+    style's facade material; plinth/roof/chimney/door/frames are flat parts."""
+    rng = random.Random(hash((style, tier)) & 0xffffffff)
+    w, d = 2.7, 2.4
+    floors = 2
+    fh = 1.45
+    H = floors * fh
+    wall = M[style] if style in ('brick', 'plaster') else M['plaster']
+    roofm = rng.choice([M['rooftile'], M['roof']])  # clay or slate-grey
+    parts = [cube('wall', w, d, H, 0, 0, H / 2, wall)]
+    parts.append(cube('plinth', w + 0.14, d + 0.14, 0.16, 0, 0, 0.08, M['stone']))
+    parts.append(gable('roof', w + 0.42, d + 0.42, rng.uniform(0.95, 1.25), 0, 0, H, roofm))
+    parts.append(cube('chimney', 0.26, 0.26, 0.9, rng.uniform(-w / 4, w / 4), -d / 5,
+                      H + 0.55, M['chimney']))
+    facade_windows(parts, w, d, floors, fh)
+    parts.append(cube('door', 0.6, 0.1, 1.05, rng.uniform(-w / 4, w / 4), d / 2, 0.55, M['door']))
+    return parts
 
 
 def masonry(style, tier):
@@ -106,7 +163,14 @@ def glassy(tier):
 ox = 0
 for style in ('brick', 'plaster', 'glass'):
     for tier in ('low', 'mid', 'high'):
-        parts = glassy(tier) if style == 'glass' else masonry(style, tier)
+        # WP1 pilot: only plaster_low is rebuilt to the Board 07 house spec.
+        # The other 8 keep the pre-phase-3 recipe until WP2 ports them.
+        if (style, tier) == ('plaster', 'low'):
+            parts = house(style, tier)
+        elif style == 'glass':
+            parts = glassy(tier)
+        else:
+            parts = masonry(style, tier)
         obj = join_parts(parts, f'{style}_{tier}')
         obj.location = (ox, 0, 0)  # layout only — ignored at load
         ox += 8
