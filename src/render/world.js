@@ -36,6 +36,7 @@ export function initWorldRender(sc) {
   buildIndustryMeshes();
   buildTrees();
   buildGroundScatter();
+  buildFarmFields();
   initLamps();
   initRoadMesh();
   initRailMesh();
@@ -852,6 +853,132 @@ function buildGroundScatter() {
   }, { scaleMin: 0.85, scaleMax: 1.5, yOff: 0.0, margin: 2 });
 
   if (typeof window !== 'undefined') window.__scatterCounts = counts; // playtest-game inspection
+}
+
+// ---------- farmland patchwork (WP8): fenced crop fields near farm
+// industries — ported from lookdev-blender.py's field() (wheat/plow/cabbage
+// row strips + post-and-rail perimeter). Purely visual worldgen decoration:
+// it never touches tile.occ/tile.t, so it carries no sim meaning and a player
+// building over a field later is fine (same as trees/WP7 scatter today).
+//
+// Own dedicated rand stream (own salt off WORLD_SEED, never the shared `rand`
+// or WP7's `srand`) — same split-stream discipline as WP6/WP7, so this layer
+// can be added without reshuffling any earlier draw.
+const farmNoise = makeNoise(WORLD_SEED ^ 0xa17c33);
+const { rand: frand } = farmNoise;
+
+const FIELD_ROW_SPACING = 1.15;     // world units between row strips (look-dev pitch)
+const FIELD_FENCE_POST_GAP = 2.4;   // world units between fence posts
+// two-tone row palettes, straight from lookdev-blender.py's wheatm/wheat2,
+// soilm/soil2m, cabbagem materials
+const FIELD_CROPS = {
+  wheat: [[0.72, 0.58, 0.24], [0.60, 0.47, 0.18]],
+  plow: [[0.34, 0.24, 0.13], [0.28, 0.19, 0.10]],
+  cabbage: [[0.22, 0.42, 0.14], [0.34, 0.24, 0.13]],
+};
+const FENCE_COLOR = [0.35, 0.26, 0.16];
+
+// axis-aligned field footprint (w along X, d along Z) — kept unrotated so the
+// exclusion sampling below is a plain grid instead of needing a rotated-rect
+// test; still reads as a natural patchwork since size/position/crop all vary
+function fieldFootprintClear(cx, cz, w, d) {
+  if (heightAt(cx, cz) < WATER_Y + 0.4) return false;
+  const stepX = w / Math.ceil(w / 1.6), stepZ = d / Math.ceil(d / 1.6);
+  for (let lz = -d / 2; lz <= d / 2 + 1e-6; lz += stepZ) {
+    for (let lx = -w / 2; lx <= w / 2 + 1e-6; lx += stepX) {
+      if (!clearGrassAt(cx + lx, cz + lz)) return false;
+    }
+  }
+  return true;
+}
+
+// push the box specs (rows + perimeter rail + posts) for one field into
+// `elements`; every box samples heightAt at its own position so it follows
+// the terrain (rows per-row, fence per-side for the rail, per-post for posts)
+function addField(elements, cx, cz, w, d, crop) {
+  const rows = Math.max(3, Math.round(d / FIELD_ROW_SPACING));
+  const colors = FIELD_CROPS[crop];
+  for (let k = 0; k < rows; k++) {
+    const rz = cz - d / 2 + (k + 0.5) * d / rows;
+    const h = heightAt(cx, rz);
+    elements.push({ x: cx, y: h + 0.11, z: rz, sx: w - 0.7, sy: 0.22, sz: 0.82, color: colors[k % 2] });
+  }
+  const sides = [
+    { x: cx, z: cz - d / 2, len: w, horiz: true },
+    { x: cx, z: cz + d / 2, len: w, horiz: true },
+    { x: cx - w / 2, z: cz, len: d, horiz: false },
+    { x: cx + w / 2, z: cz, len: d, horiz: false },
+  ];
+  for (const side of sides) {
+    const h = heightAt(side.x, side.z);
+    elements.push({
+      x: side.x, y: h + 0.62, z: side.z,
+      sx: side.horiz ? side.len : 0.07, sy: 0.06, sz: side.horiz ? 0.07 : side.len,
+      color: FENCE_COLOR,
+    });
+    const n = Math.max(1, Math.round(side.len / FIELD_FENCE_POST_GAP));
+    for (let k = 0; k <= n; k++) {
+      const t = -side.len / 2 + k * side.len / n;
+      const px = side.horiz ? side.x + t : side.x, pz = side.horiz ? side.z : side.z + t;
+      const ph = heightAt(px, pz);
+      elements.push({ x: px, y: ph + 0.37, z: pz, sx: 0.09, sy: 0.75, sz: 0.09, color: FENCE_COLOR });
+    }
+  }
+}
+
+function buildFarmFields() {
+  const farms = G.industries.filter(ind => ind.type === 'farm');
+  if (!farms.length) return;
+  const cropCycle = ['wheat', 'plow', 'cabbage'];
+  const half = (G.N * G.TILE) / 2 - 4;
+  const placed = []; // {x, z, r} — keeps fields (across every farm) from overlapping
+  const elements = [];
+  let fieldCount = 0;
+
+  farms.forEach((ind, fi) => {
+    const [ax, az] = worldXZ(ind.i, ind.j);
+    const fcx = ax + G.TILE / 2, fcz = az + G.TILE / 2; // footprint centre, matches buildIndustryMeshes
+    for (let slot = 0; slot < 3; slot++) {
+      for (let tries = 0; tries < 18; tries++) {
+        const dirAng = frand() * Math.PI * 2;
+        const dist = 13 + frand() * 20;
+        const cx = fcx + Math.cos(dirAng) * dist, cz = fcz + Math.sin(dirAng) * dist;
+        if (Math.abs(cx) > half || Math.abs(cz) > half) continue;
+        let w = 9 + frand() * 7, d = 7 + frand() * 5;
+        if (frand() < 0.5) [w, d] = [d, w]; // shape variety without rotation math
+        const r = Math.max(w, d) / 2;
+        if (placed.some(p => Math.hypot(cx - p.x, cz - p.z) < r + p.r + 2)) continue;
+        if (!fieldFootprintClear(cx, cz, w, d)) continue;
+        const crop = cropCycle[(fi + slot) % 3];
+        addField(elements, cx, cz, w, d, crop);
+        placed.push({ x: cx, z: cz, r });
+        fieldCount++;
+        break;
+      }
+    }
+  });
+  if (!elements.length) return;
+
+  const geo = vcolor(new THREE.BoxGeometry(1, 1, 1), 1, 1, 1);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
+  const inst = noCull(new THREE.InstancedMesh(geo, mat, elements.length));
+  inst.name = 'scatter_farmfield';
+  inst.castShadow = true;
+  inst.receiveShadow = true;
+  const m4 = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+  const col = new THREE.Color();
+  elements.forEach((el, k) => {
+    p.set(el.x, el.y, el.z);
+    s.set(el.sx, el.sy, el.sz);
+    m4.compose(p, q, s); // no rotation: fields are axis-aligned
+    inst.setMatrixAt(k, m4);
+    col.setRGB(...el.color);
+    inst.setColorAt(k, col);
+  });
+  inst.instanceColor.needsUpdate = true;
+  scene.add(inst);
+
+  if (typeof window !== 'undefined') window.__farmFieldCount = fieldCount; // playtest-game inspection
 }
 
 // ---------- street lamps (city sidewalks, lit at night) ----------
