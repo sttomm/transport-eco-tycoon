@@ -2,7 +2,7 @@
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
-import { BUILDINGS, CARBON, CLIMATE, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { BUILDINGS, CARBON, CLIMATE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas } from '../sim/grid.js';
 import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
@@ -155,7 +155,7 @@ function initTopbarTooltips() {
   liveTip($('gridstat'), () => {
     const sup = G.supply, dem = G.demand;
     return `<b>⚡ Grid: supply / demand (MW)</b><br>
-      Generation right now — Solar ${sup.solar.toFixed(1)}, Wind ${sup.wind.toFixed(1)}, Hydro ${sup.hydro.toFixed(1)}, Battery ${sup.battery.toFixed(1)}, Fuel cell ${sup.fuelcell.toFixed(1)}${G.gasDecommissioned ? '' : `, Gas ${(sup.gas || 0).toFixed(1)}`}.<br>
+      Generation right now — Solar ${sup.solar.toFixed(1)}, Wind ${sup.wind.toFixed(1)}, Hydro ${sup.hydro.toFixed(1)}, Battery ${sup.battery.toFixed(1)}, Fuel cell ${sup.fuelcell.toFixed(1)}${G.gasDecommissioned ? '' : `, Gas ${(sup.gas || 0).toFixed(1)}`}${G.importCapMW > 0 ? `, Import ${(sup.import || 0).toFixed(1)}` : ''}.<br>
       Demand — Cities ${dem.city.toFixed(1)}, Industry ${dem.industry.toFixed(1)}, Vehicle charging ${dem.charging.toFixed(1)}.<br>
       <span class="dim">Green = stable · yellow = curtailing surplus · red = blackout.</span>`;
   });
@@ -258,6 +258,7 @@ function renderYesterday() {
     ${reportRow('<span class="dim">— transport by kind</span>', `<span class="dim small">${perKind}</span>`)}
     ${reportRow('<span class="dim">— fixed costs</span>', `<span class="dim small">upkeep ${fmtMoney(r.upkeep)}${r.loanInterest > 0 ? ' · interest ' + fmtMoney(r.loanInterest) : ''}</span>`)}
     ${r.gasMWh > 0.05 ? reportRow('<span class="dim">— gas</span>', `<span class="dim small">${r.gasMWh.toFixed(0)} MWh · ${fmtMoney(r.gasCost)}</span>`) : ''}
+    ${(r.importMWh || 0) > 0.05 ? reportRow('<span class="dim">— imports</span>', `<span class="dim small">${r.importMWh.toFixed(0)} MWh · ${fmtMoney(r.importCost)}</span>`) : ''}
     <div class="report-advice small">${reportAdvice(r)}</div>`;
 }
 
@@ -290,7 +291,7 @@ export function updateUI(dt) {
     $('money').className = G.money < 0 ? 'bad' : '';
     $('clock').textContent = fmtTime();
     const sup = G.supply, dem = G.demand;
-    const totalSup = sup.solar + sup.wind + sup.hydro + sup.battery + sup.fuelcell + (sup.gas || 0);
+    const totalSup = sup.solar + sup.wind + sup.hydro + sup.battery + sup.fuelcell + (sup.gas || 0) + (sup.import || 0);
     const totalDem = dem.city + dem.industry + dem.charging;
     const grid = $('gridstat');
     grid.innerHTML = `⚡ ${totalSup.toFixed(1)} / ${totalDem.toFixed(1)} MW`;
@@ -301,7 +302,7 @@ export function updateUI(dt) {
       (!G.marketLive && G.day >= MARKET.announceDay ? ` <span class="warn">market day ${MARKET.liveDay}</span>` : '');
     pr.className = 'small ' + (!G.marketLive ? 'dim'
       : G.price >= MARKET.scarcity ? 'bad blink'
-      : G.supply.gas > 0.05 ? 'warn'
+      : G.supply.gas > 0.05 || G.supply.import > 0.05 ? 'warn'
       : G.price <= MARKET.bandLo ? 'good' : '');
     const sf = solarFactor();
     $('solarstat').innerHTML = `${sf <= 0 ? '🌙' : G.cloud > 0.6 ? '☁️' : G.cloud > 0.3 ? '🌤' : '☀️'} ${(sf * 100).toFixed(0)}%`;
@@ -405,6 +406,7 @@ function renderClimate() {
 const SERIES = [
   ['solar', '#f5c542', 'Solar'], ['wind', '#5fd4d0', 'Wind'], ['hydro', '#4a90d9', 'Hydro'],
   ['battery', '#7ed87e', 'Battery'], ['fuelcell', '#c08ae0', 'Fuel cell'], ['gas', '#c2604a', 'Gas'],
+  ['import', '#d99a3f', 'Import'],
 ];
 function drawPowerChart() {
   const cv = $('powerchart'); const ctx = cv.getContext('2d');
@@ -413,7 +415,7 @@ function drawPowerChart() {
   const hist = G.history;
   if (hist.length < 2) { ctx.fillStyle = '#999'; ctx.fillText('Collecting data…', 10, 20); return; }
   let maxY = 4;
-  for (const s of hist) maxY = Math.max(maxY, s.solar + s.wind + s.hydro + s.battery + s.fuelcell + (s.gas || 0), s.demandTotal + s.elec);
+  for (const s of hist) maxY = Math.max(maxY, s.solar + s.wind + s.hydro + s.battery + s.fuelcell + (s.gas || 0) + (s.import || 0), s.demandTotal + s.elec);
   maxY *= 1.15;
   const x = i => i / (G.histMax - 1) * W;
   const y = v => H - v / maxY * H;
@@ -472,7 +474,7 @@ function drawPowerChart() {
   // KPIs
   const sup = G.supply;
   const ren = sup.solar + sup.wind + sup.hydro;
-  const tot = ren + sup.battery + sup.fuelcell + (sup.gas || 0); // gas dilutes the renewable share
+  const tot = ren + sup.battery + sup.fuelcell + (sup.gas || 0) + (sup.import || 0); // gas & imports dilute the renewable share
   $('kpis').innerHTML =
     kpi('Renewable share', tot > 0 ? Math.round(ren / tot * 100) + '%' : '—') +
     kpi('Curtailed today', G.curtailedTodayMWh.toFixed(1) + ' MWh') +
@@ -970,6 +972,13 @@ function renderInfobox() {
         <div class="small dim">Today: ${G.gasMWhToday.toFixed(1)} MWh burned · ${fmtMoney(G.gasCostToday)} cost · fossil-free streak ${G.fossilFreeDays} days</div>
         <button id="decomgas" class="big" style="margin-top:5px">🌱 Decommission — collect ${fmtMoney(CARBON.exitGrant)} exit grant</button>
         <div class="small dim">Irreversible: no fossil backstop afterwards — deficits your storage can't cover become blackouts.</div>`;
+    }
+    if (s.type === 'interconnector') {
+      const event = G.dunkelflaute > 0 || G.heatwave > 0;
+      const cap = G.importCapMW * (event ? INTERCONNECT.eventCapFactor : 1);
+      const price = event ? INTERCONNECT.eventPrice : INTERCONNECT.price;
+      html += `<div class="small" style="margin-top:4px">Importing <b>${(G.supply.import || 0).toFixed(1)} / ${cap.toFixed(1)} MW</b> @ €${price}/MWh${event ? ' <span class="bad">— region-wide event, link throttled!</span>' : ''}</div>
+        <div class="small dim">Today: ${G.importMWhToday.toFixed(1)} MWh imported · ${fmtMoney(G.importCostToday)} bill · +${(INTERCONNECT.co2PerMWh * G.importMWhToday).toFixed(1)} t CO₂ (neighbour mix)</div>`;
     }
   } else if (s.kind === 'station') {
     const parts = [];

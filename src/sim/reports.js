@@ -50,6 +50,8 @@ export function closeDay() {
     loanInterest: G.loan * LOAN_RATE,
     gasMWh: G.gasMWhToday,
     gasCost: G.gasCostToday,
+    importMWh: G.importMWhToday,
+    importCost: G.importCostToday,
     // CO₂: daily deltas + lifetime cumulatives (the latter anchor the deltas)
     co2Emitted: G.co2EmittedTons - (prev ? prev.co2EmittedTotal || 0 : 0),
     co2Saved: G.co2SavedTons - (prev ? prev.co2SavedTotal || 0 : 0),

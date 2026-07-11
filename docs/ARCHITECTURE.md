@@ -429,6 +429,29 @@ All constants live in `data.js` CLIMATE; the 2× cap keeps it teaching, not
 punishment. Active state `G.heatwave` (+ `heatHoursToday`) persists as
 backwards-safe v3 save fields — no version bump.
 
+### 25. Grid-import interconnector (extends the ADR 21 merit order)
+**Decision:** a buildable 12 MW HVDC **Interconnector** adds one deficit step:
+battery → fuel cell → **import** → gas → blackout. Imports cost the
+neighbour's price (€95/MWh normally) and put the neighbour's mix CO₂
+(0.25 t/MWh) on the player's *emitted* ledger (climate dice included, avoided-
+CO₂ credit excluded). While a Dunkelflaute or heatwave is active the link
+carries only 30 % of its capacity at €220/MWh — weather systems are
+continental, the neighbours are short too. On the Smart Market the most
+expensive *running* dispatchable sets the price: `max(gas ask, import ask)`
+where the import ask is its current price + €10. Constants in `data.js`
+`INTERCONNECT`; capacity registers like storage (`G.importCapMW`).
+**Why:** interconnection is the real fourth tool of grid planners (after
+generation, storage, flexibility) and it gives players a fossil-free path to
+retire the gas plant — imports clear *before* gas because the carbon ramp
+pushes the gas marginal cost past €95 within days (a deliberate fixed-order
+simplification of true merit order; for the first ~2 days gas would actually
+be cheaper). The event throttle preserves the teaching invariant that a
+Dunkelflaute must not be escapable by wire alone, and the €95-vs-€85 flat
+tariff spread keeps imports an insurance product, not a business model.
+Imports do **not** break the fossil-free-week streak (that quest is about the
+player's own plant) — but the CO₂ ledger and the ADR 24 climate feedback see
+them, so "fossil-free by import" is visibly not emissions-free.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.

@@ -101,7 +101,7 @@ heatwave the active-event state is `G.heatwave` (hours remaining, like
 ```
 surplus = (solar + wind + hydro) − (city + industry + charging)
 surplus > 0:  battery charge (rate-limited) → electrolyzer (flexible load) → CURTAIL
-surplus < 0:  battery discharge → fuel cell (burns H₂/0.58) → GAS (legacy) → UNSERVED (blackout)
+surplus < 0:  battery discharge → fuel cell (burns H₂/0.58) → IMPORT (interconnector) → GAS (legacy) → UNSERVED (blackout)
 ```
 
 ## Legacy gas & carbon price (ADR 21)
@@ -129,6 +129,24 @@ the plant was decommissioned or merely idle.
 
 Blackout (`served < 97%`): industry halts, charging stops, city happiness
 falls (population shrinks), energy revenue lost.
+
+## Grid imports (Interconnector, ADR 25)
+
+A buildable 12 MW HVDC link to the neighbouring region, dispatched after
+storage and **before** the legacy gas plant:
+
+| Number | Game | Real-world anchor |
+|---|---|---|
+| Capacity | 12 MW per interconnector | HVDC links (NordLink, Viking Link…) are GW-class; scaled to the region |
+| Import price | €95/MWh normal (`data.js` INTERCONNECT) | neighbour day-ahead price + fees; above your €85 flat tariff → imports are insurance, not profit |
+| Import CO₂ | 0.25 t/MWh onto `co2EmittedTons` (no avoided credit, climate dice included) | average European grid mix ~0.2–0.3 t/MWh — imported power is only as clean as the neighbour's mix |
+| Event throttle | during a Dunkelflaute/heatwave: capacity × 0.3, price €220/MWh | Dunkelflauten are synoptic-scale (continental): interconnected neighbours are short in the same hours, and scarcity propagates through coupled markets |
+| Smart Market | importing sets the price at import cost + €10 if it is the most expensive running source | pay-as-clear across coupled zones |
+
+Teaching: interconnection is the fourth tool of real grid planning — it lets
+you retire the gas plant without blackouts, but it can't carry a Dunkelflaute
+(the throttle is the lesson) and it isn't emissions-free. Fossil-free-week
+streaks ignore imports (the quest is about *your* plant); the CO₂ ledger does not.
 
 ## Pricing (Smart Market, ADR 22)
 

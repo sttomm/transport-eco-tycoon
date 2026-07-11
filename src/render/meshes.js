@@ -260,6 +260,17 @@ export function buildPlantMesh(type) {
     smoke.visible = false;
     g.add(smoke);
     g.userData.smoke = smoke;
+  } else if (type === 'interconnector') {
+    // HVDC converter station: valve hall, transformer yard, terminal pylon
+    const hall = Mtex(makeStripeTexture('#aeb6be', '#9ca4ac', 20), { metalness: 0.3, roughness: 0.5 });
+    g.add(box(4.2, 2.6, 3.0, hall, -1.2, 0, 0.6));                       // valve hall
+    g.add(box(4.4, 0.22, 3.2, M('#7d858d'), -1.2, 2.6, 0.6));            // flat roof
+    g.add(box(1.4, 1.5, 1.2, M('#3a4754', { metalness: 0.4 }), 1.9, 0, 2.0)); // transformer
+    const steel = M('#8b9198', { metalness: 0.55, roughness: 0.4 });
+    for (const x of [2.0, 3.0]) g.add(cyl(0.12, 7.2, steel, x, 0, -1.4)); // pylon legs
+    g.add(box(3.0, 0.16, 0.16, steel, 2.5, 5.0, -1.4));                  // cross arms
+    g.add(box(2.0, 0.14, 0.14, steel, 2.5, 6.4, -1.4));
+    for (const x of [1.3, 2.5, 3.7]) g.add(cyl(0.07, 0.5, M('#4a7d5f'), x, 4.5, -1.4)); // insulators
   } else if (type === 'busStop') {
     g.add(box(2.4, 0.12, 1.4, M('#9aa2a8')));
     g.add(cyl(0.07, 2.4, M('#5b6266'), -0.9, 0, -0.4));

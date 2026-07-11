@@ -1,5 +1,5 @@
 import { G, emit, hourOfDay, season } from './state.js';
-import { BUILDINGS, CARBON, CLIMATE, FORECAST, MARKET } from './data.js';
+import { BUILDINGS, CARBON, CLIMATE, FORECAST, INTERCONNECT, MARKET } from './data.js';
 
 // Flat electricity tariff per MWh served — the price until the Smart Market
 // goes live on day MARKET.liveDay; after that G.price is set dynamically each
@@ -210,8 +210,12 @@ export function tickGrid(gameHours) {
 
   const renewable = solarMW + windMW + hydroMW;
   const inflex = cityMW + indMW + chargeMW;
+  // interconnector conditions (ADR 25): a Dunkelflaute/heatwave is continental
+  // — the neighbours are short too, so the link thins out and its price spikes
+  const importEvent = G.dunkelflaute > 0 || G.heatwave > 0;
+  const importPrice = importEvent ? INTERCONNECT.eventPrice : INTERCONNECT.price;
 
-  let batteryMW = 0, fcMW = 0, elecMW = 0, gasMW = 0, curtailMW = 0, unservedMW = 0;
+  let batteryMW = 0, fcMW = 0, elecMW = 0, impMW = 0, gasMW = 0, curtailMW = 0, unservedMW = 0;
   let surplus = renewable - inflex;
 
   if (surplus > 0) {
@@ -243,7 +247,23 @@ export function tickGrid(gameHours) {
     fcMW = Math.min(deficit, G.fcCapMW, h2avail);
     G.h2MWh -= (fcMW / m.fcEff) * gameHours;
     deficit -= fcMW;
-    // 3) the legacy gas plant is the last dispatchable before blackout (ADR 21).
+    // 3) imports over the interconnector (ADR 25) — they clear before your
+    // own gas peaker (whose marginal cost passes the import price within days
+    // of the carbon ramp). The neighbour bills you their price and their mix
+    // CO₂ lands on your emitted ledger; during a region-wide event the link
+    // carries only a trickle at near-scarcity prices.
+    impMW = Math.min(deficit, G.importCapMW * (importEvent ? INTERCONNECT.eventCapFactor : 1));
+    deficit -= impMW;
+    if (impMW > 0) {
+      const cost = impMW * gameHours * importPrice;
+      G.money -= cost;
+      G.expensesToday += cost;
+      G.importCostToday += cost;
+      G.importMWhToday += impMW * gameHours;
+      G.co2EmittedTons += impMW * gameHours * INTERCONNECT.co2PerMWh;
+      if (impMW > 0.3) emit('tip', 'firstImport');
+    }
+    // 4) the legacy gas plant is the last dispatchable before blackout (ADR 21).
     // It bills its demand normally but burns fuel + carbon-priced CO₂ — a loss
     // once the carbon price passes ~€33/t.
     gasMW = Math.min(deficit, capacity('gas'));
@@ -258,7 +278,7 @@ export function tickGrid(gameHours) {
       G.co2EmittedTons += gasMW * gameHours * d.co2PerMWh;
       if (gasMW > 0.3) emit('tip', 'firstGas');
     }
-    // 4) blackout
+    // 5) blackout
     unservedMW = Math.max(0, deficit);
     if (unservedMW > 0.3) emit('tip', 'firstBlackout');
   }
@@ -277,9 +297,12 @@ export function tickGrid(gameHours) {
     G.price = POWER_PRICE;
   } else if (unservedMW > 0) {
     G.price = MARKET.scarcity;                 // scarcity: demand goes unserved
-  } else if (gasMW > 0) {
-    const d = BUILDINGS.gas;                   // gas is the marginal plant → it sets the price
-    G.price = d.fuelPerMWh + d.co2PerMWh * G.carbonPrice + MARKET.gasMarkup;
+  } else if (gasMW > 0 || impMW > 0) {
+    // the most expensive running dispatchable sets the price (pay-as-clear)
+    const d = BUILDINGS.gas;
+    const gasAsk = gasMW > 0 ? d.fuelPerMWh + d.co2PerMWh * G.carbonPrice + MARKET.gasMarkup : 0;
+    const impAsk = impMW > 0 ? importPrice + INTERCONNECT.markup : 0;
+    G.price = Math.max(gasAsk, impAsk);
   } else if (curtailMW > 0) {
     G.price = MARKET.surplusPrice;             // glut: clean power is being thrown away
   } else {
@@ -298,11 +321,11 @@ export function tickGrid(gameHours) {
   const revenue = billableMW * gameHours * G.price;
   G.money += revenue;
   G.incomeEnergyToday += revenue;
-  // gas-served MWh is fossil generation — it avoids nothing
-  G.co2SavedTons += Math.max(0, servedMW - gasMW) * gameHours * CO2_PER_MWH;
+  // gas-served and imported MWh are not your renewables — they avoid nothing
+  G.co2SavedTons += Math.max(0, servedMW - gasMW - impMW) * gameHours * CO2_PER_MWH;
 
   // expose live values
-  G.supply = { solar: solarMW, wind: windMW, hydro: hydroMW, battery: Math.max(0, batteryMW), fuelcell: fcMW, gas: gasMW };
+  G.supply = { solar: solarMW, wind: windMW, hydro: hydroMW, battery: Math.max(0, batteryMW), fuelcell: fcMW, gas: gasMW, import: impMW };
   G.demand = { city: cityMW, industry: indMW, charging: chargeMW, electrolyzer: elecMW };
   G.unservedMW = unservedMW;
   G.curtailedMW = curtailMW;
@@ -335,6 +358,11 @@ export function rollFossilFreeDay() {
   G.fossilFreeDays = G.gasMWhToday === 0 ? G.fossilFreeDays + 1 : 0;
   G.gasMWhToday = 0;
   G.gasCostToday = 0;
+  // import counters roll with the same energy day (they don't touch the
+  // fossil-free streak — that quest is about YOUR plant; the CO₂ ledger and
+  // climate dice still see imports)
+  G.importMWhToday = 0;
+  G.importCostToday = 0;
 }
 
 export function dailyUpkeep() {

@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, resetState } from '../src/sim/state.js';
 import { solarFactor, windFactor, tickGrid, dailyUpkeep, rollFossilFreeDay, cityDemandCurve, POWER_PRICE } from '../src/sim/energy.js';
-import { BUILDINGS, CARBON } from '../src/sim/data.js';
+import { BUILDINGS, CARBON, INTERCONNECT, MARKET } from '../src/sim/data.js';
 
 // energy tests run on an empty world: no cities/industries unless we add them
 beforeEach(() => resetState());
@@ -180,6 +180,70 @@ test('INVARIANT: gas margin is negative once carbonPrice > €35/t — fossil ne
   assert.ok(CARBON.start + 2 * CARBON.perDay > (POWER_PRICE - d.fuelPerMWh) / d.co2PerMWh);
 });
 
+// ---- grid-import interconnector (ADR 25) ---------------------------------
+// merit order gains a step: battery → fuel cell → IMPORT → gas → blackout
+
+test('imports fill the deficit after storage and before gas', () => {
+  G.minutes = MIDNIGHT; G.wind = 0;
+  industry(45);
+  G.batteryCapMWh = 20; G.batteryRateMW = 10; G.batteryMWh = 5;
+  G.h2CapMWh = 150; G.h2MWh = 10; G.fcCapMW = 5;
+  G.importCapMW = 12;
+  gasPlant();
+  tickGrid(1);
+  assert.ok(Math.abs(G.supply.battery - 5) < 1e-6, 'battery first');
+  assert.ok(Math.abs(G.supply.fuelcell - 5) < 1e-6, 'fuel cell second');
+  assert.ok(Math.abs(G.supply.import - 12) < 1e-6, 'import before gas');
+  assert.ok(Math.abs(G.supply.gas - 23) < 1e-6, 'gas covers only the rest');
+  assert.equal(G.unservedMW, 0);
+  // import bill and CO₂ of the neighbour mix
+  assert.ok(Math.abs(G.importMWhToday - 12) < 1e-6);
+  assert.ok(Math.abs(G.importCostToday - 12 * INTERCONNECT.price) < 1e-6);
+  assert.ok(Math.abs(G.co2EmittedTons - (12 * INTERCONNECT.co2PerMWh + 23 * BUILDINGS.gas.co2PerMWh)) < 1e-6);
+});
+
+test('imported MWh bill normally but avoid no CO₂', () => {
+  G.minutes = MIDNIGHT; G.wind = 0;
+  industry(10);
+  G.importCapMW = 12;
+  const before = G.money;
+  tickGrid(1);
+  assert.ok(Math.abs(G.supply.import - 10) < 1e-6);
+  assert.equal(G.unservedMW, 0);
+  // revenue 10 × €85 flat, cost 10 × €95 import → net −€100 (insurance, not profit)
+  assert.ok(Math.abs(G.money - before - (10 * POWER_PRICE - 10 * INTERCONNECT.price)) < 1e-6);
+  assert.equal(G.co2SavedTons, 0, 'imports avoid nothing');
+});
+
+test('a region-wide event throttles the link and spikes its price', () => {
+  G.minutes = MIDNIGHT; G.wind = 0; G.dunkelflaute = 10;
+  industry(10);
+  G.importCapMW = 10;
+  tickGrid(1);
+  assert.ok(Math.abs(G.supply.import - 10 * INTERCONNECT.eventCapFactor) < 1e-6, 'capacity cut to 30%');
+  assert.ok(Math.abs(G.unservedMW - 7) < 1e-6, 'the flaute still bites — imports are no escape');
+  assert.ok(Math.abs(G.importCostToday - 3 * INTERCONNECT.eventPrice) < 1e-6, 'near-scarcity import price');
+});
+
+test('Smart Market: the most expensive running dispatchable sets the price (import vs gas)', () => {
+  // import only, normal weather → price = import cost + markup
+  G.day = MARKET.liveDay; G.minutes = MIDNIGHT; G.wind = 0;
+  industry(10);
+  G.importCapMW = 12;
+  tickGrid(1);
+  assert.ok(Math.abs(G.price - (INTERCONNECT.price + INTERCONNECT.markup)) < 1e-6);
+  // gas also running and more expensive → gas sets the price
+  resetState();
+  G.day = MARKET.liveDay; G.minutes = MIDNIGHT; G.wind = 0;
+  industry(40);
+  G.importCapMW = 12;
+  gasPlant();
+  tickGrid(1);
+  const gasAsk = BUILDINGS.gas.fuelPerMWh + BUILDINGS.gas.co2PerMWh * G.carbonPrice + MARKET.gasMarkup;
+  assert.ok(gasAsk > INTERCONNECT.price + INTERCONNECT.markup, 'gas ask above import ask by day 10');
+  assert.ok(Math.abs(G.price - gasAsk) < 1e-6);
+});
+
 test('fossil-free streak: zero-gas days count up, any gas use resets it', () => {
   G.gasMWhToday = 0;
   rollFossilFreeDay();
@@ -192,6 +256,12 @@ test('fossil-free streak: zero-gas days count up, any gas use resets it', () => 
   assert.equal(G.gasCostToday, 0);
   rollFossilFreeDay();
   assert.equal(G.fossilFreeDays, 1, 'streak restarts');
+  // imports roll with the same day but never touch the streak (ADR 25)
+  G.importMWhToday = 8; G.importCostToday = 760;
+  rollFossilFreeDay();
+  assert.equal(G.fossilFreeDays, 2, 'imports do not break the fossil-free streak');
+  assert.equal(G.importMWhToday, 0, 'daily import counters reset');
+  assert.equal(G.importCostToday, 0);
 });
 
 test('dailyUpkeep bills plants and vehicles', () => {

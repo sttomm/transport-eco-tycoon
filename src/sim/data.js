@@ -41,6 +41,10 @@ export const BUILDINGS = {
     name: 'Hydro Plant', icon: '💧', cost: 130000, upkeep: 250, footprint: 2, category: 'energy', capMW: 8, nearWater: true,
     desc: '8 MW run-of-river plant. Steady renewable baseload. Must be built at the river.',
   },
+  interconnector: {
+    name: 'Interconnector', icon: '🔌', cost: 90000, upkeep: 200, footprint: 2, category: 'energy', importMW: 12,
+    desc: '12 MW HVDC link to the neighbouring region. Imports power when your grid runs short — at the neighbour\'s price (~€95/MWh) and with the CO₂ of their part-fossil mix. Beware: Dunkelflauten are continental — during one the link thins to 30% and the price nears scarcity.',
+  },
   battery: {
     name: 'Battery Storage', icon: '🔋', cost: 52000, upkeep: 90, footprint: 2, category: 'storage',
     storeMWh: 20, rateMW: 10,
@@ -120,6 +124,21 @@ export const MARKET = {
   bandLo: 45,         // €/MWh at zero residual load (renewables cover everything)
   bandHi: 120,        // €/MWh at full residual load (renewables cover nothing)
   peakMW: 45,         // reference evening peak incl. industry for the interpolation
+};
+
+// Grid interconnector (ADR 25): an HVDC link to the neighbouring region.
+// Imports fill deficits BEFORE the legacy gas plant (they displace your own
+// peaker; the gas marginal cost passes the import price within days of the
+// carbon ramp) — but weather systems are continental: while a Dunkelflaute or
+// heatwave is active the neighbours are short too, so available capacity
+// collapses and the import price spikes toward scarcity. Imported power
+// carries the neighbour's mix CO₂ on YOUR emitted ledger and avoids nothing.
+export const INTERCONNECT = {
+  price: 95,           // €/MWh normal import price (neighbour day-ahead + fees)
+  eventPrice: 220,     // €/MWh while a flaute/heatwave grips the whole region
+  eventCapFactor: 0.3, // fraction of link capacity available during such events
+  co2PerMWh: 0.25,     // t CO₂/MWh — the neighbour's average (part-fossil) mix
+  markup: 10,          // Smart Market: importing sets the price at cost + markup
 };
 
 export const VEHICLES = {
@@ -254,6 +273,10 @@ export const TIPS = {
   firstGas: {
     title: 'Your legacy plant jumped in',
     text: 'Storage ran dry, so the inherited gas plant is covering the gap. Right now that\'s roughly break-even: ~€70/MWh fuel + 0.45 t CO₂ × the carbon price vs the €85/MWh you bill. But the carbon price rises €3 every day — soon every gas MWh is a loss. Real utilities face exactly this squeeze; build enough storage to stop needing it.',
+  },
+  firstImport: {
+    title: 'Importing power',
+    text: 'Your interconnector is buying from the neighbouring region — imports jump in after storage but before your gas plant, at the neighbour\'s price (~€95/MWh) and with the CO₂ of their mix (0.25 t/MWh, booked on YOUR emitted ledger). One warning from real grids: Dunkelflauten span whole continents. When one hits, everyone is short — the link thins to 30% capacity and the price nears scarcity. Interconnection helps, but it can\'t replace your own storage.',
   },
   carbon50: {
     title: 'Carbon price hits €50/t',

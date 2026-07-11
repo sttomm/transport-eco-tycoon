@@ -18,6 +18,8 @@ function initialState() {
     co2EmittedTons: 0,        // lifetime emissions from the legacy gas plant
     gasMWhToday: 0,           // gas generation today (fossil-free-week tracking)
     gasCostToday: 0,          // today's gas fuel + carbon cost
+    importMWhToday: 0,        // interconnector imports today (ADR 25)
+    importCostToday: 0,       // today's import bill
     fossilFreeDays: 0,        // consecutive days with zero gas use
     gasDecommissioned: false, // legacy plant bought out (irreversible)
     price: 85,                // live electricity price €/MWh (flat until the Smart Market)
@@ -43,7 +45,7 @@ function initialState() {
     routes: [],
     vehicles: [],
     // energy live values (MW)
-    supply: { solar: 0, wind: 0, hydro: 0, battery: 0, fuelcell: 0, gas: 0 },
+    supply: { solar: 0, wind: 0, hydro: 0, battery: 0, fuelcell: 0, gas: 0, import: 0 },
     demand: { city: 0, industry: 0, charging: 0, electrolyzer: 0 },
     unservedMW: 0,
     curtailedMW: 0,
@@ -52,6 +54,7 @@ function initialState() {
     // storage
     batteryMWh: 0, batteryCapMWh: 0, batteryRateMW: 0,
     h2MWh: 0, h2CapMWh: 0, elecCapMW: 0, fcCapMW: 0,
+    importCapMW: 0,           // interconnector link capacity (ADR 25)
     curtailedTodayMWh: 0,
     blackoutHoursToday: 0,    // daily-report counters, owned by sim/reports.js
     flauteHoursToday: 0, stormHoursToday: 0, heatHoursToday: 0,
