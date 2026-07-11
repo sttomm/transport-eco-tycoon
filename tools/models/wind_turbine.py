@@ -154,19 +154,26 @@ rotor_parts.append(hubcap)
 
 for k in range(3):
     ang = k * 2 * math.pi / 3
-    # blade: tapered + twisted box, root fairing cylinder; built pointing +Z
+    # blade: tapered + twisted box, root fairing cylinder; built pointing +Z.
+    # CRITICAL: the cube is placed at z=3.45 (not z=0) and baked with
+    # transform_apply *before* the taper/twist modifiers run, so its verts
+    # already span z=[0.35, 6.55] — entirely on the outward side of the hub
+    # (z=0). A blade cube left straddling the hub (z spanning e.g. [-3.1,
+    # +3.1]) reads as two opposite arms once swept around the rotation axis,
+    # so 3 blades render as a fake 6-spoke star — always keep the bake
+    # outward-only like this.
     bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 3.45))
     blade = bpy.context.object
-    blade.scale = (0.15, 0.62, 6.20)
+    blade.scale = (0.11, 0.30, 6.20)  # thin chord (0.30, was 0.62) + thin profile (0.11, was 0.15)
     bpy.ops.object.transform_apply(location=True, rotation=False, scale=True)
     taper = blade.modifiers.new('taper', 'SIMPLE_DEFORM')
     taper.deform_method = 'TAPER'
     taper.deform_axis = 'Z'
-    taper.factor = -0.68
+    taper.factor = -0.74
     twist = blade.modifiers.new('twist', 'SIMPLE_DEFORM')
     twist.deform_method = 'TWIST'
     twist.deform_axis = 'Z'
-    twist.angle = math.radians(24)
+    twist.angle = math.radians(16)  # slight twist root-to-tip
     bpy.ops.object.modifier_apply(modifier='taper')
     bpy.ops.object.modifier_apply(modifier='twist')
     set_mat(blade, MAT_BLADE)

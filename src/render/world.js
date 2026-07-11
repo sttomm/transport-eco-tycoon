@@ -47,7 +47,12 @@ export function initWorldRender(sc) {
     g.position.set(cx, tileY(ref.i, ref.j) + 0.02, cz);
     scene.add(g);
     groupOf.set(ref, g);
-    if (g.userData.rotor) turbineRotors.push(g.userData.rotor);
+    if (g.userData.rotor) {
+      // random initial phase so neighbouring turbines never spin in sync —
+      // cosmetic only (no sim meaning), fine to be non-deterministic per load
+      g.userData.rotor.rotation.x = Math.random() * Math.PI * 2;
+      turbineRotors.push(g.userData.rotor);
+    }
     if (g.userData.smoke) smokeStacks.push(g.userData.smoke);
   });
   on('bulldozed', ref => {
@@ -623,23 +628,36 @@ function initLamps() {
       if (!corners.length) continue; // junction tile, all asphalt
       const [x, z] = worldXZ(t.i, t.j);
       const [sx, sz] = corners[Math.floor(rand() * corners.length)];
-      spots.push([x + sx * (G.TILE / 2 - SIDEWALK_W / 2), tileY(t.i, t.j) + ROAD_TOP, z + sz * (G.TILE / 2 - SIDEWALK_W / 2)]);
+      spots.push({
+        x: x + sx * (G.TILE / 2 - SIDEWALK_W / 2), y: tileY(t.i, t.j) + ROAD_TOP, z: z + sz * (G.TILE / 2 - SIDEWALK_W / 2),
+        sx, sz, // corner direction the lamp sits toward — the arm reaches back the opposite way, over the road
+      });
     }
   }
   if (!spots.length) return;
-  const pole = new THREE.CylinderGeometry(0.045, 0.06, 3.0, 6);
-  pole.translate(0, 1.5, 0);
-  const head = new THREE.SphereGeometry(0.14, 8, 6);
-  head.translate(0, 3.05, 0);
-  const geo = mergeGeometries([pole, head], true); // 2 groups -> [pole, head] materials
+  // pole + arm + head, look-dev proportions (lookdev-blender.py make_lamp:
+  // pole r0.05 h3.4, arm 0.7 long at the pole top, head 0.3x0.12x0.08 at the
+  // arm tip) scaled to this pole's height.
+  const POLE_H = 3.0, ARM_OUT = 0.30, ARM_LEN = 0.62;
+  const pole = new THREE.CylinderGeometry(0.045, 0.06, POLE_H, 6);
+  pole.translate(0, POLE_H / 2, 0);
+  const arm = new THREE.BoxGeometry(ARM_LEN, 0.05, 0.05);
+  arm.translate(ARM_OUT + ARM_LEN / 2, POLE_H, 0);
+  const head = new THREE.SphereGeometry(0.17, 8, 6); // bigger + brighter than before so it reads clearly at night
+  head.translate(ARM_OUT + ARM_LEN, POLE_H - 0.05, 0);
+  const geo = mergeGeometries([pole, arm, head], true); // 3 groups -> [pole, arm, head] materials
+  const darkMat = M('#3a4046');
   const headMat = new THREE.MeshStandardMaterial({
-    color: '#f5efdf', roughness: 0.4, emissive: '#ffd9a0', emissiveIntensity: 0,
+    color: '#f5efdf', roughness: 0.4,
+    emissive: new THREE.Color(1.35, 1.05, 0.55), emissiveIntensity: 0, // >1 emissive so the head reads brighter than lit windows at the same night amount
   });
   facadeMats.push(headMat); // setNightAmount switches the lamps on
-  const inst = noCull(new THREE.InstancedMesh(geo, [M('#3a4046'), headMat], spots.length));
+  const inst = noCull(new THREE.InstancedMesh(geo, [darkMat, darkMat, headMat], spots.length));
   const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1);
-  spots.forEach(([x, y, z], k) => {
+  const UP = new THREE.Vector3(0, 1, 0);
+  spots.forEach(({ x, y, z, sx, sz }, k) => {
     p.set(x, y, z);
+    q.setFromAxisAngle(UP, Math.atan2(sz, -sx)); // arm points inward from the corner, out over the road
     m.compose(p, q, s);
     inst.setMatrixAt(k, m);
   });
