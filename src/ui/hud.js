@@ -2,7 +2,8 @@
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
 import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
-import { BUILDINGS, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { BUILDINGS, CARBON, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
+import { decommissionGas } from '../sim/grid.js';
 import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
@@ -30,6 +31,12 @@ export function initUI() {
   on('contractsChanged', () => { if (activeTab === 'contracts') renderContracts(); });
   initLoanBox();
   initTopbarTooltips();
+  // delegated: the infobox re-renders every 0.25 s, so a handler on the button
+  // itself could vanish between mousedown and click (same trick as the vehlist)
+  $('infobox').addEventListener('click', e => {
+    if (e.target.id !== 'decomgas') return;
+    if (decommissionGas()) G.selected = null; // tip fires from the sim
+  });
 
   $('speeds').addEventListener('click', e => {
     const s = e.target.dataset.s;
@@ -74,6 +81,7 @@ function buildToolbar() {
     row.className = 'toolrow';
     for (const [id, def] of Object.entries(BUILDINGS)) {
       if (def.category !== cat) continue;
+      if (def.legacy) continue; // inherited-only (gas): players can't build fossil
       const b = document.createElement('button');
       b.className = 'tool';
       b.dataset.tool = id;
@@ -135,7 +143,7 @@ function initTopbarTooltips() {
   liveTip($('gridstat'), () => {
     const sup = G.supply, dem = G.demand;
     return `<b>⚡ Grid: supply / demand (MW)</b><br>
-      Generation right now — Solar ${sup.solar.toFixed(1)}, Wind ${sup.wind.toFixed(1)}, Hydro ${sup.hydro.toFixed(1)}, Battery ${sup.battery.toFixed(1)}, Fuel cell ${sup.fuelcell.toFixed(1)}.<br>
+      Generation right now — Solar ${sup.solar.toFixed(1)}, Wind ${sup.wind.toFixed(1)}, Hydro ${sup.hydro.toFixed(1)}, Battery ${sup.battery.toFixed(1)}, Fuel cell ${sup.fuelcell.toFixed(1)}${G.gasDecommissioned ? '' : `, Gas ${(sup.gas || 0).toFixed(1)}`}.<br>
       Demand — Cities ${dem.city.toFixed(1)}, Industry ${dem.industry.toFixed(1)}, Vehicle charging ${dem.charging.toFixed(1)}.<br>
       <span class="dim">Green = stable · yellow = curtailing surplus · red = blackout.</span>`;
   });
@@ -204,7 +212,7 @@ export function updateUI(dt) {
     $('money').className = G.money < 0 ? 'bad' : '';
     $('clock').textContent = fmtTime();
     const sup = G.supply, dem = G.demand;
-    const totalSup = sup.solar + sup.wind + sup.hydro + sup.battery + sup.fuelcell;
+    const totalSup = sup.solar + sup.wind + sup.hydro + sup.battery + sup.fuelcell + (sup.gas || 0);
     const totalDem = dem.city + dem.industry + dem.charging;
     const grid = $('gridstat');
     grid.innerHTML = `⚡ ${totalSup.toFixed(1)} / ${totalDem.toFixed(1)} MW`;
@@ -242,7 +250,7 @@ const pct = (v, c) => c > 0 ? Math.round(v / c * 100) + '%' : '—';
 // ---------- dashboard charts ----------
 const SERIES = [
   ['solar', '#f5c542', 'Solar'], ['wind', '#5fd4d0', 'Wind'], ['hydro', '#4a90d9', 'Hydro'],
-  ['battery', '#7ed87e', 'Battery'], ['fuelcell', '#c08ae0', 'Fuel cell'],
+  ['battery', '#7ed87e', 'Battery'], ['fuelcell', '#c08ae0', 'Fuel cell'], ['gas', '#c2604a', 'Gas'],
 ];
 function drawPowerChart() {
   const cv = $('powerchart'); const ctx = cv.getContext('2d');
@@ -251,7 +259,7 @@ function drawPowerChart() {
   const hist = G.history;
   if (hist.length < 2) { ctx.fillStyle = '#999'; ctx.fillText('Collecting data…', 10, 20); return; }
   let maxY = 4;
-  for (const s of hist) maxY = Math.max(maxY, s.solar + s.wind + s.hydro + s.battery + s.fuelcell, s.demandTotal + s.elec);
+  for (const s of hist) maxY = Math.max(maxY, s.solar + s.wind + s.hydro + s.battery + s.fuelcell + (s.gas || 0), s.demandTotal + s.elec);
   maxY *= 1.15;
   const x = i => i / (G.histMax - 1) * W;
   const y = v => H - v / maxY * H;
@@ -266,12 +274,12 @@ function drawPowerChart() {
   let base = hist.map(() => 0);
   for (const [key, color] of SERIES) {
     ctx.beginPath();
-    hist.forEach((s, i) => { const v = base[i] + s[key]; i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(0), y(v)); });
+    hist.forEach((s, i) => { const v = base[i] + (s[key] || 0); i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(0), y(v)); });
     for (let i = hist.length - 1; i >= 0; i--) ctx.lineTo(x(i), y(base[i]));
     ctx.closePath();
     ctx.fillStyle = color + 'cc';
     ctx.fill();
-    base = base.map((b, i) => b + hist[i][key]);
+    base = base.map((b, i) => b + (hist[i][key] || 0));
   }
   // demand line (incl. electrolyzer as dashed extension)
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8; ctx.beginPath();
@@ -301,14 +309,18 @@ function drawPowerChart() {
   // KPIs
   const sup = G.supply;
   const ren = sup.solar + sup.wind + sup.hydro;
-  const tot = ren + sup.battery + sup.fuelcell;
+  const tot = ren + sup.battery + sup.fuelcell + (sup.gas || 0); // gas dilutes the renewable share
   $('kpis').innerHTML =
     kpi('Renewable share', tot > 0 ? Math.round(ren / tot * 100) + '%' : '—') +
     kpi('Curtailed today', G.curtailedTodayMWh.toFixed(1) + ' MWh') +
     kpi('Grid served', Math.round(G.servedFraction * 100) + '%') +
     kpi('H₂ round trip', Math.round(G.mult.elecEff * G.mult.fcEff * 100) + '%') +
     kpi('Battery round trip', '92%') +
-    kpi('Power price', '€85/MWh');
+    kpi('Power price', '€85/MWh') +
+    kpi('Carbon price', `€${G.carbonPrice}/t <span class="dim small">▲ €${CARBON.perDay}/day</span>`) +
+    kpi('CO₂ emitted (gas)', G.co2EmittedTons.toFixed(0) + ' t') +
+    kpi('CO₂ avoided', G.co2SavedTons.toFixed(0) + ' t') +
+    (G.gasCostToday > 0 ? kpi('Gas cost today', fmtMoney(-G.gasCostToday)) : '');
 }
 const kpi = (n, v) => `<div class="kpi"><div class="kpi-v">${v}</div><div class="kpi-n">${n}</div></div>`;
 
@@ -730,6 +742,16 @@ function renderInfobox() {
   } else if (s.kind === 'plant') {
     const d = s.def;
     html = `<b>${d.icon} ${d.name}</b><div class="small">${d.desc}</div>`;
+    if (s.type === 'gas' && !G.gasDecommissioned) {
+      const marginal = d.fuelPerMWh + d.co2PerMWh * G.carbonPrice;
+      const margin = POWER_PRICE - marginal;
+      html += `<div class="small" style="margin-top:4px">Marginal cost: <b class="${margin < 0 ? 'bad' : 'warn'}">€${marginal.toFixed(1)}/MWh</b>
+          (€${d.fuelPerMWh} fuel + €${(d.co2PerMWh * G.carbonPrice).toFixed(1)} carbon @ €${G.carbonPrice}/t) vs €${POWER_PRICE} price
+          → ${margin < 0 ? `<b class="bad">−€${(-margin).toFixed(1)}/MWh loss</b>` : `€${margin.toFixed(1)}/MWh margin`}</div>
+        <div class="small dim">Today: ${G.gasMWhToday.toFixed(1)} MWh burned · ${fmtMoney(G.gasCostToday)} cost · fossil-free streak ${G.fossilFreeDays} days</div>
+        <button id="decomgas" class="big" style="margin-top:5px">🌱 Decommission — collect ${fmtMoney(CARBON.exitGrant)} exit grant</button>
+        <div class="small dim">Irreversible: no fossil backstop afterwards — deficits your storage can't cover become blackouts.</div>`;
+    }
   } else if (s.kind === 'station') {
     const parts = [];
     if ((s.stype === 'bus' || s.stype === 'train') && s.pax) {

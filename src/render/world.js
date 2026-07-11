@@ -24,6 +24,7 @@ let roadDirty = true;
 let railBallast, railSegs, railDirty = true;
 const ambient = { cars: null, peds: null, carList: [], pedList: [] };
 const turbineRotors = [];
+const smokeStacks = [];        // gas-plant smoke groups (meshes.js userData.smoke)
 const groupOf = new Map();     // placed plant/station ref -> THREE.Group
 const industryGroups = new Map(); // industry -> THREE.Group
 
@@ -47,6 +48,7 @@ export function initWorldRender(sc) {
     scene.add(g);
     groupOf.set(ref, g);
     if (g.userData.rotor) turbineRotors.push(g.userData.rotor);
+    if (g.userData.smoke) smokeStacks.push(g.userData.smoke);
   });
   on('bulldozed', ref => {
     const g = groupOf.get(ref);
@@ -54,6 +56,10 @@ export function initWorldRender(sc) {
     if (g.userData.rotor) {
       const ix = turbineRotors.indexOf(g.userData.rotor);
       if (ix >= 0) turbineRotors.splice(ix, 1);
+    }
+    if (g.userData.smoke) {
+      const ix = smokeStacks.indexOf(g.userData.smoke);
+      if (ix >= 0) smokeStacks.splice(ix, 1);
     }
     scene.remove(g);
     groupOf.delete(ref);
@@ -911,6 +917,20 @@ export function updateWorldRender(dt) {
   const windPow = G.wind;
   const spin = windPow < 0.12 || windPow > 0.96 ? 0 : (0.5 + windPow * 3.2);
   for (const r of turbineRotors) r.rotation.x += spin * dt;
+
+  // gas plant smoke: puffs rise, grow and fade while the plant is dispatched
+  const gasOn = G.supply.gas > 0.3;
+  for (const smoke of smokeStacks) {
+    smoke.visible = gasOn;
+    if (!gasOn) continue;
+    for (const puff of smoke.children) {
+      puff.userData.phase = (puff.userData.phase + dt * 0.35) % 1;
+      const t = puff.userData.phase;
+      puff.position.set(t * 0.8, t * 3.2, t * 0.4);            // drift up & leeward
+      puff.scale.setScalar(0.6 + t * 1.6);
+      puff.material.opacity = 0.5 * (1 - t);
+    }
+  }
 
   // population determines how many ambient agents are visible
   for (const list of [ambient.carList, ambient.pedList]) {

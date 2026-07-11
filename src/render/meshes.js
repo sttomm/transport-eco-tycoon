@@ -234,6 +234,32 @@ export function buildPlantMesh(type) {
   } else if (type === 'fuelcell') {
     g.add(box(4.4, 2.6, 3.2, M('#aab6c2', { metalness: 0.35 })));
     for (let k = 0; k < 5; k++) g.add(box(0.18, 2.0, 2.8, M('#7c8896'), -1.8 + k * 0.9, 2.62, 0));
+  } else if (type === 'gas') {
+    // the inherited fossil plant: corrugated turbine hall, gas skid, banded
+    // smokestack — deliberately grubby next to the clean renewables
+    const corr = Mtex(makeStripeTexture('#7c7468', '#6a6357', 24), { roughness: 0.75, metalness: 0.3 });
+    g.add(box(5.4, 3.0, 3.8, corr, -0.6, 0, 0.4));                       // turbine hall
+    g.add(gableRoof(5.8, 1.0, 4.2, M('#4e4a42'), -0.6, 3.0, 0.4));
+    g.add(box(2.2, 1.6, 1.8, M('#9aa1a7', { metalness: 0.4 }), -1.0, 0, 3.0)); // gas pressure skid
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 2.6, 14), M('#c8ccd0', { metalness: 0.5, roughness: 0.35 }));
+    tank.rotation.z = Math.PI / 2; tank.position.set(1.8, 0.9, 3.0); tank.castShadow = true;
+    g.add(tank);                                                          // horizontal gas tank
+    g.add(cyl(0.5, 9, Mtex(makeStripeTexture('#8a8378', '#787164', 8, false), { roughness: 0.7 }), 2.4, 0, -1.0, 0.4)); // smokestack
+    g.add(cyl(0.44, 0.5, M('#c5483c'), 2.4, 8.6, -1.0));                  // red warning band
+    // smoke puffs, shown & drifted by world.js while G.supply.gas > 0.3
+    const smoke = new THREE.Group();
+    for (let k = 0; k < 3; k++) {
+      const puff = new THREE.Mesh(
+        new THREE.SphereGeometry(0.55, 8, 6),
+        new THREE.MeshStandardMaterial({ color: '#b9b9b6', transparent: true, opacity: 0.55, roughness: 1, depthWrite: false }),
+      );
+      puff.userData.phase = k / 3;
+      smoke.add(puff);
+    }
+    smoke.position.set(2.4, 9.3, -1.0);
+    smoke.visible = false;
+    g.add(smoke);
+    g.userData.smoke = smoke;
   } else if (type === 'busStop') {
     g.add(box(2.4, 0.12, 1.4, M('#9aa2a8')));
     g.add(cyl(0.07, 2.4, M('#5b6266'), -0.9, 0, -0.4));

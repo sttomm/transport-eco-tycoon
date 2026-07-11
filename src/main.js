@@ -2,8 +2,8 @@
 // Layering rule: sim/ never imports render/ or ui/; they communicate through
 // the event emitter in sim/state.js. See docs/ARCHITECTURE.md.
 import { G } from './sim/state.js';
-import { initGrid, canPlace, place, bulldoze, tile } from './sim/grid.js';
-import { updateWeather, tickGrid, sampleHistory, dailyUpkeep } from './sim/energy.js';
+import { initGrid, canPlace, place, bulldoze, decommissionGas, tile } from './sim/grid.js';
+import { updateWeather, tickGrid, sampleHistory, dailyUpkeep, rollFossilFreeDay } from './sim/energy.js';
 import {
   tickIndustries, tickVehicles, tickCities,
   createRoute, buyVehicle, addWagon, findPath, nameStation,
@@ -58,6 +58,9 @@ if (!loadedSave) {
   placeStarter('solar', 20, 60);
   placeStarter('battery', 34, 66);
   placeStarter('battery', 38, 66);
+  // the inherited legacy gas plant (ADR 21) on Solhaven's eastern outskirts —
+  // the early-game safety net the whole energy-transition arc phases out
+  placeStarter('gas', 57, 66);
   G.batteryMWh = G.batteryCapMWh * 0.5;
   for (const id of ['firstSolar', 'firstWind', 'firstBattery']) delete G.firedTips[id];
 }
@@ -79,6 +82,7 @@ function frame(now) {
     G.minutes += gm;
     if (Math.floor(G.minutes / 1440) + 1 > G.day) {
       G.day = Math.floor(G.minutes / 1440) + 1;
+      rollFossilFreeDay(); // reads gasMWhToday — must run before the daily resets
       G.incomeTransportToday = 0; G.incomeEnergyToday = 0; G.expensesToday = 0;
       G.curtailedTodayMWh = 0;
       G.finance.prev = G.finance.today;   // keep yesterday for the finance drill-down
@@ -109,4 +113,4 @@ requestAnimationFrame(frame);
 
 // expose for debugging & programmatic play-testing (see the playtest-game skill)
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, signContract, tickContracts, takeLoan, repayLoan, scene, camera, controls, renderer, setPostFX, PFX };
+window.DEBUG = { place, canPlace, tile, bulldoze, decommissionGas, createRoute, buyVehicle, addWagon, findPath, nameStation, saveGame, signContract, tickContracts, takeLoan, repayLoan, scene, camera, controls, renderer, setPostFX, PFX };

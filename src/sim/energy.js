@@ -1,4 +1,5 @@
 import { G, emit, hourOfDay, season } from './state.js';
+import { BUILDINGS, CARBON } from './data.js';
 
 // Electricity price paid by cities & industries per MWh served.
 export const POWER_PRICE = 85;
@@ -72,6 +73,11 @@ function cityDemandCurve() {
 // gameHours: elapsed game time in hours since last tick.
 export function tickGrid(gameHours) {
   const m = G.mult;
+  // carbon price ramps €3/day (EU-ETS-style) — derived from the day so it
+  // works headless and survives save/load without drift (ADR 21)
+  G.carbonPrice = CARBON.start + CARBON.perDay * (G.day - 1);
+  if (G.carbonPrice >= 50) emit('tip', 'carbon50');
+  if (G.carbonPrice >= 80) emit('tip', 'carbon80');
   // --- supply available from renewables
   const solarMW = capacity('solar') * solarFactor() * m.solar;
   const windMW = capacity('wind') * windFactor() * m.wind;
@@ -94,7 +100,7 @@ export function tickGrid(gameHours) {
   const renewable = solarMW + windMW + hydroMW;
   const inflex = cityMW + indMW + chargeMW;
 
-  let batteryMW = 0, fcMW = 0, elecMW = 0, curtailMW = 0, unservedMW = 0;
+  let batteryMW = 0, fcMW = 0, elecMW = 0, gasMW = 0, curtailMW = 0, unservedMW = 0;
   let surplus = renewable - inflex;
 
   if (surplus > 0) {
@@ -126,7 +132,22 @@ export function tickGrid(gameHours) {
     fcMW = Math.min(deficit, G.fcCapMW, h2avail);
     G.h2MWh -= (fcMW / m.fcEff) * gameHours;
     deficit -= fcMW;
-    // 3) blackout
+    // 3) the legacy gas plant is the last dispatchable before blackout (ADR 21).
+    // It bills its demand normally but burns fuel + carbon-priced CO₂ — a loss
+    // once the carbon price passes ~€33/t.
+    gasMW = Math.min(deficit, capacity('gas'));
+    deficit -= gasMW;
+    if (gasMW > 0) {
+      const d = BUILDINGS.gas;
+      const cost = gasMW * gameHours * (d.fuelPerMWh + d.co2PerMWh * G.carbonPrice);
+      G.money -= cost;
+      G.expensesToday += cost;
+      G.gasCostToday += cost;
+      G.gasMWhToday += gasMW * gameHours;
+      G.co2EmittedTons += gasMW * gameHours * d.co2PerMWh;
+      if (gasMW > 0.3) emit('tip', 'firstGas');
+    }
+    // 4) blackout
     unservedMW = Math.max(0, deficit);
     if (unservedMW > 0.3) emit('tip', 'firstBlackout');
   }
@@ -142,10 +163,11 @@ export function tickGrid(gameHours) {
   const revenue = billableMW * gameHours * POWER_PRICE;
   G.money += revenue;
   G.incomeEnergyToday += revenue;
-  G.co2SavedTons += (servedMW + Math.max(0, -batteryMW) * 0) * gameHours * CO2_PER_MWH;
+  // gas-served MWh is fossil generation — it avoids nothing
+  G.co2SavedTons += Math.max(0, servedMW - gasMW) * gameHours * CO2_PER_MWH;
 
   // expose live values
-  G.supply = { solar: solarMW, wind: windMW, hydro: hydroMW, battery: Math.max(0, batteryMW), fuelcell: fcMW };
+  G.supply = { solar: solarMW, wind: windMW, hydro: hydroMW, battery: Math.max(0, batteryMW), fuelcell: fcMW, gas: gasMW };
   G.demand = { city: cityMW, industry: indMW, charging: chargeMW, electrolyzer: elecMW };
   G.unservedMW = unservedMW;
   G.curtailedMW = curtailMW;
@@ -168,6 +190,15 @@ export function sampleHistory(gameMinutes) {
   if (G.history.length > G.histMax) G.history.shift();
   G.moneyHistory.push(G.money);
   if (G.moneyHistory.length > 240) G.moneyHistory.shift();
+}
+
+// Day-rollover bookkeeping for the fossil-free-week quest: a full day without
+// a single gas MWh extends the streak, any gas use resets it. Called from
+// main.js before the other daily counters reset.
+export function rollFossilFreeDay() {
+  G.fossilFreeDays = G.gasMWhToday === 0 ? G.fossilFreeDays + 1 : 0;
+  G.gasMWhToday = 0;
+  G.gasCostToday = 0;
 }
 
 export function dailyUpkeep() {

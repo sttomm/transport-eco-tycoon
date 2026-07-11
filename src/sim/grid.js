@@ -4,7 +4,7 @@
 // keeps the Three.js scene in sync.
 import { G, emit } from './state.js';
 import { makeNoise } from './noise.js';
-import { BUILDINGS, INDUSTRY_TYPES } from './data.js';
+import { BUILDINGS, CARBON, INDUSTRY_TYPES } from './data.js';
 
 export const WORLD_SEED = 20260612;
 export const WATER_Y = -0.35;
@@ -256,6 +256,9 @@ export function bulldoze(i, j) {
   }
   const occ = t.occ;
   if (occ && occ.removable) {
+    // bulldozing the legacy gas plant IS decommissioning — route through the
+    // grant path so the player can't accidentally forfeit the €60k exit grant
+    if (occ.type === 'gas' && !G.gasDecommissioned) { decommissionGas(); return 0; }
     free(occ.i, occ.j, occ.fp);
     if (occ.kind === 'plant') {
       G.plants = G.plants.filter(p => p !== occ);
@@ -272,6 +275,21 @@ export function bulldoze(i, j) {
     return occ.def.cost * 0.3;
   }
   return 0;
+}
+
+// Buy out the legacy gas plant (ADR 21): removed through the bulldoze path so
+// the 'bulldozed' event fires and the renderer drops the mesh, but instead of
+// the 30% refund (the plant cost nothing) the player gets a one-time exit
+// grant. Irreversible — the plant is hidden from the build palette.
+export function decommissionGas() {
+  if (G.gasDecommissioned) return false;
+  const p = G.plants.find(x => x.type === 'gas');
+  if (!p) return false;
+  G.gasDecommissioned = true;
+  bulldoze(p.i, p.j);           // refund = 30% of cost 0 → €0
+  G.money += CARBON.exitGrant;
+  emit('tip', 'gasDecommissioned');
+  return true;
 }
 
 // ---------- build helpers shared by input UI and save/load ----------

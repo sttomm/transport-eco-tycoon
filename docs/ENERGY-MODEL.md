@@ -66,8 +66,31 @@ discover this.
 ```
 surplus = (solar + wind + hydro) − (city + industry + charging)
 surplus > 0:  battery charge (rate-limited) → electrolyzer (flexible load) → CURTAIL
-surplus < 0:  battery discharge → fuel cell (burns H₂/0.58) → UNSERVED (blackout)
+surplus < 0:  battery discharge → fuel cell (burns H₂/0.58) → GAS (legacy) → UNSERVED (blackout)
 ```
+
+## Legacy gas & carbon price (ADR 21)
+
+Every new game inherits exactly one 30 MW open-cycle gas plant (`legacy: true`
+— hidden from the build palette, fossil capacity can never be expanded). It is
+the last dispatchable before blackout and the whole game arc is phasing it out.
+
+| Number | Game | Real-world anchor |
+|---|---|---|
+| Capacity | 30 MW | sized to the 8-city evening peak (~45 MW incl. industry) minus storage |
+| Fuel cost | €70/MWh | gas peaker fuel cost at recent European gas prices (~€35-40/MWh_th ÷ ~40% OCGT efficiency, incl. O&M) |
+| Emissions | 0.45 t CO₂/MWh | open-cycle gas turbine ~0.4-0.5 t/MWh |
+| Carbon price | starts €30/t, +€3 per game day (`data.js` CARBON) | EU-ETS-style rising CO₂ price; the ramp is compressed to game pace |
+| Break-even | (85 − 70) / 0.45 ≈ **€33.3/t** → day 2-3 | above that, every gas MWh sells at a loss (pinned by test: margin < 0 for >€35/t) |
+
+Mechanics: gas-served demand bills normally at €85/MWh, but the plant burns
+`fuel + 0.45 × carbonPrice` per MWh (booked into expenses and
+`G.gasCostToday`). Gas MWh accrue `G.co2EmittedTons` and earn **no** avoided-CO₂
+credit — `co2SavedTons` only counts non-gas served energy. A one-time €60k
+exit grant decommissions the plant irreversibly (infobox button); the
+**Fossil-free week** quest (7 consecutive days with `gasMWhToday === 0`,
+tracked by `G.fossilFreeDays`) is the de-facto win condition and works whether
+the plant was decommissioned or merely idle.
 
 Blackout (`served < 97%`): industry halts, charging stops, city happiness
 falls (population shrinks), energy revenue lost.

@@ -12,7 +12,24 @@ test('quests without prerequisites start active; chained ones are locked', () =>
   assert.ok(active.includes('localLine'));
   assert.ok(active.includes('grainChain'));
   assert.ok(active.includes('storagePlay'));
+  assert.ok(active.includes('fossilFree'), 'the phase-out goal is visible from day 1');
   assert.ok(!active.includes('interLine'), 'needs localLine first');
+});
+
+test('fossil-free week: 7 clean days complete the de-facto win condition with a celebration', () => {
+  const toasts = [];
+  on('toast', t => toasts.push(t));
+  G.fossilFreeDays = 6;
+  checkQuests();
+  assert.ok(!G.questsDone.fossilFree, 'six days are not enough');
+  G.fossilFreeDays = 7;
+  const before = G.money;
+  checkQuests();
+  assert.equal(G.questsDone.fossilFree, true);
+  assert.equal(G.money, before + 50000);
+  assert.equal(toasts.length, 1);
+  assert.match(toasts[0].title, /🏆/, 'win toast, not a plain objective toast');
+  assert.match(toasts[0].text, /clean power/);
 });
 
 test('completing a quest pays the reward and unlocks its successor', () => {

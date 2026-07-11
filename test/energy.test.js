@@ -5,13 +5,15 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, resetState } from '../src/sim/state.js';
-import { solarFactor, windFactor, tickGrid, dailyUpkeep, POWER_PRICE } from '../src/sim/energy.js';
+import { solarFactor, windFactor, tickGrid, dailyUpkeep, rollFossilFreeDay, POWER_PRICE } from '../src/sim/energy.js';
+import { BUILDINGS, CARBON } from '../src/sim/data.js';
 
 // energy tests run on an empty world: no cities/industries unless we add them
 beforeEach(() => resetState());
 
 const NOON = 12 * 60, MIDNIGHT = 0;
 const solarPlant = mw => G.plants.push({ type: 'solar', def: { capMW: mw } });
+const gasPlant = () => G.plants.push({ type: 'gas', def: BUILDINGS.gas });
 const industry = mw => G.industries.push({ wantsPower: true, def: { powerMW: mw } });
 
 test('solar follows the sun: full at clear spring noon, zero at night', () => {
@@ -98,6 +100,84 @@ test('research multipliers scale generation', () => {
   G.mult.solar = 1.18; // TOPCon
   tickGrid(1);
   assert.ok(Math.abs(G.supply.solar - 5.9) < 1e-6);
+});
+
+// ---- legacy gas bridge (ADR 21) -----------------------------------------
+// extended merit order: battery → fuel cell → GAS → blackout
+
+test('gas serves only after battery and fuel cell; blackout only past its cap', () => {
+  G.minutes = MIDNIGHT; G.wind = 0;                  // no renewables
+  industry(45);
+  G.batteryCapMWh = 20; G.batteryRateMW = 10; G.batteryMWh = 5;
+  G.h2CapMWh = 150; G.h2MWh = 10; G.fcCapMW = 5;
+  gasPlant();
+  tickGrid(1);
+  assert.ok(Math.abs(G.supply.battery - 5) < 1e-6, 'battery discharges first');
+  assert.ok(Math.abs(G.supply.fuelcell - 5) < 1e-6, 'fuel cell second');
+  assert.ok(Math.abs(G.supply.gas - 30) < 1e-6, 'gas covers the rest up to 30 MW cap');
+  assert.ok(Math.abs(G.unservedMW - 5) < 1e-6, 'blackout only beyond the gas cap');
+});
+
+test('gas stays off while storage can cover the deficit', () => {
+  G.minutes = MIDNIGHT; G.wind = 0;
+  industry(8);
+  G.batteryCapMWh = 20; G.batteryRateMW = 10; G.batteryMWh = 20;
+  gasPlant();
+  tickGrid(1);
+  assert.equal(G.supply.gas, 0);
+  assert.equal(G.gasMWhToday, 0);
+  assert.equal(G.co2EmittedTons, 0);
+});
+
+test('gas economics: fuel + carbon cost deducted, demand still billed, CO₂ booked as emitted not avoided', () => {
+  G.minutes = MIDNIGHT; G.wind = 0; G.day = 1;
+  industry(10);
+  gasPlant();
+  const before = G.money;
+  tickGrid(1);
+  // 10 MWh × (€70 fuel + 0.45 t × €30/t carbon) = €835 cost, €850 revenue
+  const cost = 10 * (70 + 0.45 * 30);
+  assert.ok(Math.abs(G.gasCostToday - cost) < 1e-6);
+  assert.ok(Math.abs(G.money - before - (10 * POWER_PRICE - cost)) < 1e-6);
+  assert.ok(Math.abs(G.expensesToday - cost) < 1e-6, 'gas cost shows in expenses');
+  assert.ok(Math.abs(G.gasMWhToday - 10) < 1e-6);
+  assert.ok(Math.abs(G.co2EmittedTons - 4.5) < 1e-6);          // 10 MWh × 0.45 t
+  assert.equal(G.co2SavedTons, 0, 'gas-served MWh avoids nothing');
+  assert.equal(G.unservedMW, 0);
+  assert.equal(G.blackout, false);
+});
+
+test('carbon price ramps €3/day from €30: day 1 → €30, day 11 → €60', () => {
+  G.day = 1; tickGrid(0.01);
+  assert.equal(G.carbonPrice, 30);
+  G.day = 11; tickGrid(0.01);
+  assert.equal(G.carbonPrice, 60);
+});
+
+test('INVARIANT: gas margin is negative once carbonPrice > €35/t — fossil never wins long-run', () => {
+  const d = BUILDINGS.gas;
+  const margin = cp => POWER_PRICE - d.fuelPerMWh - d.co2PerMWh * cp;
+  assert.ok(margin(35) < 0);
+  assert.ok(margin(36) < 0);
+  assert.ok(margin(80) < 0);
+  // break-even sits below €35/t (≈ €33.3 with the shipped numbers) …
+  assert.ok((POWER_PRICE - d.fuelPerMWh) / d.co2PerMWh < 35);
+  // … and the ramp passes it within the first days of a game
+  assert.ok(CARBON.start + 2 * CARBON.perDay > (POWER_PRICE - d.fuelPerMWh) / d.co2PerMWh);
+});
+
+test('fossil-free streak: zero-gas days count up, any gas use resets it', () => {
+  G.gasMWhToday = 0;
+  rollFossilFreeDay();
+  rollFossilFreeDay();
+  assert.equal(G.fossilFreeDays, 2);
+  G.gasMWhToday = 3.2; G.gasCostToday = 280;
+  rollFossilFreeDay();
+  assert.equal(G.fossilFreeDays, 0, 'streak broken by gas use');
+  assert.equal(G.gasMWhToday, 0, 'daily gas counters reset');
+  assert.equal(G.gasCostToday, 0);
+  rollFossilFreeDay();
+  assert.equal(G.fossilFreeDays, 1, 'streak restarts');
 });
 
 test('dailyUpkeep bills plants and vehicles', () => {

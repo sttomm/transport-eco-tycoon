@@ -2,8 +2,8 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
-import { tile, canPlace, place, bulldoze, isRail, isRoad, lShapedPath, dragCost } from '../src/sim/grid.js';
-import { BUILDINGS } from '../src/sim/data.js';
+import { tile, canPlace, place, bulldoze, decommissionGas, isRail, isRoad, lShapedPath, dragCost } from '../src/sim/grid.js';
+import { BUILDINGS, CARBON } from '../src/sim/data.js';
 import { freshWorld, findSpot, findGrass, findWater } from './helpers.js';
 
 beforeEach(() => freshWorld());
@@ -141,6 +141,44 @@ test('bulldozing a station removes it from every route', () => {
   assert.equal(G.stations.length, 0);
   assert.equal(G.routes[0].stops.length, 0);
   assert.deepEqual(events, [st], 'renderer is told to drop the mesh');
+});
+
+test('legacy gas plant: placeable (save replay path) though hidden from the palette', () => {
+  assert.equal(BUILDINGS.gas.legacy, true, 'flag the toolbar filters on');
+  const [i, j] = findSpot('gas');
+  assert.ok(i != null, 'canPlace works for the legacy type');
+  const ref = place('gas', i, j);
+  assert.equal(ref.kind, 'plant');
+  assert.ok(G.plants.some(p => p.type === 'gas'));
+});
+
+test('decommissionGas: grant paid once, plant + capacity gone, mesh dropped, second call a no-op', () => {
+  const [i, j] = findSpot('gas');
+  place('gas', i, j);
+  const events = [];
+  on('bulldozed', r => events.push(r.type));
+  const before = G.money;
+  assert.equal(decommissionGas(), true);
+  assert.equal(G.money, before + CARBON.exitGrant, 'exit grant, no 30% refund on top');
+  assert.equal(G.gasDecommissioned, true);
+  assert.equal(G.plants.filter(p => p.type === 'gas').length, 0, 'capacity gone');
+  assert.deepEqual(events, ['gas'], 'renderer told to drop the mesh');
+  assert.equal(tile(i, j).t, 'grass', 'tiles freed');
+
+  const after = G.money;
+  assert.equal(decommissionGas(), false, 'irreversible, cannot repeat');
+  assert.equal(G.money, after, 'no second grant');
+});
+
+test('bulldozing the gas plant routes through decommission (grant instead of refund)', () => {
+  const [i, j] = findSpot('gas');
+  place('gas', i, j);
+  const before = G.money;
+  const refund = bulldoze(i, j);
+  assert.equal(refund, 0, 'no bulldoze refund');
+  assert.equal(G.money, before + CARBON.exitGrant, 'grant paid via the bulldoze path');
+  assert.equal(G.gasDecommissioned, true);
+  assert.equal(decommissionGas(), false);
 });
 
 test('city streets are protected from the bulldozer', () => {

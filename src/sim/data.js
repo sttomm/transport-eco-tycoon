@@ -58,11 +58,25 @@ export const BUILDINGS = {
     name: 'Fuel Cell Plant', icon: '♻️', cost: 52000, upkeep: 130, footprint: 2, category: 'storage', fcMW: 5,
     desc: '5 MW fuel-cell plant. Converts stored hydrogen back to power (~58% efficient). Your insurance for dark, windless weeks.',
   },
+  gas: {
+    // legacy: true → hidden from the build palette. Every new game inherits
+    // exactly ONE of these (placed in main.js); players can never build more
+    // fossil capacity — the game arc is phasing this plant out.
+    name: 'Legacy Gas Plant', icon: '🔥', cost: 0, upkeep: 400, footprint: 2, category: 'energy',
+    capMW: 30, fuelPerMWh: 70, co2PerMWh: 0.45, legacy: true,
+    desc: 'The 30 MW open-cycle gas plant you inherited. It jumps in when storage runs dry and keeps the lights on — but every MWh burns ~€70 of gas and emits 0.45 t CO₂, taxed at the rising carbon price. Phase it out before it eats your margin.',
+  },
   bulldoze: {
     name: 'Bulldoze', icon: '🧨', cost: 0, footprint: 1, category: 'transport',
     desc: 'Demolish your buildings & roads (30% refund).',
   },
 };
+
+// Carbon price (€/t CO₂): starts at `start` on day 1 and rises `perDay` each
+// game day — an EU-ETS-style ramp that turns the legacy gas plant from
+// break-even (~€33/t) into a growing loss. `exitGrant` is the one-time payout
+// for decommissioning it (see grid.js#decommissionGas).
+export const CARBON = { start: 30, perDay: 3, exitGrant: 60000 };
 
 export const VEHICLES = {
   truck: {
@@ -189,6 +203,22 @@ export const TIPS = {
   firstFuelcell: {
     title: 'Closing the hydrogen loop',
     text: 'Fuel cells reconvert hydrogen when batteries run dry. Strategy used by real grid planners: batteries cycle daily, hydrogen sits in reserve for the rare dark-calm week. You now have both!',
+  },
+  firstGas: {
+    title: 'Your legacy plant jumped in',
+    text: 'Storage ran dry, so the inherited gas plant is covering the gap. Right now that\'s roughly break-even: ~€70/MWh fuel + 0.45 t CO₂ × the carbon price vs the €85/MWh you bill. But the carbon price rises €3 every day — soon every gas MWh is a loss. Real utilities face exactly this squeeze; build enough storage to stop needing it.',
+  },
+  carbon50: {
+    title: 'Carbon price hits €50/t',
+    text: 'A gas MWh now costs ~€70 fuel + €22.50 carbon ≈ €93 — you sell it for €85. Your legacy plant loses money every hour it runs, and the price keeps climbing €3/day. This is the EU-ETS mechanism in miniature: emitting gets steadily more expensive until clean alternatives win.',
+  },
+  carbon80: {
+    title: 'Carbon price hits €80/t',
+    text: 'Gas generation now costs over €106/MWh against €85 revenue — a €21 loss per MWh, and rising. If the plant still runs regularly, your storage is undersized. Consider decommissioning it (click the plant) once your batteries and hydrogen can carry a Dunkelflaute alone.',
+  },
+  gasDecommissioned: {
+    title: 'Fossil-free — no safety net',
+    text: 'The gas plant is gone and the exit grant is in your account. The trade-off: deficits now go straight from fuel cells to blackout — there is no fossil backstop anymore. Keep your H₂ tanks stocked before winter and Dunkelflautes. This is the real endgame of the energy transition: firm clean capacity replaces fossil reserve.',
   },
   dunkelflaute: {
     title: 'Dunkelflaute warning!',

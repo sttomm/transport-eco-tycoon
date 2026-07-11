@@ -69,6 +69,13 @@ export const QUESTS = [
   },
   // --- energy chain
   {
+    id: 'fossilFree', where: plants('gas'), title: '🌱 Fossil-free week', target: 7, reward: 50000,
+    desc: 'Your inherited gas plant keeps the lights on — at a rising carbon cost. Go 7 consecutive days without a single gas MWh: build enough storage that it never has to run, or decommission it outright (click the plant). This is the energy transition in one objective.',
+    value: () => G.fossilFreeDays, fmt: v => v.toFixed(0) + ' days',
+    win: true,
+    winText: 'Seven straight days of 100% clean power — the region\'s energy transition is complete. Real grids call this the endgame: firm renewables and storage made the fossil bridge obsolete.',
+  },
+  {
     id: 'storagePlay', where: plants('battery', 'solar'), title: '🔋 Store the sun', target: 80, reward: 25000,
     desc: 'Solar peaks at noon, demand peaks in the evening. Reach 80 MWh of battery capacity to shift the surplus (build batteries or research LFP).',
     value: () => G.batteryCapMWh, fmt: MWh,
@@ -105,9 +112,10 @@ export function checkQuests() {
       G.questsDone[q.id] = true;
       G.money += q.reward;
       const next = QUESTS.filter(x => x.req === q.id && isQuestActive(x));
+      // quests flagged `win` are milestone victories — celebrate accordingly
       emit('toast', {
-        title: `🎯 Objective complete: ${q.title}`,
-        text: `Reward: €${q.reward.toLocaleString()}.` +
+        title: q.win ? `🏆🎉 ${q.title} — YOU DID IT!` : `🎯 Objective complete: ${q.title}`,
+        text: (q.winText ? q.winText + ' ' : '') + `Reward: €${q.reward.toLocaleString()}.` +
           (next.length ? ` New objective: ${next.map(n => n.title).join(', ')}` : ''),
       });
       emit('questDone', q);
