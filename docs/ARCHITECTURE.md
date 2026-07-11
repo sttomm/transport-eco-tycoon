@@ -568,6 +568,57 @@ decommissioning gas before firm clean capacity exists now hurts (keeping the
 plant idle is the smart bridge), which mirrors reality's capacity-reserve
 debates.
 
+### 31. Graphics phase 3 — the approved Board 07 look (detailed assets + living landscape)
+**Decision:** rebuild every model at much higher detail and give the world a
+from-scratch nature pass, matching art-direction **Board 07** (approved July
+2026; see `docs/GRAPHICS-PHASE3-PLAN.md` and `docs/art-direction/`). Nine work
+packages, one commit each, all in `src/render/` + `assets/` + `tools/` except
+the single sim change in WP6:
+1. **Style guide + pilot building** (`tools/models/STYLE.md`, `plaster_low`
+   house) — the window-module / floor-height / cornice-plinth-parapet spec,
+   preserving the night-light UV atlas (glass parts keep their 8×8 atlas cell).
+2. **Full building set** — 3 styles × 3 tiers + 2 seeded variants each, with
+   balconies, rooftop AC/bulkheads and glass mullion grids.
+3. **Trees** — oaks (branch cylinders + two-green displaced lobes), layered
+   conifers, poplars, and a new birch species; one InstancedMesh per species.
+4. **Turbine + props** — three-blade rotor (outward-only blade geometry fixes
+   the 6-spoke bug), per-instance rotor phase, brighter street-lamp heads.
+5. **Ground shader** — `onBeforeCompile` chunks on the terrain material blend
+   grass patchwork / dirt / slope rock / waterline sand, keeping fog, shadows
+   and GTAO intact.
+6. **River (the only sim change)** — a seeded meander carves the heightfield
+   into a south-east lake, moving which tiles are water/grass (see save-version
+   note below).
+7. **Ground scatter** — seeded InstancedMesh grass tufts, wildflowers, bushes,
+   slope-biased boulders and shore reeds, excluding roads/pads/footprints.
+8. **Farmland patchwork** — fenced crop fields near farm industries; purely
+   visual worldgen decoration, no sim meaning.
+9. **Streets** — raised city curbs, dashed center lines on all roads, zebra
+   crosswalks at city intersections; asphalt everywhere (no gravel variant).
+**Save impact:** WP6 changes worldgen, so the save version bumped to **v5** and
+**pre-v5 saves are rejected** (clean break, not migrated) — a player delta
+replayed onto the moved terrain would silently mis-restore. Pinned in
+`test/save.test.js`; rationale under "Persistence" below and ADR 20's precedent.
+**Contracts preserved across every WP** (ADR 16/17): object/material names are
+load-time API (`<style>_<tier>`, `rotor`, `glow`, `bldg_window`), the night
+window atlas, `userData.rotor` spin, solar dark at night, bloom threshold ≈ 3.4
+capping every emissive, metalness ≤ 0.25 on paint, albedos darker than target
+(ACES bleaches mid-tones).
+**Calibration (WP10):** in-game aerial / landscape / street captures were
+compared side-by-side against the three Board 07 reference renders. The phase-1
+lighting/post rig (`scene.js` sun + exposure 1.05 + Sky/IBL, `postfx.js`
+GTAO/bloom/tilt-shift) already matched the approved look — sun direction and
+warmth, soft moderate shadows, muted natural greens, calm pale sky — so **no
+sun/exposure/saturation values were changed**. Exposure is a shared day/night
+knob; the readable-night floor (ADR 15, teaching mission) outranks a marginal
+daytime tweak. Night verified: lit windows, glowing lamp heads, solar dark,
+emissives held under the bloom cap. **~141 fps** orbiting the city center
+(timed `renderPostFX()` loop), comfortably over the ≥55 budget.
+**Why:** the box-and-flat-color world of phase 2 read as a prototype; the
+Board 07 detail pass makes it read as a finished modern city-builder while the
+sim and content layers stay untouched (all detail is assets + render + one
+worldgen change). ENERGY-MODEL.md is unaffected.
+
 ## Persistence
 
 `sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.
