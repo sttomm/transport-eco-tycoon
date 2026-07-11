@@ -80,6 +80,14 @@ This is also why **save/load is small**: `restore()` replays the player's
 builds through the normal `place()`/`buyVehicle()` calls, and the renderer
 rebuilds every mesh just by listening.
 
+Because saves only store player deltas replayed onto a freshly-generated world,
+**any worldgen change invalidates old saves** — a delta that landed on grass may
+now land on water (or vice versa), silently mis-restoring. So the save version
+gates on it: non-worldgen bumps migrate old saves with field defaults (v2→v3→v4),
+but a worldgen bump **rejects** them and starts fresh (v1→v2, and **v5** — the
+WP6 river/lake). `restore()` accepts `v === 5` only; the choice is pinned in
+`test/save.test.js`.
+
 ## Key decisions (ADR-style)
 
 ### 1. Browser + Three.js, no build step

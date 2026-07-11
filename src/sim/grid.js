@@ -27,15 +27,62 @@ export function isRoad(i, j) { const t = tile(i, j); return !!t && t.t === 'road
 // rail lives in a flag, not the tile type, so a road tile can also carry a level crossing
 export function isRail(i, j) { const t = tile(i, j); return !!t && !!t.rail; }
 
-function riverX(j) { return G.N * 0.7 + Math.sin(j * 0.075) * 7 + Math.sin(j * 0.021) * 5; }
+// ---------- river + lake (Board 07 look-dev port) ----------
+// A seeded meander enters from the north edge and empties into a lake in the
+// south-east, carved below the water plane (lookdev-blender.py: ~5.5-unit
+// half-width, 3.6 depth, smoothstep falloff). Kept in the eastern third so it
+// still separates the east mines from the west-bank steel works (the oreChain
+// bridge lesson) and leaves the south-west grass free for test fixtures.
+// Natural fbm ponds elsewhere (e.g. the pond north of Windburg the starter
+// hydro sits on) are untouched — this only carves DOWN near the spline/lake.
+const RIVER_HALF = 5.5;                 // tiles: half-width of the carved channel
+const RIVER_DEPTH = 3.6;                // world units below the water plane at the bed
+const LAKE = { i: 138, j: 22, r: 12 };  // basin the river flows into
+
+// Control polyline in tile space, north edge → lake. The meander is seeded off
+// the world seed on a SEPARATE rand stream (split-stream discipline): it must
+// not perturb the shared `rand` the cities/industries draw from, and it has to
+// produce identical points in the sim and the renderer (both call heightAt).
+const RIVER_PTS = (() => {
+  const rr = makeNoise(WORLD_SEED ^ 0x1f2e3d).rand;
+  const pts = [];
+  const jTop = G.N + 3, steps = 7;      // start just off the north edge
+  for (let k = 0; k <= steps; k++) {
+    const t = k / steps;
+    const j = jTop + (LAKE.j - jTop) * t;
+    const base = 132 + (LAKE.i - 132) * t;              // drift toward the lake mouth
+    const meander = Math.sin(t * Math.PI * 2.3) * 6 * (1 - t * 0.5);
+    pts.push([base + meander + (rr() - 0.5) * 5, j]);
+  }
+  pts.push([LAKE.i, LAKE.j]);
+  return pts;
+})();
+
+// distance from (i,j) to the river polyline (nearest point on any segment)
+function riverDist(i, j) {
+  let best = Infinity;
+  for (let k = 0; k < RIVER_PTS.length - 1; k++) {
+    const [ax, ay] = RIVER_PTS[k], [bx, by] = RIVER_PTS[k + 1];
+    const abx = bx - ax, aby = by - ay;
+    const t = Math.max(0, Math.min(1, ((i - ax) * abx + (j - ay) * aby) / (abx * abx + aby * aby)));
+    best = Math.min(best, Math.hypot(i - (ax + abx * t), j - (ay + aby * t)));
+  }
+  return best;
+}
+function smoothstep(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 
 export function heightAt(x, z) {
   const i = x / G.TILE + G.N / 2, j = z / G.TILE + G.N / 2;
   let h = fbm(i * 0.045, j * 0.045, 4) * 7 - 1.6;
-  // carve river
-  const d = Math.abs(i - riverX(j));
-  if (d < 2.2) h = Math.min(h, WATER_Y - 0.7);
-  else if (d < 5) h = Math.min(h, WATER_Y - 0.7 + (d - 2.2) * 0.9);
+  // carve the channel + lake: lerp the surface toward a deep bed so the
+  // centreline is always below water (a continuous, crossable waterway),
+  // easing back up to the natural terrain over the smoothstep falloff.
+  const bed = WATER_Y - RIVER_DEPTH;
+  const carve = Math.max(
+    smoothstep(RIVER_HALF, 0, riverDist(i, j)),
+    smoothstep(LAKE.r, LAKE.r * 0.35, Math.hypot(i - LAKE.i, j - LAKE.j)),
+  );
+  h += (Math.min(h, bed) - h) * carve;
   return h;
 }
 export function tileY(i, j) { const t = tile(i, j); return t ? t.h : 0; }

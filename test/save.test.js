@@ -7,7 +7,7 @@ import { G } from '../src/sim/state.js';
 import { place, tile, isRail } from '../src/sim/grid.js';
 import { createRoute, buyVehicle, addWagon, routeKind } from '../src/sim/transport.js';
 import { snapshot, restore } from '../src/sim/save.js';
-import { freshWorld, buildRoad, buildRail, findSpot } from './helpers.js';
+import { freshWorld, buildRoad, buildRail, findSpot, findWater } from './helpers.js';
 
 const J = 90;
 
@@ -127,7 +127,23 @@ test('restore rejects unknown versions', () => {
   assert.equal(restore({ v: 99 }), false);
 });
 
-test('v4 round-trips vehicle age and route auto-replace; v3 saves grandfather in fresh', () => {
+// PINNED v4-save policy (WP6): the river became a seeded meander into a lake,
+// so water/grass tiles MOVED. A v2–v4 save replays its deltas onto the fresh
+// world, and construction on a now-water tile would silently corrupt (roads
+// turn into bridges, plants/stations get dropped by canPlace). We chose the
+// safer, simpler break — REJECT every pre-v5 save and start fresh — matching
+// the v1→v2 worldgen-change rule. This test locks that in: if someone loosens
+// the version gate to "migrate" a worldgen bump, it fails here.
+test('pre-v5 saves are rejected (WP6 worldgen change — no silent mis-restore)', () => {
+  freshWorld();
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  assert.equal(snap.v, 5, 'new saves are v5');
+  for (const v of [2, 3, 4]) {
+    assert.equal(restore({ ...snap, v }), false, `v${v} save must be rejected, not migrated`);
+  }
+});
+
+test('v5 round-trips vehicle age, route auto-replace and the import/H₂ counters', () => {
   freshWorld();
   buildRoad(2, J, 20, J);
   const a = place('truckStop', 4, J - 1);
@@ -149,21 +165,9 @@ test('v4 round-trips vehicle age and route auto-replace; v3 saves grandfather in
   assert.equal(G.importCostToday, 570);
   assert.equal(G.h2SoldMWh, 220);
   assert.equal(G.h2SoldMWhToday, 14);
-
-  // a v3-era save has none of these fields → safe defaults, age 0
-  delete snap.routes[0].autoReplace;
-  delete snap.routes[0].vehicles[0].age;
-  delete snap.importMWhToday; delete snap.importCostToday;
-  delete snap.h2SoldMWh; delete snap.h2SoldMWhToday;
-  snap.v = 3;
-  freshWorld();
-  assert.equal(restore(snap), true);
-  assert.equal(G.routes[0].autoReplace, false);
-  assert.equal(G.routes[0].vehicles[0].ageDays, 0, 'pre-aging vehicles grandfather in fresh');
-  assert.equal(G.h2SoldMWh, 0);
 });
 
-test('v3 round-trips the energy-transition fields', () => {
+test('v5 round-trips the energy-transition fields', () => {
   freshWorld();
   G.carbonPrice = 54;
   G.co2EmittedTons = 87.5;
@@ -174,7 +178,7 @@ test('v3 round-trips the energy-transition fields', () => {
   G.reports = [{ day: 4, energyIncome: 1000 }];
 
   const snap = JSON.parse(JSON.stringify(snapshot()));
-  assert.equal(snap.v, 4);
+  assert.equal(snap.v, 5);
   assert.ok(!('forecast' in snap), 'forecast is derived — never saved, rebuilt by updateWeather after load');
 
   freshWorld();
@@ -189,19 +193,15 @@ test('v3 round-trips the energy-transition fields', () => {
   assert.deepEqual(G.reports, [{ day: 4, energyIncome: 1000 }]);
 });
 
-test('v2 saves (pre-gas) restore with energy-transition defaults', () => {
+test('a bridge over the river round-trips through v5 (water tiles restore)', () => {
   freshWorld();
-  const snap = JSON.parse(JSON.stringify(snapshot()));
-  snap.v = 2; // strip the arc fields like a real pre-arc save
-  delete snap.carbonPrice; delete snap.co2Emitted; delete snap.gasMWhToday;
-  delete snap.gasCostToday; delete snap.fossilFreeDays; delete snap.gasDecommissioned;
-  delete snap.reports; delete snap.weatherFront;
+  const [wi, wj] = findWater();          // a river/lake tile
+  place('road', wi, wj);                  // roads over water become bridges
+  assert.equal(tile(wi, wj).bridge, true, 'fixture is a bridge');
 
+  const snap = JSON.parse(JSON.stringify(snapshot()));
   freshWorld();
   assert.equal(restore(snap), true);
-  assert.equal(G.carbonPrice, 30);
-  assert.equal(G.co2EmittedTons, 0);
-  assert.equal(G.gasDecommissioned, false);
-  assert.equal(G.weatherFront, null);
-  assert.deepEqual(G.reports, []);
+  assert.equal(tile(wi, wj).t, 'road', 'bridge tile restored as road');
+  assert.equal(tile(wi, wj).bridge, true, 'bridge flag re-derived from the (unchanged) water tile');
 });

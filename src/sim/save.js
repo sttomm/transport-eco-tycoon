@@ -11,12 +11,18 @@ import { createRoute, buyVehicle, addWagon } from './transport.js';
 // v2: 192×192 world with 8 cities — v1 saves store tile coords of the old
 // 96×96 map and would silently mis-restore, so they are left under their old key.
 // v3: energy-transition arc (legacy gas, carbon price, weather fronts, daily
-// reports). Same world seed, so v2 saves still restore — they just load
-// without a gas plant (it is only placed for new games) and get the new
-// fields' defaults.
+// reports). Same world seed, so v2 saves still restored on the defaults.
 // v4: backlog round (interconnector/offtake counters, vehicle ageDays,
-// per-route autoReplace). v2/v3 saves still restore with the defaults —
-// existing vehicles are grandfathered in at age 0.
+// per-route autoReplace). v2/v3 still restored with the defaults.
+// v5: Board 07 worldgen (WP6) — the river became a seeded meander into a
+// south-east lake, so which tiles are water/grass MOVED. Saves store only
+// player deltas replayed through place()/canPlace() onto the fresh world, so a
+// v2–v4 replay would silently mis-restore: a road/rail once on grass may now
+// sit on water (turning into a bridge) and a plant/station on a now-water tile
+// is dropped by its canPlace guard. Rather than partially corrupt progress we
+// REJECT every pre-v5 save (the same clean-break rule v1→v2 used for its
+// worldgen change) and start fresh. Non-worldgen bumps could migrate; a
+// worldgen bump cannot. Pinned in test/save.test.js.
 const KEY = 'transport-eco-tycoon-save-v2';
 const storage = () => (typeof localStorage === 'undefined' ? null : localStorage);
 
@@ -33,7 +39,7 @@ export function clearSave() {
 export function snapshot() {
   const stIx = st => G.stations.indexOf(st);
   return {
-    v: 4,
+    v: 5,
     minutes: G.minutes, day: G.day, money: G.money, co2: G.co2SavedTons,
     loan: G.loan, contracts: G.contracts, // contracts hold only indices → plain JSON
     carbonPrice: G.carbonPrice, co2Emitted: G.co2EmittedTons,
@@ -76,7 +82,9 @@ export function snapshot() {
 
 // apply a snapshot onto a freshly generated world; returns true on success
 export function restore(d) {
-  if (!d || (d.v !== 2 && d.v !== 3 && d.v !== 4)) return false;
+  // v5 only: pre-v5 saves predate the WP6 river/lake worldgen and would
+  // mis-restore onto the new terrain (see the version note above).
+  if (!d || d.v !== 5) return false;
 
   G.minutes = d.minutes; G.day = d.day; G.money = d.money;
   G.co2SavedTons = d.co2 || 0;

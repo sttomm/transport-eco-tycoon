@@ -2,7 +2,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
-import { tile, canPlace, place, bulldoze, decommissionGas, isRail, isRoad, isUnlocked, unlockHint, lShapedPath, dragCost } from '../src/sim/grid.js';
+import { tile, canPlace, place, bulldoze, decommissionGas, isRail, isRoad, isUnlocked, unlockHint, lShapedPath, dragCost, WATER_Y } from '../src/sim/grid.js';
 import { BUILDINGS, CARBON, MARKET, UNLOCKS } from '../src/sim/data.js';
 import { freshWorld, findSpot, findGrass, findWater } from './helpers.js';
 
@@ -42,6 +42,47 @@ test('city neighbour graph: symmetric, connected, and sparse', () => {
     assert.ok(c.blockTiles.length > 10, `${c.name} has buildings`);
     assert.ok(c.pop >= 2200);
   }
+});
+
+test('river (WP6): seeded meander enters the north edge and empties into a SE lake', () => {
+  // water reaches the top (north) edge — the river mouth
+  const northWater = [];
+  for (let i = 0; i < G.N; i++) if (tile(i, G.N - 1).t === 'water') northWater.push(i);
+  assert.ok(northWater.length > 0, 'river touches the north edge');
+  assert.ok(northWater.every(i => i > G.N / 2), 'the mouth is in the eastern half');
+
+  // a lake basin exists in the south-east: a broad cluster of water tiles
+  let lake = 0;
+  for (let j = 12; j < 34; j++) for (let i = 128; i < 150; i++) if (tile(i, j).t === 'water') lake++;
+  assert.ok(lake > 60, `SE lake basin present (${lake} water tiles)`);
+
+  // the channel keeps the east mines and the west-bank steel apart (oreChain
+  // bridge lesson): the mine at i≈150 is east, the steel at i≈118 is west
+  const mineE = G.industries.find(d => d.type === 'mine' && d.i > 140);
+  const steelW = G.industries.find(d => d.type === 'steel' && d.i < 130);
+  assert.ok(mineE && steelW, 'east mine + west steel still generate');
+
+  // the SW fixture corner stays dry grass for the road/rail tests
+  assert.equal(tile(10, 90).t, 'grass', 'SW corner untouched by the river');
+});
+
+test('river (WP6): worldgen is deterministic — same seed → identical water', () => {
+  const a = G.tiles.map(t => t.t === 'water').join('');
+  freshWorld();
+  const b = G.tiles.map(t => t.t === 'water').join('');
+  assert.equal(a, b, 'two fresh worlds carve the exact same river/lake');
+});
+
+test('river (WP6): water is unbuildable for buildings; road/rail cross only as a bridge', () => {
+  const [wi, wj] = findWater();
+  // no building footprint may sit on water
+  assert.equal(canPlace('solar', wi, wj), false, 'solar rejected on water');
+  assert.equal(canPlace('hydro', wi, wj), false, 'even hydro cannot occupy the water itself');
+  // but a road/rail may cross — it becomes a raised bridge deck
+  assert.equal(canPlace('road', wi, wj), true);
+  place('road', wi, wj);
+  assert.equal(tile(wi, wj).bridge, true, 'road over water is a bridge');
+  assert.ok(tile(wi, wj).h > WATER_Y, 'bridge deck raised above the water plane');
 });
 
 test('roads: placeable on grass, not on occupied tiles; water becomes a bridge', () => {

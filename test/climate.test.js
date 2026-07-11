@@ -167,7 +167,7 @@ test('active heatwave, heat hours and a scheduled heatwave front survive save/lo
   G.heatHoursToday = 3.5;
   G.weatherFront = { type: 'heatwave', inHours: 11, durationH: 24 };
   const snap = JSON.parse(JSON.stringify(snapshot()));
-  assert.equal(snap.v, 4, 'current save version (v4 since the vehicle-aging round)');
+  assert.equal(snap.v, 5, 'current save version (v5 since the WP6 river worldgen)');
 
   freshWorld();
   assert.equal(restore(snap), true);

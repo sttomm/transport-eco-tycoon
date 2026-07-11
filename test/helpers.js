@@ -1,8 +1,9 @@
 // Shared test helpers. Every test starts from freshWorld(): a reset state
 // plus the procedurally generated world (fixed seed → deterministic layout:
-// 192×192 tiles, 8 cities — Solhaven at [46,62] first — river around i≈134,
-// 9 industries; the south-west around [2..21, 84..92] is empty grass for
-// synthetic road/rail fixtures).
+// 192×192 tiles, 8 cities — Solhaven at [46,62] first — a seeded river
+// meandering down the eastern third (~i≈132–140) from the north edge into a
+// south-east lake (~[138,22]), 9 industries; the south-west around
+// [2..21, 84..92] is empty grass for synthetic road/rail fixtures).
 import { G, resetState } from '../src/sim/state.js';
 import { initGrid, tile, canPlace, place } from '../src/sim/grid.js';
 
