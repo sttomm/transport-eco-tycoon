@@ -79,6 +79,11 @@ heatwave the active-event state is `G.heatwave` (hours remaining, like
 - Cities: `pop/1000 × 1.1 MW × daily curve` — double-peaked (Gaussian bumps at
   08:00 and 19:30, night valley ~0.62) — the classic load shape behind the
   "duck curve" when solar is netted off.
+- **Demand response** (research): the tech sets `mult.demandResponse = 0.25`,
+  which compresses the city curve 25% toward its 24 h mean (0.822) — peaks
+  shaved, valleys filled, total energy unchanged. Anchor: real DR programs
+  shift flexible loads (EV charging, heat pumps, cold storage) in time; they
+  don't reduce consumption. Pinned energy-neutral by `test/energy.test.js`.
 - Industry: mine 2.5 MW, food plant 4 MW, farm 0.4 MW, **green steel 13 MW**
   (the deliberate monster load). Real H₂-DRI + EAF steel ≈ 3.5 MWh/t.
   The steel works also consumes grid H₂ (0.8 MWh/h) for +50% output when

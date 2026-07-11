@@ -62,6 +62,7 @@ function initialState() {
     mult: {
       solar: 1, wind: 1, batteryCap: 1, elecEff: 0.68, fcEff: 0.58,
       cityDemand: 1, industryDemand: 1, vehicleUse: 1, vehicleSpeed: 1, chargeRate: 1,
+      demandResponse: 0, // 0..1: fraction of the city load curve shifted peak → valley
     },
     // history ring buffers for charts (sample every 15 game minutes, 48h window)
     history: [],

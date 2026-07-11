@@ -161,13 +161,18 @@ function capacity(type) {
 }
 
 // ---- demand ------------------------------------------------------------
-function cityDemandCurve() {
+// 24 h mean of the load curve below — the demand-response tech compresses
+// the curve toward this value (peaks shaved into the valleys, energy-neutral)
+const DEMAND_MEAN = 0.822;
+export function cityDemandCurve() {
   const h = hourOfDay();
   // morning & evening peaks, night valley — the classic load shape
   let f = 0.62;
   f += 0.5 * Math.exp(-((h - 8) ** 2) / 4.5);
   f += 0.75 * Math.exp(-((h - 19.5) ** 2) / 5);
-  return f;
+  // demand response (research): flexible loads move out of the peaks into
+  // the valleys — consumption shifts in time, it doesn't disappear
+  return f + (DEMAND_MEAN - f) * (G.mult.demandResponse || 0);
 }
 
 // ---- main grid tick ----------------------------------------------------

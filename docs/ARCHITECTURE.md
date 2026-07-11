@@ -439,7 +439,7 @@ a freshly generated world. Both are pure and covered by `test/save.test.js`.
 ## Known limitations / roadmap
 
 - Transmission constraints (ADR #5) deferred — the natural "lesson 4"
-- No ships; no demand-response tech (dynamic pricing itself: see ADR 22)
+- No ships
 - Road L-path drag can silently skip blocked tiles (preview shows red, but a
   gap check would be friendlier)
 - Vehicle path caching: A* runs per leg per vehicle; fine at current fleet

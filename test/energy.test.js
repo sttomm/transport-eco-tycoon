@@ -5,7 +5,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, resetState } from '../src/sim/state.js';
-import { solarFactor, windFactor, tickGrid, dailyUpkeep, rollFossilFreeDay, POWER_PRICE } from '../src/sim/energy.js';
+import { solarFactor, windFactor, tickGrid, dailyUpkeep, rollFossilFreeDay, cityDemandCurve, POWER_PRICE } from '../src/sim/energy.js';
 import { BUILDINGS, CARBON } from '../src/sim/data.js';
 
 // energy tests run on an empty world: no cities/industries unless we add them
@@ -92,6 +92,20 @@ test('vehicle charging is own consumption — never billed', () => {
   tickGrid(1);
   assert.ok(Math.abs(G.demand.charging - 0.8) < 1e-6);
   assert.ok(Math.abs(G.money - moneyBefore) < 1e-6);
+});
+
+test('demand response shaves peaks into valleys, 24h energy unchanged', () => {
+  const at = (h, dr) => { G.minutes = h * 60; G.mult.demandResponse = dr; return cityDemandCurve(); };
+  assert.ok(at(19.5, 0.25) < at(19.5, 0), 'evening peak shaved');
+  assert.ok(at(8, 0.25) < at(8, 0), 'morning peak shaved');
+  assert.ok(at(3, 0.25) > at(3, 0), 'night valley filled');
+  const integral = dr => {
+    let e = 0;
+    for (let h = 0; h < 24; h += 0.25) e += at(h, dr);
+    return e;
+  };
+  const shift = Math.abs(integral(0.25) - integral(0)) / integral(0);
+  assert.ok(shift < 0.005, `energy-neutral shift, drift ${(shift * 100).toFixed(2)}%`);
 });
 
 test('research multipliers scale generation', () => {

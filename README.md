@@ -112,7 +112,9 @@ encyclopedia.
 
 **Research** (🔬 tab) mirrors real learning curves: better solar cells
 (TOPCon, perovskite tandems), taller wind towers, LFP batteries, PEM stack
-efficiency, heat pumps, megawatt charging.
+efficiency, heat pumps, megawatt charging — and **demand response**, which
+shifts flexible city loads out of the peaks into the valleys (the energy
+moves in time, it doesn't disappear).
 
 **Insight** (📊 tab): 48-hour stacked generation chart vs. demand, storage
 levels, curtailment, renewable share, CO₂ avoided, finances.
@@ -162,5 +164,4 @@ For Claude Code users, three project skills live in `.claude/skills/`:
 ## Roadmap ideas
 
 - Transmission constraints (regional grids instead of one copper plate)
-- Demand response & dynamic electricity pricing
 - Ships & waterways
