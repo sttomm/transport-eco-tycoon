@@ -614,6 +614,16 @@ knob; the readable-night floor (ADR 15, teaching mission) outranks a marginal
 daytime tweak. Night verified: lit windows, glowing lamp heads, solar dark,
 emissives held under the bloom cap. **~141 fps** orbiting the city center
 (timed `renderPostFX()` loop), comfortably over the ≥55 budget.
+A final coordinator verification pass then re-tuned four world-layer values
+against the boards (all in `render/world.js`): the dirt mask now uses fbm
+noise like the look-dev's fractal TexNoise (single-octave noise at the same
+ramp covered ~⅓ of the map in bare patches), the shore-sand band was
+tightened (the game's unclamped lowlands turned every pond basin into a huge
+beach; look-dev clamps its land above the full-sand line), water became
+darker and calmer (weak rough clearcoat + fine ripple repeats — a strong
+coat with ~16 world-wide repeats mirrored the sky as giant white sheen
+blobs), and reed count rose 150 → 420 so river banks read as "reeded" from
+the reference altitude. ~212 fps after the pass.
 **Why:** the box-and-flat-color world of phase 2 read as a prototype; the
 Board 07 detail pass makes it read as a finished modern city-builder while the
 sim and content layers stay untouched (all detail is assets + render + one

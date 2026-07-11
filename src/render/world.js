@@ -176,9 +176,13 @@ function attachGroundShader(mat) {
                        smoothstep(0.40, 0.60, macro));
         col *= 0.92 + 0.16 * gFbm(wp * 0.35);       // within-patch mottle
 
-        // 2. dirt breaks
-        float dirt = gNoise(wp * 0.07 + 13.0);
-        col = mix(col, vec3(0.35, 0.25, 0.13), smoothstep(0.60, 0.70, dirt));
+        // 2. dirt breaks — look-dev drives this with fractal noise (TexNoise
+        // detail 4, ramp 0.565→0.645) whose values cluster near 0.5, so bare
+        // patches are occasional; a single-octave mask at the same ramp covers
+        // ~a third of the map and washes the whole world out. Use the fbm and
+        // a raised ramp so coverage matches the Board 07 boards.
+        float dirt = gFbm(wp * 0.07 + 13.0);
+        col = mix(col, vec3(0.35, 0.25, 0.13), smoothstep(0.60, 0.68, dirt));
 
         // 3. rock on steep slopes. Look-dev keyed normal.z 0.88 → 0.72, but this
         // world's heightfield is far gentler (min up-facing ~0.80 off-water), so
@@ -187,9 +191,12 @@ function attachGroundShader(mat) {
         col = mix(col, vec3(0.33, 0.32, 0.30), 1.0 - smoothstep(0.80, 0.92, upness));
 
         // 4. sand ringing the shoreline: a height band just above the water,
-        // with a noisy edge so the waterline isn't a clean contour
-        float above = (vGroundPos.y - uWaterY) + (gNoise(wp * 0.15 + 5.0) - 0.5) * 0.5;
-        col = mix(col, vec3(0.52, 0.44, 0.27), 1.0 - smoothstep(0.15, 0.95, above));
+        // with a noisy edge so the waterline isn't a clean contour. Keep the
+        // band tight: look-dev clamps its land well above the full-sand line,
+        // so open lowlands there only ever pick up a faint tint — a wide band
+        // here turns every pond basin into a huge pale beach.
+        float above = (vGroundPos.y - uWaterY) + (gNoise(wp * 0.15 + 5.0) - 0.5) * 0.35;
+        col = mix(col, vec3(0.52, 0.44, 0.27), 1.0 - smoothstep(0.10, 0.45, above));
 
         diffuseColor.rgb = col;
 
@@ -295,12 +302,16 @@ const WAVES = [
 function buildWater() {
   const S = G.N * G.TILE, SEG = 110;
   waterGeo = new THREE.PlaneGeometry(S, S, SEG, SEG).rotateX(-Math.PI / 2);
+  // Board 07 water is dark, calm blue-grey. A strong clearcoat with the ripple
+  // normals stretched over few repeats mirrors the bright sky as huge white
+  // sheen blobs — keep the coat weak/rough and the ripples fine so the sheen
+  // reads as sparkle on deep water instead.
   waterMat = new THREE.MeshPhysicalMaterial({
-    color: '#2e7aab', roughness: 0.14, metalness: 0, transparent: true, opacity: 0.84,
-    transmission: 0, clearcoat: 1, clearcoatRoughness: 0.08,
-    normalMap: makeWaterNormalTexture(), normalScale: new THREE.Vector2(0.5, 0.5),
+    color: '#154257', roughness: 0.4, metalness: 0, transparent: true, opacity: 0.95,
+    transmission: 0, clearcoat: 0.25, clearcoatRoughness: 0.35,
+    normalMap: makeWaterNormalTexture(), normalScale: new THREE.Vector2(0.22, 0.22),
   });
-  waterMat.normalMap.repeat.set(16, 16);
+  waterMat.normalMap.repeat.set(40, 40);
   const mesh = new THREE.Mesh(waterGeo, waterMat);
   mesh.position.y = WATER_Y;
   mesh.receiveShadow = true;
@@ -310,7 +321,7 @@ function buildWater() {
   // the horizon line (the Sky shader produces garbage values down there)
   const ocean = new THREE.Mesh(
     new THREE.CircleGeometry(3500, 48).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: '#255e88', roughness: 0.55 }), // matte-ish: glossy water mirrors the bright horizon into a white sheet
+    new THREE.MeshStandardMaterial({ color: '#1c4d6e', roughness: 0.55 }), // matte-ish: glossy water mirrors the bright horizon into a white sheet
   );
   ocean.position.y = WATER_Y - 0.06;
   scene.add(ocean);
@@ -846,7 +857,9 @@ function buildGroundScatter() {
     if (!clearAndDry(x, z, h)) return false;
     return slopeAt(x, z) > 0.30 || srand() < 0.12;
   }, { scaleMin: 0.6, scaleMax: 1.6 });
-  counts.reeds = scatterInstances('scatter_reeds', REED_GEO, 150, (x, z, h) => {
+  // dense enough that the river banks read as "reeded" from the reference
+  // aerial's altitude — 150 spread over every shoreline left the banks bare
+  counts.reeds = scatterInstances('scatter_reeds', REED_GEO, 420, (x, z, h) => {
     if (h < REED_LO || h > REED_HI) return false;
     const [i, j] = tileFromWorld(x, z);
     const t = tile(i, j);
