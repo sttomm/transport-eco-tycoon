@@ -16,10 +16,15 @@ src/main.js  composition root + frame loop. The only file that knows all layers.
 
 - Shared state is the single object `G` (`src/sim/state.js`); sim → view
   communication is the `emit`/`on` event bus in the same file.
+- `src/sim/tick.js#tickSim()` is the heartbeat: clock, pinned tick order, day
+  rollover. Extend the pipeline THERE (never in main.js) — tests and playtest
+  fast-forward drive the same function.
 - New game rules go in `src/sim/` — if a change there needs a DOM or THREE
   import, it's in the wrong layer. New visuals react to state/events.
-- Game content (buildings, vehicles, industries, techs, advisor tips) is
-  data in `src/sim/data.js`, not code.
+- Game content AND tuning knobs (buildings, vehicles, industries, techs,
+  tips, PAX/CITY/MARKET/… constant blocks) are data in `src/sim/data.js`,
+  not code.
+- Module map + all design decisions (ADRs 1–32): `docs/ARCHITECTURE.md`.
 
 ## Definition of done — every feature or fix
 
@@ -39,9 +44,11 @@ src/main.js  composition root + frame loop. The only file that knows all layers.
 - `playtest-game` — run/debug/verify in the browser; the DEBUG API and the
   module-cache force-reload trick.
 - `add-game-content` — checklists for new buildings, industries, vehicles,
-  techs, tips.
+  techs, tips — plus how to persist new fields and add bus events.
 - `tune-energy-model` — invariants of the grid simulation (merit order,
   units, efficiencies) and verification recipes.
+- `edit-graphics` — render-layer map, the glTF/Blender asset pipeline and its
+  name/material contracts, look verification.
 
 ## Traps that aren't obvious from the code
 
@@ -51,6 +58,13 @@ src/main.js  composition root + frame loop. The only file that knows all layers.
   deltas and replay them through `place()`/`buyVehicle()`. If you change
   worldgen, old saves silently mis-restore — bump the save version.
 - `G` is reset between tests with `resetState()`; register event listeners
-  after reset, not before.
+  after reset, not before. Test helpers: `freshWorld()`, `playDays()` (full
+  pipeline incl. rollovers), `scriptRandom()` — see `test/helpers.js`.
+- Units: grid power is **MW**, storage is **MWh** (convert via `gameHours`),
+  vehicle packs are **kWh** (×1000). Mixing them is a silent 60×/1000× bug.
+- Tests assert against `data.js` constants (`BUILDINGS.x.cost`,
+  `CITY.weights…`), not hard-coded literals — rebalances must not break
+  structure tests.
 - The teaching mission outranks balance: solar at night must be zero, storms
-  must cut out turbines, Dunkelflaute must defeat battery-only grids.
+  must cut out turbines, Dunkelflaute must defeat battery-only grids
+  (pinned every tick by `test/integration.test.js`).

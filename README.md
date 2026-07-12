@@ -199,11 +199,12 @@ New features extend the suite (see [CLAUDE.md](CLAUDE.md)).
 - [docs/ENERGY-MODEL.md](docs/ENERGY-MODEL.md) — every game number and its real-world anchor
 
 [CLAUDE.md](CLAUDE.md) holds the working rules (layering, definition of done).
-For Claude Code users, three project skills live in `.claude/skills/`:
+For Claude Code users, four project skills live in `.claude/skills/`:
 
 - **playtest-game** — run/debug the game, programmatic play-testing via the in-browser `DEBUG` API
-- **add-game-content** — checklists for new buildings, industries, vehicles, techs
+- **add-game-content** — checklists for new buildings, industries, vehicles, techs, saves & events
 - **tune-energy-model** — invariants & verification recipes for the grid simulation
+- **edit-graphics** — render-layer map and the glTF/Blender asset pipeline contracts
 
 ## Roadmap ideas
 

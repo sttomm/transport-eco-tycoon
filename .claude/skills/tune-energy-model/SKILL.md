@@ -51,10 +51,20 @@ change model and tests together, and `npm test` before any browser check.
   scheduled 10-14 h ahead on `G.weatherFront` (data.js FORECAST, ADR 23) and
   applied when the countdown ends; `G.forecast` is derived each tick. The
   forced paths `G.dunkelflaute = 40` / `G.heatwave = 20` still apply immediately.
-- Money: `(cityMW + indMW) × servedFraction × hours × G.price` (flat €85
-  until day 10, then Smart Market rules — ADR 22); fleet charging is
-  unbilled; CO₂ counter +0.4 t/MWh served (gas- and import-served MWh avoid
-  nothing; gas and imports book onto `G.co2EmittedTons` instead)
+- Money (ADR 22 + 30): billable = `(cityMW + indMW) × servedFraction`; price
+  is flat €85 until day 10, then Smart Market rules; revenue uses the
+  levy-netted price `min(P,100) + 0.2·max(0,P−100)` minus the €18/MWh grid
+  fee (data.js TARIFF), every unserved MWh costs €500 compensation (VOLL),
+  and industries pause while `G.price ≥ 150` (IND_CURTAIL hysteresis; the
+  flag is read by tickIndustries one tick later). Fleet charging is unbilled;
+  CO₂ counter +0.4 t/MWh served (gas- and import-served MWh avoid nothing;
+  gas and imports book onto `G.co2EmittedTons` instead)
+- Dispatch-economics selectors in energy.js (`gasMarginalCost`,
+  `importCapNow`/`importPriceNow`, `h2Reserve`/`h2Sellable`) are the single
+  source of truth — tickGrid AND the HUD infobox read them; change the
+  selector, never re-derive the math elsewhere
+- `DEMAND_MEAN` (energy.js) is the HAND-COMPUTED 24h mean of the load curve;
+  edit the curve → recompute it, or the energy-neutrality test fails
 
 ## Verification recipe
 
@@ -74,15 +84,21 @@ const h = G.history;
 G.dunkelflaute = 40   // then verify H2 drains before blackouts begin
 ```
 
-Sanity targets for the starter grid (1 hydro, 2 wind, 1 solar, 1 battery):
-near-zero unserved on normal days, battery cycling daily between roughly
-15-100%, some curtailment on sunny+windy days. If a change makes the starter
-grid blackout nightly or never stresses storage at all, rebalance.
+Sanity targets for the starter grid (1 hydro, 4 wind, 3 solar, 1 battery +
+the 30 MW legacy gas bridge — `sim/newGame.js`, deliberately undersized per
+ADR 21/30): gas runs every evening from day 1, near-zero unserved while the
+bridge stands, battery cycling daily. If a change makes the starter grid
+blackout nightly WITH gas available, or never runs gas at all, rebalance.
+The cheap way to check: `test/integration.test.js` plays 12 passive days
+headless — extend it rather than hand-running playthroughs.
 
 ## Common pitfalls
 
 - Dividing by `gameHours` when it can be ~0 on a paused/first frame — guard rates.
 - Forgetting `G.batteryMWh`/`G.h2MWh` clamps after a new flow.
 - New supply/demand component not added to `sampleHistory` → invisible in the
-  dashboard chart (`src/ui/hud.js#SERIES` for colors/legend) — the "insights"
-  requirement says every flow must be visible.
+  dashboard chart (`src/ui/hud/dashboard.js#SERIES` for colors/legend) — the
+  "insights" requirement says every flow must be visible.
+- New per-day money counter not reset in `rollFossilFreeDay`/`rollOverDay`
+  (`sim/energy.js` / `sim/tick.js`) and not captured in `reports.js#closeDay`
+  → yesterday's report lies.

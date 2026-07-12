@@ -6,41 +6,39 @@ description: Run, debug and programmatically play-test Transport Eco Tycoon in t
 # Play-testing Transport Eco Tycoon
 
 Run `npm test` before any browser session — it catches sim regressions in
-~100 ms. The browser pass is for rendering, UI and integration.
+~100 ms (including multi-day integration runs). The browser pass is for
+rendering, UI and pointer input.
 
 ## Start the game
 
-Use the preview server (config name `game` in `.claude/launch.json`, port 8741):
+Start the dev server with your session's preview/browser tools using the
+launch.json config name `game` (port 8741), e.g. `preview_start {name: "game"}`.
+Then use the browser tools: screenshot for visuals, console messages
+(errors only) for regressions, and the JavaScript-eval tool for everything below.
 
-```
-mcp__Claude_Preview__preview_start name=game
-```
-
-Then `preview_screenshot` for visuals and `preview_console_logs level=error` for errors.
 The welcome screen pauses the game — dismiss it first:
-`document.getElementById('w-start')?.click()` (or `w-continue`; a NEW game
-also offers `w-tutorial`, which starts the guided tutorial — `w-start` is
-free play and marks the tutorial done).
+`document.getElementById('w-continue')?.click()` to keep the existing save, or
+`w-start` for free play on a new game (`w-tutorial` starts the guided tutorial).
+
+**The preview tab may hold the user's real progress.** Prefer `w-continue`,
+never `clearSave()` over a save you didn't create, and restore `G.speed` to
+what you found when you're done. If you must experiment destructively, rescue
+first: `const bak = (await import('/src/sim/save.js')).snapshot()` and restore
+it afterwards.
 
 ## CRITICAL: module cache
 
 Browsers cache ES modules. **After editing any `src/**/*.js`, a plain reload
-can serve a stale old/new mix.** Always force-refresh first:
+can serve a stale old/new mix.** Force-refresh everything the page has loaded
+(self-maintaining — no file list to keep in sync; newly created files were
+never cached and load fresh anyway):
 
 ```js
 (async () => {
-  const files = ['index.html','styles.css','src/main.js',
-    'src/sim/state.js','src/sim/data.js','src/sim/noise.js','src/sim/grid.js',
-    'src/sim/energy.js','src/sim/transport.js','src/sim/quests.js','src/sim/tutorial.js','src/sim/save.js',
-    'src/sim/reports.js','src/sim/contracts.js','src/sim/loans.js',
-    'src/render/meshes.js','src/render/world.js','src/render/rng.js','src/render/terrain.js',
-    'src/render/buildings.js','src/render/scatter.js','src/render/infrastructure.js','src/render/ambient.js',
-    'src/render/vehicles.js','src/render/scene.js','src/render/postfx.js',
-    'src/render/assets.js','src/render/textures.js','assets/models/wind_turbine.glb','assets/models/buildings.glb',
-    'assets/models/vehicles.glb','assets/models/plants.glb','assets/models/industries.glb',
-    'assets/models/trees.glb','assets/models/stations.glb',
-    'src/ui/hud.js','src/ui/quests.js','src/ui/tutorial.js','src/ui/input.js'];
-  for (const f of files) await fetch('/' + f, { cache: 'reload' });
+  const files = [...new Set(performance.getEntriesByType('resource')
+    .map(e => new URL(e.name).pathname)
+    .filter(p => p.startsWith('/src/') || p.startsWith('/assets/')))];
+  for (const f of ['/index.html', '/styles.css', ...files]) await fetch(f, { cache: 'reload' });
   location.reload();
 })()
 ```
@@ -48,33 +46,43 @@ can serve a stale old/new mix.** Always force-refresh first:
 Verify the fix landed by checking the function source, e.g.
 `window.DEBUG.canPlace.toString().includes('<new code>')`.
 
-## In-game debug API (via preview_eval)
+## In-game debug API (via JS eval)
 
 - `window.G` — the whole game state (see `src/sim/state.js`): `G.money`,
   `G.supply`, `G.demand`, `G.batteryMWh`, `G.h2MWh`, `G.history` (48h of
-  15-min samples), `G.cities`, `G.industries`, `G.vehicles`, `G.firedTips`.
-- `window.DEBUG` — `{ place, canPlace, tile, bulldoze, createRoute, buyVehicle,
-  addWagon, findPath, nameStation, saveGame, scene, camera, ... }`.
-- `G.speed = 10` to fast-forward (1 game day ≈ 18 real seconds at 10×).
+  15-min samples), `G.cities`, `G.industries`, `G.vehicles`, `G.reports`,
+  `G.price`, `G.firedTips`.
+- `window.DEBUG` — `{ tickSim, place, canPlace, tile, bulldoze, decommissionGas,
+  createRoute, buyVehicle, addWagon, findPath, nameStation, replaceVehicle,
+  autoReplaceFleet, saveGame, signContract, tickContracts, takeLoan, repayLoan,
+  startResearch, startTutorial, skipTutorial, scene, camera, controls,
+  renderer, setPostFX, PFX }`. `place`/`buyVehicle` are money-free primitives;
+  the paid player paths are `purchaseBuilding`/`purchaseVehicle` (import from
+  `/src/sim/grid.js` / `/src/sim/transport.js` if you need them).
+- `G.speed = 10` to fast-forward live (1 game day ≈ 18 real seconds at 10×).
 
-## Fast-forwarding without waiting (hidden tabs / determinism)
+## Fast-forwarding without waiting (hidden tabs)
 
-`requestAnimationFrame` is throttled in hidden tabs, so wall-clock waiting is
-unreliable. Drive the sim directly — the modules are shared with the running
-game, so the world updates and the renderer catches up next frame:
+`requestAnimationFrame` is suspended in hidden tabs — the frame loop (and all
+UI updates) freeze while the preview tab is not visible. Symptoms: game clock
+stuck, topbar stale, infobox never renders. Drive the sim (and, if needed, the
+UI) directly — modules are shared with the running game:
 
 ```js
 (async () => {
-  const { tickGrid, updateWeather, sampleHistory } = await import('/src/sim/energy.js');
-  const { tickIndustries, tickVehicles, tickCities } = await import('/src/sim/transport.js');
-  const dt = 0.1, gh = dt * 8 * 10 / 60;         // one 10×-speed frame
-  for (let k = 0; k < 450; k++) {                 // ≈ 6 game hours
-    G.minutes += gh * 60;
-    updateWeather(gh); tickGrid(gh); tickIndustries(gh);
-    tickVehicles(dt, gh); tickCities(gh); sampleHistory(gh * 60);
-  }
+  const D = window.DEBUG;
+  const prev = G.speed;
+  G.speed = 10;
+  for (let k = 0; k < 1350; k++) D.tickSim(0.1); // 1350 ≈ 1 game day incl. rollover
+  G.speed = prev;
+  (await import('/src/ui/hud.js')).updateUI(0.7); // repaint HUD while hidden
 })()
 ```
+
+`tickSim` is the real pipeline (weather → grid → industries → vehicles →
+cities → contracts → research + the midnight rollover) — identical to what
+`test/integration.test.js` runs headless in Node. If your check doesn't need
+the renderer, prefer writing it as an integration test instead.
 
 ## Recipe: build a working freight line programmatically
 
@@ -105,12 +113,14 @@ const h = G.history;
    unserved:      h.filter(s=>s.unserved>0.1).length })
 ```
 
-A healthy default grid: battery cycles daily, electrolyzer runs midday,
-occasional curtailment, near-zero unserved. To force a stress test:
-`G.dunkelflaute = 40` (40 h dark calm) and watch H₂ drain.
+A healthy starter grid: battery cycles daily, gas runs in the evenings (that's
+the ADR 21 design), near-zero unserved. To force a stress test:
+`G.dunkelflaute = 40` (40 h dark calm) and watch storage drain.
 
 ## Save hygiene
 
-Autosave writes to localStorage every 10 s and on pagehide. To leave a clean
-state after a playtest: `(await import('/src/sim/save.js')).clearSave()` then
-reload (clearSave also disables the pagehide autosave for this page).
+Autosave writes to localStorage every 10 s and on pagehide (`main.js`). To
+leave a clean state after a playtest of a NEW game you created:
+`(await import('/src/sim/save.js')).clearSave()` then reload (clearSave also
+disables the pagehide autosave for this page). Never do this over the user's
+real progress — see the warning at the top.
