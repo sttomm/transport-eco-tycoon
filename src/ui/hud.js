@@ -4,7 +4,8 @@
 import { G, on, emit, fmtMoney, fmtTime, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
 import { AGING, BUILDINGS, CARBON, CLIMATE, H2OFFTAKE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas, isUnlocked, unlockHint } from '../sim/grid.js';
-import { createRoute, purchaseVehicle, purchaseWagon, sellVehicle, happinessFactors, routeColor, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle } from '../sim/transport.js';
+import { createRoute, purchaseVehicle, purchaseWagon, sellVehicle, routeColor, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle } from '../sim/transport.js';
+import { happinessFactors } from '../sim/cities.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
 import {

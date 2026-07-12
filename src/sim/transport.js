@@ -1,15 +1,16 @@
-// Transport & economy simulation: A* pathfinding, stations, routes, vehicles,
-// industry production, passenger demand pools, city happiness & growth.
+// Routes & vehicles: route editing, vehicle purchase/aging/replacement, and
+// tickVehicles — movement, charging, loading and delivery pay.
+// Siblings: pathfinding.js (A*/poses), stations.js (catchment/naming),
+// industries.js (production & station loading), cities.js (demand/happiness).
 // Pure logic — vehicle/wagon meshes and overlays live in src/render/, driven
 // by the events emitted here ('vehicleBought', 'wagonAdded', 'vehicleSold',
-// 'moneyFx').
-import { G, emit, hourOfDay, spend, fmtMoney } from './state.js';
-import { AGING, VEHICLES, WAGONS, CARGO, PAX, FREIGHT, CITY, ROUTE_COLORS, STATION_SUFFIX } from './data.js';
-import { tile, isRoad, isRail, worldXZ } from './grid.js';
+// 'vehicleReplaced', 'moneyFx').
+import { G, emit, spend, fmtMoney } from './state.js';
+import { AGING, VEHICLES, WAGONS, CARGO, ROUTE_COLORS } from './data.js';
+import { isRoad, isRail } from './grid.js';
 import { contractDelivery } from './contracts.js';
-
-export const STATION_RADIUS = 7;
-export const LOCAL_MIN_DIST = 5; // min tiles between stops for a "local" trip
+import { findPath, stationRoadTile, passableFor } from './pathfinding.js';
+import { stationCatchment, stationAccepts, LOCAL_MIN_DIST } from './stations.js';
 
 // money earned by a vehicle → today's totals, per-kind and per-route breakdown
 function credit(v, pay) {
@@ -20,52 +21,7 @@ function credit(v, pay) {
   f.routes[v.route.id] = (f.routes[v.route.id] || 0) + pay;
 }
 
-// ---------- pathfinding (A* over road or rail tiles) ----------
-export function findPath(si, sj, ti, tj, passable = isRoad) {
-  if (!passable(si, sj) || !passable(ti, tj)) return null;
-  const key = (i, j) => j * G.N + i;
-  const open = new Map(), came = new Map(), gScore = new Map();
-  const h = (i, j) => Math.abs(i - ti) + Math.abs(j - tj);
-  open.set(key(si, sj), h(si, sj));
-  gScore.set(key(si, sj), 0);
-  let guard = 20000;
-  while (open.size && guard-- > 0) {
-    let bestK = null, bestF = Infinity;
-    for (const [k, f] of open) if (f < bestF) { bestF = f; bestK = k; }
-    open.delete(bestK);
-    const ci = bestK % G.N, cj = Math.floor(bestK / G.N);
-    if (ci === ti && cj === tj) {
-      const path = [[ci, cj]];
-      let k = bestK;
-      while (came.has(k)) { k = came.get(k); path.push([k % G.N, Math.floor(k / G.N)]); }
-      return path.reverse();
-    }
-    const g = gScore.get(bestK);
-    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const ni = ci + di, nj = cj + dj;
-      if (!passable(ni, nj)) continue;
-      const nk = key(ni, nj);
-      const ng = g + 1;
-      if (ng < (gScore.get(nk) ?? Infinity)) {
-        gScore.set(nk, ng); came.set(nk, bestK);
-        open.set(nk, ng + h(ni, nj));
-      }
-    }
-  }
-  return null;
-}
-
-// nearest road / rail tile adjacent to a station
-export function stationRoadTile(st, passable = isRoad) {
-  for (let d = -1; d <= st.fp; d++) {
-    for (const [i, j] of [[st.i + d, st.j - 1], [st.i + d, st.j + st.fp], [st.i - 1, st.j + d], [st.i + st.fp, st.j + d]]) {
-      if (passable(i, j)) return [i, j];
-    }
-  }
-  return null;
-}
-// the network a vehicle drives on, and the stop tile on that network
-export const passableFor = v => v.kind === 'train' ? isRail : isRoad;
+// the stop tile on the network a vehicle drives on
 const stopTileFor = (v, st) => stationRoadTile(st, passableFor(v));
 
 // how many passengers / cargo units a vehicle can hold (trains: from wagons)
@@ -78,110 +34,6 @@ export function freightCapacity(v) {
   if (v.kind === 'truck') return v.def.capacity;
   if (v.kind === 'train') return v.wagons.filter(w => w.type === 'freight').length * WAGONS.freight.capacity;
   return 0;
-}
-
-// which cargo types can be delivered (sold) at this station?
-export function stationAccepts(st) {
-  const { acceptors, cities } = stationCatchment(st);
-  const set = new Set();
-  for (const a of acceptors) set.add(a.def.accepts);
-  if (cities.length) { set.add('food'); set.add('steel'); set.add('pax'); }
-  return set;
-}
-
-// what does a station serve? (industries / cities in radius)
-export function stationCatchment(st) {
-  const producers = [], acceptors = [], cities = [];
-  for (const ind of G.industries) {
-    const d = Math.hypot(ind.i - st.i, ind.j - st.j);
-    if (d <= STATION_RADIUS) {
-      producers.push(ind);
-      if (ind.def.accepts) acceptors.push(ind);
-    }
-  }
-  for (const c of G.cities) {
-    if (Math.hypot(c.ci - st.i, c.cj - st.j) <= STATION_RADIUS + 4) cities.push(c);
-  }
-  return { producers, acceptors, cities };
-}
-
-// ---------- industry production ----------
-export function tickIndustries(gameHours) {
-  for (const ind of G.industries) {
-    const def = ind.def;
-    let can = true;
-    if (def.accepts && ind.inStock < 0.5) can = false;
-    if (G.indCurtailed) can = false; // demand response: paused while prices are at crisis levels
-    ind.wantsPower = can;
-    ind.running = can && G.servedFraction > 0.5;
-    if (!ind.running) continue;
-    let rate = def.rate * G.servedFraction;
-    // green steel: sips grid hydrogen for a +50% H2-DRI boost
-    if (ind.type === 'steel' && G.h2MWh > 1) {
-      const h2Use = 0.8 * gameHours;
-      if (G.h2MWh > h2Use) { G.h2MWh -= h2Use; rate *= 1.5; }
-      emit('tip', 'steelHungry');
-    }
-    const out = rate * gameHours;
-    if (def.accepts) {
-      const need = out * (def.perOutput || 1);
-      const used = Math.min(need, ind.inStock);
-      ind.inStock -= used;
-      ind.stock += used / (def.perOutput || 1);
-    } else {
-      ind.stock += out;
-    }
-    ind.stock = Math.min(ind.stock, FREIGHT.industryStockCap);
-  }
-  // bus stops & rail stations collect waiting travellers from their home city's demand pool
-  for (const st of G.stations) {
-    if (st.stype !== 'bus' && st.stype !== 'train') continue;
-    const { cities } = stationCatchment(st);
-    if (!cities.length) continue;
-    let home = cities[0], bd = Infinity;
-    for (const c of cities) {
-      const d = Math.hypot(c.ci - st.i, c.cj - st.j);
-      if (d < bd) { bd = d; home = c; }
-    }
-    st.paxHome = home;
-    st.pax = st.pax || { local: 0, inter: {} };
-    // people only walk to a stop if a route with a passenger vehicle can take them where they want to go
-    const served = { local: false, inter: new Set() };
-    for (const r of G.routes) {
-      if (!r.stops.includes(st) || !r.vehicles.some(v => paxCapacity(v) > 0)) continue;
-      const s = routeServes(r, st);
-      if (s.local) served.local = true;
-      for (const c of s.inter) served.inter.add(c);
-    }
-    const stopsOfCity = G.stations.filter(s => (s.stype === 'bus' || s.stype === 'train') && s.paxHome === home).length || 1;
-    const flow = PAX.stopFlowPerHour * gameHours / stopsOfCity; // travellers walking to each stop per hour
-    const waiting = () => st.pax.local + Object.values(st.pax.inter).reduce((a, b) => a + b, 0);
-    if (served.local) {
-      const take = Math.min(home.paxLocal, flow, Math.max(0, PAX.stopWaitingCap - waiting()));
-      home.paxLocal -= take; st.pax.local += take;
-    }
-    G.cities.forEach((dest, di) => {
-      if (dest === home || !served.inter.has(dest)) return;
-      const t2 = Math.min(home.paxTo[di], flow * PAX.interFlowFrac, Math.max(0, PAX.stopWaitingCap - waiting()));
-      home.paxTo[di] -= t2;
-      st.pax.inter[dest.name] = (st.pax.inter[dest.name] || 0) + t2;
-    });
-    st.cargo.pax = waiting(); // mirror for UI / infobox
-  }
-  // freight stations & rail stations pull from producers in range
-  for (const st of G.stations) {
-    if (st.stype !== 'truck' && st.stype !== 'train') continue;
-    const { producers } = stationCatchment(st);
-    for (const ind of producers) {
-      if (ind.stock > 1) {
-        const take = Math.min(ind.stock, FREIGHT.stationCap - (st.cargo[ind.def.produces] || 0));
-        if (take > 0) {
-          st.cargo[ind.def.produces] = (st.cargo[ind.def.produces] || 0) + take;
-          ind.stock -= take;
-        }
-      }
-    }
-  }
 }
 
 // ---------- routes & vehicles ----------
@@ -331,27 +183,6 @@ function payDelivery(v, cargoId, amount, dist) {
   const pay = CARGO[cargoId].pay * amount * (1 + dist / 45);
   credit(v, pay);
   return pay;
-}
-
-// pose at distance d (in tiles) along a path; d < 0 extrapolates behind the
-// start. Returns [x, z, yaw|null, tile] — used by the sim for arrival checks
-// and by the renderer for vehicle & wagon placement.
-export function pathPose(path, d) {
-  const n = path.length;
-  if (n < 2) {
-    const [x, z] = worldXZ(path[0][0], path[0][1]);
-    return [x, z, null, path[0]];
-  }
-  let idx = Math.floor(d), f = d - idx;
-  if (idx < 0) { idx = 0; f = d; }
-  else if (idx >= n - 1) { idx = n - 2; f = 1 + (d - (n - 1)); }
-  const [i0, j0] = path[idx], [i1, j1] = path[idx + 1];
-  const [x0, z0] = worldXZ(i0, j0), [x1, z1] = worldXZ(i1, j1);
-  // meshes are authored nose (+X, headlights) forward; -π/2 points that nose
-  // along the direction of travel (see tools/models/vehicles.py conventions).
-  const yaw = (x1 !== x0 || z1 !== z0) ? Math.atan2(x1 - x0, z1 - z0) - Math.PI / 2 : null;
-  const onTile = f < 0.5 ? path[Math.max(0, Math.min(idx, n - 1))] : path[Math.max(0, Math.min(idx + 1, n - 1))];
-  return [x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, yaw, onTile];
 }
 
 export function tickVehicles(dt, gameHours) {
@@ -530,101 +361,5 @@ function arriveAtStation(v) {
   v.lastStop = st;
 }
 
-// ---------- happiness ----------
-// Happiness is a sum of explicit factors so the player can see what a city
-// needs. Base 35% + each factor's contribution; happiness drifts toward that.
-
-// structural check: which passenger services does this city actually have?
-export function transitServices(c) {
-  const res = { local: false, inter: new Set() };
-  for (const r of G.routes) {
-    if (!r.vehicles.some(v => paxCapacity(v) > 0)) continue;
-    const mine = [], others = new Set();
-    for (const s of r.stops) {
-      if (s.stype !== 'bus' && s.stype !== 'train') continue;
-      const { cities } = stationCatchment(s);
-      if (cities.includes(c)) mine.push(s);
-      for (const o of cities) if (o !== c) others.add(o);
-    }
-    if (mine.length) for (const o of others) res.inter.add(o);
-    for (let a = 0; a < mine.length; a++) for (let b = a + 1; b < mine.length; b++)
-      if (Math.hypot(mine[a].i - mine[b].i, mine[a].j - mine[b].j) >= LOCAL_MIN_DIST) res.local = true;
-  }
-  return res;
-}
-
-// factor list for one city — used by the simulation AND the city infobox
-export function happinessFactors(c) {
-  const W = CITY.weights;
-  const f = [];
-  const power = Math.max(0, (G.servedFraction - 0.5) / 0.5);
-  f.push({ label: 'Reliable power', max: W.power, got: Math.round(W.power * power), hint: 'keep the grid stable, avoid blackouts' });
-  f.push({ label: 'Food supply', max: W.food, got: Math.round(W.food * Math.min(1, c.foodLevel || 0)), hint: 'deliver Food from the Food Plant to this city (truck or train)' });
-  f.push({ label: 'Goods (steel)', max: W.goods, got: Math.round(W.goods * Math.min(1, c.goodsLevel || 0)), hint: 'deliver Green Steel to this city' });
-  const svc = transitServices(c);
-  f.push({ label: 'Local transit', max: W.localTransit, got: svc.local ? W.localTransit : 0, hint: 'route with 2 stops in this city ≥5 tiles apart + a bus/train' });
-  for (const oi of c.neighbors) {
-    const o = G.cities[oi];
-    f.push({ label: 'Link to ' + o.name, max: W.neighborLink, got: svc.inter.has(o) ? W.neighborLink : 0, hint: 'passenger route connecting this city with ' + o.name });
-  }
-  const stuck = c.paxLocal + c.paxTo.reduce((a, b) => a + b, 0);
-  if (stuck > CITY.overcrowdAt) f.push({ label: 'Overcrowded stops', max: 0, got: CITY.overcrowdPenalty, hint: 'too many people stranded — add buses or stops' });
-  return f;
-}
-export const happinessTarget = c =>
-  Math.max(0.05, Math.min(1, CITY.baseHappiness + happinessFactors(c).reduce((a, x) => a + x.got, 0) / 100));
-
 // route display color (shared by routes panel, finance rows and map highlight)
 export const routeColor = r => ROUTE_COLORS[r.id % ROUTE_COLORS.length];
-
-// city food/happiness/growth, once per game-hour
-export function tickCities(gameHours) {
-  // people travel mostly by day; a trickle at night
-  const hod = hourOfDay();
-  const tod = hod > 6.5 && hod < 22 ? PAX.dayFactor : PAX.nightFactor;
-  for (const c of G.cities) {
-    // travel demand: a small share of the population per (daytime) hour wants to go somewhere
-    const want = c.pop * PAX.wantFrac * tod * gameHours;
-    c.paxLocal = Math.min(c.paxLocal + want * PAX.localShare, Math.min(90, 25 + c.pop * 0.02));
-    // intercity demand: people only travel to NEIGHBOURING cities (see
-    // buildCityNeighbors in grid.js) — remote trips happen via the towns in
-    // between. Within the neighbourhood a gravity model applies: bigger and
-    // closer cities attract more travellers, each pair with its own cap.
-    // non-neighbour pools stay empty — also drains pools restored from saves
-    // made when the pair was (or graph rules were) different
-    c.paxTo.forEach((n, oi) => { if (n && !c.neighbors.includes(oi)) c.paxTo[oi] = 0; });
-    const totalPop = c.neighbors.reduce((a, oi) => a + G.cities[oi].pop, 0) || 1;
-    for (const oi of c.neighbors) {
-      const o = G.cities[oi];
-      const dist = Math.hypot(o.ci - c.ci, o.cj - c.cj);
-      const attract = (o.pop / totalPop) * (1.4 - Math.min(0.8, dist / 110));
-      const cap = 12 + o.pop * 0.012;
-      c.paxTo[oi] = Math.min(c.paxTo[oi] + want * PAX.interShare * attract, cap);
-    }
-    // supply levels decay — cities need a steady stream, not one delivery
-    c.foodLevel = Math.max(0, (c.foodLevel || 0) - CITY.foodDecay * gameHours);
-    c.goodsLevel = Math.max(0, (c.goodsLevel || 0) - CITY.goodsDecay * gameHours);
-    c.happiness += (happinessTarget(c) - c.happiness) * CITY.happinessRate * gameHours;
-    if (G.blackout) c.happiness = Math.max(0.05, c.happiness - CITY.blackoutHit * gameHours);
-    const growth = (c.happiness - CITY.growthPivot) * CITY.growthRate * gameHours;
-    c.pop = Math.max(CITY.minPop, c.pop + growth); // keep fractional — flooring here froze growth & nuked declines
-  }
-}
-
-// ---------- station naming (nearest industry, else nearest city) ----------
-const stationSeq = {};
-export function nameStation(st) {
-  let best = null, bestD = 1e9;
-  for (const ind of G.industries) {
-    const d = Math.hypot(ind.i - st.i, ind.j - st.j);
-    if (d < bestD && d < 8) { bestD = d; best = ind.def.name; }
-  }
-  if (!best) {
-    for (const c of G.cities) {
-      const d = Math.hypot(c.ci - st.i, c.cj - st.j);
-      if (d < bestD) { bestD = d; best = c.name; }
-    }
-  }
-  stationSeq[best] = (stationSeq[best] || 0) + 1;
-  st.name = `${best} ${STATION_SUFFIX[st.stype]} ${stationSeq[best] > 1 ? stationSeq[best] : ''}`.trim();
-}

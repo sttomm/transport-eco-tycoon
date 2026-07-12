@@ -5,10 +5,10 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G } from '../src/sim/state.js';
 import { place } from '../src/sim/grid.js';
-import {
-  tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle,
-  routeServes, transitServices, happinessFactors, stationRoadTile, findPath,
-} from '../src/sim/transport.js';
+import { tickVehicles, createRoute, buyVehicle, routeServes } from '../src/sim/transport.js';
+import { tickIndustries } from '../src/sim/industries.js';
+import { tickCities, transitServices, happinessFactors } from '../src/sim/cities.js';
+import { stationRoadTile, findPath } from '../src/sim/pathfinding.js';
 import { CITY } from '../src/sim/data.js';
 import { freshWorld, stationSpotNearCity } from './helpers.js';
 

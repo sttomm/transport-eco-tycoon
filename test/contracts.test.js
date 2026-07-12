@@ -10,7 +10,8 @@ import {
   tickContracts, signContract, contractDelivery, contractLabel, contractDest,
   MAX_OFFERS, MAX_ACTIVE, PREMIUM,
 } from '../src/sim/contracts.js';
-import { tickIndustries, tickVehicles, createRoute, buyVehicle } from '../src/sim/transport.js';
+import { tickVehicles, createRoute, buyVehicle } from '../src/sim/transport.js';
+import { tickIndustries } from '../src/sim/industries.js';
 import { freshWorld, buildRoad, fakeIndustry } from './helpers.js';
 
 beforeEach(() => freshWorld());

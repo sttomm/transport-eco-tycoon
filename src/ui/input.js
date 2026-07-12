@@ -8,7 +8,8 @@ import { BUILDINGS } from '../sim/data.js';
 import {
   tile, tileFromWorld, worldXZ, tileY, canPlace, place, purchaseBuilding, bulldoze, lShapedPath, dragCost,
 } from '../sim/grid.js';
-import { nameStation, toggleRouteStop } from '../sim/transport.js';
+import { toggleRouteStop } from '../sim/transport.js';
+import { nameStation } from '../sim/stations.js';
 import { scene, camera, renderer, controls } from '../render/scene.js';
 import { buildPlantMesh } from '../render/meshes.js';
 import { renderRoutes, showTipText } from './hud.js';

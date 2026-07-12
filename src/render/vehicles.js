@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { G, on } from '../sim/state.js';
 import { worldXZ, tileY, isRoad, isRail } from '../sim/grid.js';
-import { pathPose, findPath, stationRoadTile, routeColor } from '../sim/transport.js';
+import { routeColor } from '../sim/transport.js';
+import { pathPose, findPath, stationRoadTile } from '../sim/pathfinding.js';
 import { buildVehicleMesh, buildWagonMesh, makeTextSprite } from './meshes.js';
 
 // vehicles ride above the surface; trains higher, on top of the raised ballast bed

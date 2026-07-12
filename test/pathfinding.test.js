@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRail } from '../src/sim/grid.js';
-import { findPath } from '../src/sim/transport.js';
+import { findPath } from '../src/sim/pathfinding.js';
 import { freshWorld, buildRoad, buildRail } from './helpers.js';
 
 // a quiet corner in the south-west: grass, far from cities and the river

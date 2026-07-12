@@ -5,10 +5,9 @@ import assert from 'node:assert/strict';
 import { G } from '../src/sim/state.js';
 import { place, canPlace } from '../src/sim/grid.js';
 import { INDUSTRY_TYPES } from '../src/sim/data.js';
-import {
-  tickIndustries, tickVehicles, createRoute, buyVehicle,
-  stationCatchment, stationAccepts, toggleRouteStop,
-} from '../src/sim/transport.js';
+import { tickVehicles, createRoute, buyVehicle, toggleRouteStop } from '../src/sim/transport.js';
+import { tickIndustries } from '../src/sim/industries.js';
+import { stationCatchment, stationAccepts } from '../src/sim/stations.js';
 import { freshWorld, buildRoad, fakeIndustry } from './helpers.js';
 
 const J = 90; // quiet grass row in the south-west

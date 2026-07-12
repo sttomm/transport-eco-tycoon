@@ -9,7 +9,9 @@
 //                               servedFraction — the one-tick lag is by design)
 import { G } from './state.js';
 import { updateWeather, tickGrid, sampleHistory, dailyUpkeep, rollFossilFreeDay } from './energy.js';
-import { tickIndustries, tickVehicles, tickCities, autoReplaceFleet } from './transport.js';
+import { tickVehicles, autoReplaceFleet } from './transport.js';
+import { tickIndustries } from './industries.js';
+import { tickCities } from './cities.js';
 import { tickContracts } from './contracts.js';
 import { tickResearch } from './research.js';
 import { dailyLoanInterest } from './loans.js';

@@ -4,10 +4,9 @@
 import { G } from './sim/state.js';
 import { tickSim } from './sim/tick.js';
 import { initGrid, canPlace, place, bulldoze, decommissionGas, tile } from './sim/grid.js';
-import {
-  createRoute, buyVehicle, addWagon, findPath, nameStation,
-  replaceVehicle, autoReplaceFleet,
-} from './sim/transport.js';
+import { createRoute, buyVehicle, addWagon, replaceVehicle, autoReplaceFleet } from './sim/transport.js';
+import { findPath } from './sim/pathfinding.js';
+import { nameStation } from './sim/stations.js';
 import { signContract, tickContracts } from './sim/contracts.js';
 import { takeLoan, repayLoan } from './sim/loans.js';
 import { loadGame, saveGame } from './sim/save.js';
