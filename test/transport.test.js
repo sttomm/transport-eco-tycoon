@@ -7,7 +7,7 @@ import { place, canPlace } from '../src/sim/grid.js';
 import { INDUSTRY_TYPES } from '../src/sim/data.js';
 import {
   tickIndustries, tickVehicles, createRoute, buyVehicle,
-  stationCatchment, stationAccepts,
+  stationCatchment, stationAccepts, toggleRouteStop,
 } from '../src/sim/transport.js';
 import { freshWorld, buildRoad, fakeIndustry } from './helpers.js';
 
@@ -61,6 +61,18 @@ test('stations pull produced cargo from industries in range', () => {
   tickIndustries(1);
   tickIndustries(1);
   assert.ok((depotA.cargo.grain || 0) > 9, 'depot collected the grain');
+});
+
+test('toggleRouteStop adds a station, then removes it when clicked again', () => {
+  const r = createRoute();
+  assert.deepEqual(r.stops, [], 'starts empty');
+  toggleRouteStop(r, depotA);
+  toggleRouteStop(r, depotB);
+  assert.deepEqual(r.stops, [depotA, depotB], 'two clicks add two stops');
+  toggleRouteStop(r, depotA);
+  assert.deepEqual(r.stops, [depotB], 'clicking depotA again removes it');
+  toggleRouteStop(r, depotB);
+  assert.deepEqual(r.stops, [], 'clicking the last stop again clears the route');
 });
 
 test('a truck hauls grain to the food plant: payment, stats, input stock', () => {

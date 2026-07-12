@@ -1154,32 +1154,11 @@ function makeAsphaltTexture(mask, isCity) {
       if (bh < S) { const cy = by === 0 ? B : by; cx.moveTo(bx, cy); cx.lineTo(bx + bw, cy); }
       cx.stroke();
     }
-    // zebra crosswalk bands at city intersections: junction tiles (3-4 arms,
-    // the ones the dashed centre line above deliberately leaves unmarked) get
-    // a ladder of stripes near each connected arm, parallel to that arm's
-    // direction of travel and spread across the road width — same cream
-    // paint colour as the dashed line, kept off pure white per the ACES
-    // albedo rule.
-    if (isCity && arms.length >= 3) {
-      cx.fillStyle = 'rgba(225,222,206,0.85)';
-      const pad = 36, thick = 14, len = 34, nStripes = 4;
-      const rStart = B + 6, rEnd = S - B - 6, step = (rEnd - rStart) / (nStripes - 1);
-      for (const [bit] of arms) {
-        if (bit === 1 || bit === 2) { // x-arm: stripes parallel to X, spread along canvas Y (world z)
-          const cxA = bit === 1 ? S - pad : pad;
-          for (let k = 0; k < nStripes; k++) {
-            const cyA = rStart + k * step;
-            cx.fillRect(cxA - len / 2, cyA - thick / 2, len, thick);
-          }
-        } else { // z-arm: stripes parallel to canvas Y (world z), spread along X
-          const cyA = bit === 4 ? S - pad : pad;
-          for (let k = 0; k < nStripes; k++) {
-            const cxA = rStart + k * step;
-            cx.fillRect(cxA - thick / 2, cyA - len / 2, thick, len);
-          }
-        }
-      }
-    }
+    // Junction tiles (3-4 arms) are deliberately left as plain asphalt — no
+    // centre line (handled above) and no crosswalk markings. The painted
+    // ladders that used to sit here read as four large squares around the
+    // intersection, so they were removed; the sidewalk bands and curbs still
+    // frame the crossing.
   });
 }
 
@@ -1432,7 +1411,7 @@ export function updateWorldRender(dt) {
     const lane = 0.9;
     const lx = dirz !== 0 ? Math.sign(dirz) * lane : 0, lz = dirx !== 0 ? -Math.sign(dirx) * lane : 0;
     _p.set(x0 + dirx * c.prog + lx, tileY(c.i, c.j) + ROAD_TOP + 0.01, z0 + dirz * c.prog + lz);
-    _e.set(0, Math.atan2(dirx, dirz) + Math.PI / 2, 0); _q.setFromEuler(_e);
+    _e.set(0, Math.atan2(dirx, dirz) - Math.PI / 2, 0); _q.setFromEuler(_e); // nose (+X) leads travel
     _m.compose(_p, _q, _s);
     ambient.cars.setMatrixAt(k, _m);
   });

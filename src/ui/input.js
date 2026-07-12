@@ -8,7 +8,7 @@ import { BUILDINGS } from '../sim/data.js';
 import {
   tile, tileFromWorld, worldXZ, tileY, canPlace, place, bulldoze, lShapedPath, dragCost,
 } from '../sim/grid.js';
-import { nameStation } from '../sim/transport.js';
+import { nameStation, toggleRouteStop } from '../sim/transport.js';
 import { scene, camera, renderer, controls } from '../render/scene.js';
 import { buildPlantMesh } from '../render/meshes.js';
 import { renderRoutes, showTipText } from './hud.js';
@@ -158,11 +158,8 @@ function onPointerUp(ev) {
   const t = tile(i, j);
   if (!t) return;
   if (t.occ && t.occ.kind === 'station' && G.routeEdit) {
-    const r = G.routeEdit;
-    if (r.stops[r.stops.length - 1] !== t.occ) {
-      r.stops.push(t.occ);
-      renderRoutes();
-    }
+    toggleRouteStop(G.routeEdit, t.occ); // click a station to add it; click it again to remove
+    renderRoutes();
     G.selected = t.occ;
     return;
   }

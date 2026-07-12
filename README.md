@@ -10,8 +10,8 @@ brick / timber / corrugated-metal and solar-cell surface detail all come from
 scripted Blender plus procedural textures. The living landscape blends grass,
 dirt, rock and sand across the terrain, with a meandering river running into a
 south-east lake, ground scatter (grass tufts, wildflowers, bushes, boulders and
-reeded shores), fenced farmland patchwork, and asphalt streets with curbs,
-dashed center lines and crosswalks — with a twist:
+reeded shores), fenced farmland patchwork, and asphalt streets with curbs and
+dashed center lines (junctions stay plain) — with a twist:
 **you also run the region's 100% renewable power grid**, and everything in the
 world runs on your electricity.
 
@@ -44,7 +44,8 @@ locked while it runs.
 **You earn money two ways:**
 1. **Transport** — build roads (drag; crossing the river builds bridges), place
    Freight Depots / Bus Stops next to roads, create routes (🚌 tab → New Route →
-   click stations on the map), buy electric trucks & buses.
+   click stations on the map to add stops, click a stop again to remove it),
+   buy electric trucks & buses.
    The routes tab groups routes into collapsible 🚌 Bus / 🚆 Rail / 🚚 Cargo
    sections (a route's kind follows its stops' station types) with filter
    chips, and cargo routes can additionally be filtered by the goods they have

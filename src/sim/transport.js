@@ -192,6 +192,18 @@ export function createRoute() {
   return r;
 }
 
+// Toggle a station in a route's stop list: clicking a station that's already
+// a stop removes that occurrence (undo / remove-a-stop), otherwise it's
+// appended. Removing the last occurrence means a station can't be added twice
+// in a row, which is fine — a two-stop route already ping-pongs because
+// vehicles wrap stopIndex modulo stops.length. Returns the mutated list.
+export function toggleRouteStop(route, station) {
+  const at = route.stops.lastIndexOf(station);
+  if (at !== -1) route.stops.splice(at, 1);
+  else route.stops.push(station);
+  return route.stops;
+}
+
 // which route kind each vehicle type belongs on
 export const VEHICLE_ROUTE_KIND = { bus: 'bus', train: 'rail', truck: 'cargo' };
 
@@ -311,7 +323,9 @@ export function pathPose(path, d) {
   else if (idx >= n - 1) { idx = n - 2; f = 1 + (d - (n - 1)); }
   const [i0, j0] = path[idx], [i1, j1] = path[idx + 1];
   const [x0, z0] = worldXZ(i0, j0), [x1, z1] = worldXZ(i1, j1);
-  const yaw = (x1 !== x0 || z1 !== z0) ? Math.atan2(x1 - x0, z1 - z0) + Math.PI / 2 : null;
+  // meshes are authored nose (+X, headlights) forward; -π/2 points that nose
+  // along the direction of travel (see tools/models/vehicles.py conventions).
+  const yaw = (x1 !== x0 || z1 !== z0) ? Math.atan2(x1 - x0, z1 - z0) - Math.PI / 2 : null;
   const onTile = f < 0.5 ? path[Math.max(0, Math.min(idx, n - 1))] : path[Math.max(0, Math.min(idx + 1, n - 1))];
   return [x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, yaw, onTile];
 }

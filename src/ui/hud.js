@@ -1053,7 +1053,7 @@ function renderInfobox() {
     html = `<b>${s.def.icon} ${s.name || s.def.name}</b><div class="small">Waiting: ${carg}</div>
       ${s.stype === 'bus' ? '<div class="small dim">Buses only board passengers their route can deliver — local trips need a 2nd stop ≥5 tiles away in the same city; intercity trips need a stop at the destination. Press V for the demand overlay.</div>' : ''}
       ${s.stype === 'train' ? '<div class="small dim">Serves passengers AND freight in radius 7. Trains only board what their wagons can carry and their route can deliver.</div>' : ''}
-      <div class="small dim">${G.routeEdit ? 'Click to add to ' + G.routeEdit.name : ''}</div>`;
+      <div class="small dim">${G.routeEdit ? (G.routeEdit.stops.includes(s) ? 'Click again to remove from ' + G.routeEdit.name : 'Click to add to ' + G.routeEdit.name) : ''}</div>`;
   } else if (s.kind === 'city') {
     const hp = Math.round(s.happiness * 100);
     const cls = hp >= 70 ? 'good' : hp >= 45 ? 'warn' : 'bad';
