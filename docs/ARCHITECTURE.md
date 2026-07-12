@@ -18,7 +18,7 @@ flowchart TB
         subgraph render["src/render/ — Three.js views"]
             SCENE["scene.js\nrenderer · camera · lights\nsky+IBL · day/night · fly-to"]
             POSTFX["postfx.js\nGTAO · bloom · tilt-shift"]
-            RWORLD["world.js\nterrain · water · cities\nroads/rails · ambient life"]
+            RWORLD["world.js — facade over\nterrain.js · buildings.js · scatter.js\ninfrastructure.js · ambient.js (+ rng.js)"]
             RVEH["vehicles.js\nvehicle meshes · +€ FX\ndemand overlay · route highlight"]
             MESHES["meshes.js\nmesh & texture library"]
         end
@@ -66,8 +66,8 @@ happened; renderers and UI decide what that looks like. The important events:
 
 | Event | Emitted by | Consumed by |
 |---|---|---|
-| `placed` / `bulldozed` | grid.js | render/world.js (create/remove building mesh) |
-| `roadBuilt` / `railBuilt` | grid.js | render/world.js (mark instanced layer dirty) |
+| `placed` / `bulldozed` | grid.js | render/buildings.js (create/remove building mesh) |
+| `roadBuilt` / `railBuilt` | grid.js | render/infrastructure.js (mark instanced layer dirty) |
 | `vehicleBought` / `wagonAdded` / `vehicleSold` | transport.js | render/vehicles.js (mesh lifecycle) |
 | `moneyFx` | transport.js | render/vehicles.js (floating +€ text) |
 | `tip` | sim (various) | ui/hud.js (one-shot advisor toast) |
@@ -165,7 +165,7 @@ network.
 ### 9. Ambient life is cosmetic and instanced
 **Decision:** ambient cars/pedestrians are `InstancedMesh` agents doing random
 walks on street tiles (peds drift toward bus stops), count scaled by
-population. They live entirely in `render/world.js` — the sim doesn't know
+population. They live entirely in `render/ambient.js` — the sim doesn't know
 they exist.
 **Why:** The requirement is the world *feels* alive. Agent-based citizen sim
 costs enormous complexity for no teaching value. Two instanced draw calls give
