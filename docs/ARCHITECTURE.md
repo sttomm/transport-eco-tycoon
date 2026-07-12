@@ -86,6 +86,7 @@ happened; renderers and UI decide what that looks like. The important events:
 | `researchDone` | research.js | ui/hud.js (re-render 🔬 tab) |
 | `dayReport` | reports.js | ui/hud/dashboard.js (end-of-day report toast) |
 | `tutorialStep` / `tutorialDone` | tutorial.js | ui/tutorial.js (card advance / hide) |
+| `questDone` / `contractDone` | quests.js / contracts.js | nobody yet — announced for future views (both also emit a `toast`) |
 | `flyTo` | ui/quests.js | render/scene.js (camera tween) |
 
 Adding an event: `emit('name', payload)` in sim, `on('name', fn)` in a view's
@@ -677,6 +678,22 @@ views and the two 1000+-line view files made every change a search problem.
 The refactor restores the original contract — *if you can't test it headless,
 it's in the wrong layer* — and gives balance work an executable harness
 instead of hand-run playthroughs.
+
+### 33. Self-enforcing architecture: guard tests instead of remembered rules
+**Decision:** `test/architecture.test.js` turns the CLAUDE.md rules into
+assertions that run with every `npm test`: sim purity (no three.js/DOM/
+timers; localStorage only in save.js), no sim→view imports, a 600-line
+file budget (data.js exempt), main.js stays a composition root, every source
+module appears in this document's module map, every `emit('…')` event has a
+row in the event table above, and the README's "N+ tests" claim stays a true
+floor. Each failure message states the exact fix.
+**Why:** the ADR 32 audit found exactly the drift these guards now catch —
+game rules in the HUD, an untested rollover in main.js, a diagram four
+modules behind, mega-files — all of which had crept in silently despite the
+rules being written down. Documentation drifts; a red test does not. The
+guards are deliberately coarse (string scans, line counts) so they stay
+zero-dependency and obvious to fix — **do what the message says, never
+weaken the guard to get green.**
 
 ## Persistence
 

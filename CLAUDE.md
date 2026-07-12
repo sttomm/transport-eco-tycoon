@@ -24,7 +24,7 @@ src/main.js  composition root + frame loop. The only file that knows all layers.
 - Game content AND tuning knobs (buildings, vehicles, industries, techs,
   tips, PAX/CITY/MARKET/… constant blocks) are data in `src/sim/data.js`,
   not code.
-- Module map + all design decisions (ADRs 1–32): `docs/ARCHITECTURE.md`.
+- Module map + all design decisions (ADRs 1–33): `docs/ARCHITECTURE.md`.
 
 ## Definition of done — every feature or fix
 
@@ -36,6 +36,9 @@ src/main.js  composition root + frame loop. The only file that knows all layers.
    through `window.DEBUG` / `window.G`, check console for errors).
 3. **Docs stay true.** Energy numbers → `docs/ENERGY-MODEL.md`; architecture
    decisions → `docs/ARCHITECTURE.md`; player-visible features → `README.md`.
+   `test/architecture.test.js` ENFORCES the layering, the module map, the
+   event table and file budgets — when it fails, do what its message says
+   (update the doc / split the file); never weaken or delete a guard.
 4. **Commit** with a descriptive message — only after 1–3 pass. Never commit
    red tests or an unverified change.
 
