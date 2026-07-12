@@ -2,7 +2,7 @@
 // and all placement/bulldoze rules. Pure logic — the renderer listens to the
 // events emitted here ('placed', 'bulldozed', 'roadBuilt', 'railBuilt') and
 // keeps the Three.js scene in sync.
-import { G, emit } from './state.js';
+import { G, emit, spend } from './state.js';
 import { makeNoise } from './noise.js';
 import { BUILDINGS, CARBON, INDUSTRY_TYPES, UNLOCKS } from './data.js';
 
@@ -294,6 +294,16 @@ export function place(toolId, i, j) {
     emit('stationBuilt', ref);
   }
   return ref;
+}
+
+// Player purchase wrapper: pay, then place. Returns the placed ref, or a
+// reason string: 'blocked' (placement rules) | 'poor' (can't afford).
+// place() itself stays money-free — the save replay, the starter grid and
+// DEBUG go through it directly (charging there would corrupt restores).
+export function purchaseBuilding(toolId, i, j) {
+  if (!canPlace(toolId, i, j)) return 'blocked';
+  if (!spend(BUILDINGS[toolId].cost)) return 'poor';
+  return place(toolId, i, j);
 }
 
 export function bulldoze(i, j) {

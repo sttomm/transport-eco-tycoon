@@ -229,6 +229,43 @@ export const AGING = {
   autoAtDays: 22,        // per-route auto-replace triggers at this age
 };
 
+// Passenger demand tuning (transport.js: demand pools → stops → vehicles).
+export const PAX = {
+  wantFrac: 0.005,       // share of population wanting to travel per (daytime) hour
+  localShare: 0.55,      // of new demand: travelling within the city…
+  interShare: 0.45,      // …vs to a neighbouring city (gravity-split)
+  dayFactor: 1.25,       // travel-demand multiplier by time of day
+  nightFactor: 0.3,      //   (day = 06:30–22:00)
+  stopFlowPerHour: 16,   // travellers walking to a city's stops per hour (split across its stops)
+  interFlowFrac: 0.6,    // intercity travellers walk a bit slower than local ones
+  stopWaitingCap: 40,    // max people waiting at one stop (no-clogging rule)
+};
+
+// Freight buffers (transport.js).
+export const FREIGHT = {
+  stationCap: 40,        // max units of one cargo waiting at a station
+  industryStockCap: 120, // max output units piling up at a producer
+};
+
+// City happiness & growth tuning (transport.js tickCities/happinessFactors).
+export const CITY = {
+  baseHappiness: 0.35,   // what a city feels with nothing provided
+  weights: { power: 25, food: 15, goods: 5, localTransit: 10, neighborLink: 5 }, // happiness %
+  overcrowdAt: 120,      // stranded travellers that trigger the malus…
+  overcrowdPenalty: -10, // …and its happiness %
+  foodDecay: 0.014,      // supply levels decay per hour — steady streams, not one-off deliveries
+  goodsDecay: 0.010,
+  happinessRate: 0.03,   // approach rate toward the target level, per hour
+  blackoutHit: 0.03,     // extra unhappiness per blackout hour
+  growthPivot: 0.45,     // happiness above this grows the city, below shrinks it
+  growthRate: 6,         // people per hour per point of happiness above the pivot
+  minPop: 400,
+};
+
+// Route display colors + station name suffixes (display data, not rules).
+export const ROUTE_COLORS = ['#4fc3f7', '#f0c64a', '#7ed87e', '#ff6b5e', '#c08ae0', '#f0a23c', '#5fd4d0', '#e87ab0'];
+export const STATION_SUFFIX = { bus: 'Stop', truck: 'Depot', train: 'Station' };
+
 // Wagons hooked behind a locomotive. A train's capacity = sum of its wagons.
 export const WAGONS = {
   pax: { name: 'Passenger Car', icon: '🧍', cost: 9000, capacity: 40 },

@@ -1,13 +1,16 @@
 // DOM HUD: topbar, toolbar, side-panel tabs (dashboard charts, research,
 // routes, encyclopedia), advisor toasts, selection infobox, welcome screen.
 // Reads sim state each tick; never contains game rules.
-import { G, on, emit, fmtMoney, fmtTime, spend, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
+import { G, on, emit, fmtMoney, fmtTime, season, seasonOf, DAYS_PER_SEASON } from '../sim/state.js';
 import { AGING, BUILDINGS, CARBON, CLIMATE, H2OFFTAKE, INTERCONNECT, MARKET, VEHICLES, WAGONS, TECHS, TIPS, LEARN, CARGO } from '../sim/data.js';
 import { decommissionGas, isUnlocked, unlockHint } from '../sim/grid.js';
-import { createRoute, buyVehicle, sellVehicle, addWagon, happinessFactors, routeColor, routeKind, VEHICLE_ROUTE_KIND, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle } from '../sim/transport.js';
+import { createRoute, purchaseVehicle, purchaseWagon, sellVehicle, happinessFactors, routeColor, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle } from '../sim/transport.js';
 import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../sim/contracts.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loans.js';
-import { solarFactor, climateRiskMult, POWER_PRICE } from '../sim/energy.js';
+import {
+  solarFactor, climateRiskMult, POWER_PRICE,
+  gasMarginalCost, importEventActive, importCapNow, importPriceNow, h2Reserve, h2Sellable,
+} from '../sim/energy.js';
 import { clearSave } from '../sim/save.js';
 import { startTutorial, skipTutorial, notifyTutorial } from '../sim/tutorial.js';
 import { startResearch } from '../sim/research.js';
@@ -782,18 +785,15 @@ function routeCard(r) {
   if (ab) ab.onchange = e => { r.autoReplace = e.target.checked; };
   for (const kind of kinds) {
     d.querySelector(`[data-a=${kind}]`).onclick = () => {
-      if (r.stops.length < 2) { showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).'); return; }
-      if (!spend(VEHICLES[kind].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
-      const v = buyVehicle(r, kind);
-      if (!v) {
-        G.money += VEHICLES[kind].cost;
+      const v = purchaseVehicle(r, kind); // sim validates & charges; we translate refusals
+      if (v === 'short') showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).');
+      else if (v === 'poor') showTipText('Too expensive', 'Not enough funds.');
+      else if (v === 'kind') {
         const rk2 = routeKind(r);
-        if (rk2 && VEHICLE_ROUTE_KIND[kind] !== rk2) {
-          showTipText('Wrong vehicle type', `${r.name} is a ${rk2} route — its stops only serve ${KIND_BUTTONS[rk2].map(k => VEHICLES[k].name.toLowerCase() + 's').join('/')}.`);
-        } else {
-          showTipText(kind === 'train' ? 'No rail access' : 'No road access',
-            kind === 'train' ? 'The first stop has no adjacent rail track — trains need Rail Stations connected by track.' : 'The first stop has no adjacent road.');
-        }
+        showTipText('Wrong vehicle type', `${r.name} is a ${rk2} route — its stops only serve ${KIND_BUTTONS[rk2].map(k => VEHICLES[k].name.toLowerCase() + 's').join('/')}.`);
+      } else if (v === 'access') {
+        showTipText(kind === 'train' ? 'No rail access' : 'No road access',
+          kind === 'train' ? 'The first stop has no adjacent rail track — trains need Rail Stations connected by track.' : 'The first stop has no adjacent road.');
       }
       renderRoutes();
     };
@@ -811,9 +811,9 @@ function routeCard(r) {
     if (!w) return;
     const v = r.vehicles[+e.target.dataset.vi];
     if (!v || v.kind !== 'train') return;
-    if (v.wagons.length >= v.def.maxWagons) { showTipText('Train full', `A locomotive pulls at most ${v.def.maxWagons} wagons.`); return; }
-    if (!spend(WAGONS[w].cost)) { showTipText('Too expensive', 'Not enough funds.'); return; }
-    addWagon(v, w);
+    const res = purchaseWagon(v, w);
+    if (res === 'full') { showTipText('Train full', `A locomotive pulls at most ${v.def.maxWagons} wagons.`); return; }
+    if (res === 'poor') { showTipText('Too expensive', 'Not enough funds.'); return; }
     renderRoutesLive();
   };
   return d;
@@ -1002,7 +1002,7 @@ function renderInfobox() {
     const d = s.def;
     html = `<b>${d.icon} ${d.name}</b><div class="small">${d.desc}</div>`;
     if (s.type === 'gas' && !G.gasDecommissioned) {
-      const marginal = d.fuelPerMWh + d.co2PerMWh * G.carbonPrice;
+      const marginal = gasMarginalCost();
       const priceRef = G.marketLive ? G.price : POWER_PRICE; // live market: current price, else flat tariff
       const margin = priceRef - marginal;
       html += `<div class="small" style="margin-top:4px">Marginal cost: <b class="${margin < 0 ? 'bad' : 'warn'}">€${marginal.toFixed(1)}/MWh</b>
@@ -1013,15 +1013,15 @@ function renderInfobox() {
         <div class="small dim">Irreversible: no fossil backstop afterwards — deficits your storage can't cover become blackouts.</div>`;
     }
     if (s.type === 'efuel') {
-      const reserve = G.h2CapMWh * H2OFFTAKE.reserveFrac;
-      const above = Math.max(0, G.h2MWh - reserve);
+      const reserve = h2Reserve();
+      const above = h2Sellable();
       html += `<div class="small" style="margin-top:4px">Selling <b>${(G.h2OfftakeMW || 0).toFixed(1)} / ${G.offtakeCapMW.toFixed(1)} MW</b> @ €${H2OFFTAKE.pricePerMWh}/MWh${above > 0.5 ? '' : ' <span class="warn">— tank at the reserve, sales paused</span>'}</div>
         <div class="small dim">Reserve (never sold): ${reserve.toFixed(0)} MWh · today ${G.h2SoldMWhToday.toFixed(1)} MWh sold · ${fmtMoney(G.h2SoldMWhToday * H2OFFTAKE.pricePerMWh)}</div>`;
     }
     if (s.type === 'interconnector') {
-      const event = G.dunkelflaute > 0 || G.heatwave > 0;
-      const cap = G.importCapMW * (event ? INTERCONNECT.eventCapFactor : 1);
-      const price = event ? INTERCONNECT.eventPrice : INTERCONNECT.price;
+      const event = importEventActive();
+      const cap = importCapNow();
+      const price = importPriceNow();
       html += `<div class="small" style="margin-top:4px">Importing <b>${(G.supply.import || 0).toFixed(1)} / ${cap.toFixed(1)} MW</b> @ €${price}/MWh${event ? ' <span class="bad">— region-wide event, link throttled!</span>' : ''}</div>
         <div class="small dim">Today: ${G.importMWhToday.toFixed(1)} MWh imported · ${fmtMoney(G.importCostToday)} bill · +${(INTERCONNECT.co2PerMWh * G.importMWhToday).toFixed(1)} t CO₂ (neighbour mix)</div>`;
     }

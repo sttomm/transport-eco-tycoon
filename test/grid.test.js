@@ -2,7 +2,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
-import { tile, canPlace, place, bulldoze, decommissionGas, isRail, isRoad, isUnlocked, unlockHint, lShapedPath, dragCost, WATER_Y } from '../src/sim/grid.js';
+import { tile, canPlace, place, purchaseBuilding, bulldoze, decommissionGas, isRail, isRoad, isUnlocked, unlockHint, lShapedPath, dragCost, WATER_Y } from '../src/sim/grid.js';
 import { BUILDINGS, CARBON, MARKET, UNLOCKS } from '../src/sim/data.js';
 import { freshWorld, findSpot, findGrass, findWater } from './helpers.js';
 
@@ -143,8 +143,8 @@ test('hydro must touch water; solar/wind must not overlap anything', () => {
 test('storage buildings register capacity on place and deregister on bulldoze', () => {
   const [i, j] = findSpot('battery');
   place('battery', i, j);
-  assert.equal(G.batteryCapMWh, 20);
-  assert.equal(G.batteryRateMW, 10);
+  assert.equal(G.batteryCapMWh, BUILDINGS.battery.storeMWh);
+  assert.equal(G.batteryRateMW, BUILDINGS.battery.rateMW);
 
   const [ei, ej] = findSpot('electrolyzer');
   place('electrolyzer', ei, ej);
@@ -152,9 +152,9 @@ test('storage buildings register capacity on place and deregister on bulldoze', 
   place('h2tank', ti, tj);
   const [fi, fj] = findSpot('fuelcell');
   place('fuelcell', fi, fj);
-  assert.equal(G.elecCapMW, 5);
-  assert.equal(G.h2CapMWh, 150);
-  assert.equal(G.fcCapMW, 5);
+  assert.equal(G.elecCapMW, BUILDINGS.electrolyzer.elecMW);
+  assert.equal(G.h2CapMWh, BUILDINGS.h2tank.h2MWh);
+  assert.equal(G.fcCapMW, BUILDINGS.fuelcell.fcMW);
 
   const refund = bulldoze(i, j);
   assert.equal(refund, BUILDINGS.battery.cost * 0.3);
@@ -166,7 +166,7 @@ test('storage buildings register capacity on place and deregister on bulldoze', 
 test('interconnector registers import capacity on place, deregisters on bulldoze (ADR 25)', () => {
   const [i, j] = findSpot('interconnector');
   place('interconnector', i, j);
-  assert.equal(G.importCapMW, 12);
+  assert.equal(G.importCapMW, BUILDINGS.interconnector.importMW);
   bulldoze(i, j);
   assert.equal(G.importCapMW, 0);
 });
@@ -174,7 +174,7 @@ test('interconnector registers import capacity on place, deregisters on bulldoze
 test('e-fuel refinery registers offtake capacity on place, deregisters on bulldoze (ADR 26)', () => {
   const [i, j] = findSpot('efuel');
   place('efuel', i, j);
-  assert.equal(G.offtakeCapMW, 4);
+  assert.equal(G.offtakeCapMW, BUILDINGS.efuel.offtakeMW);
   bulldoze(i, j);
   assert.equal(G.offtakeCapMW, 0);
 });
@@ -287,4 +287,15 @@ test('lShapedPath covers both legs; dragCost bills bridges 5×', () => {
   assert.equal(dragCost([[gi, gj]], 'road'), BUILDINGS.road.cost);
   const [wi, wj] = findWater();
   assert.equal(dragCost([[wi, wj]], 'road'), BUILDINGS.road.cost * 5);
+});
+
+test('purchaseBuilding charges the player; place() itself stays money-free', () => {
+  const [i, j] = findSpot('solar');
+  G.money = BUILDINGS.solar.cost - 1;
+  assert.equal(purchaseBuilding('solar', i, j), 'poor');
+  G.money = BUILDINGS.solar.cost;
+  const ref = purchaseBuilding('solar', i, j);
+  assert.equal(ref.type, 'solar');
+  assert.equal(G.money, 0, 'cost charged by the sim');
+  assert.equal(purchaseBuilding('solar', i, j), 'blocked', 'tile now occupied');
 });

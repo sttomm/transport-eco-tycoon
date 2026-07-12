@@ -161,9 +161,34 @@ function capacity(type) {
   return mw;
 }
 
+// ---- dispatch-economics selectors ----------------------------------------
+// Single source of truth for the numbers the dispatch uses — the UI infobox
+// reads THESE instead of re-deriving the math (keeps game rules out of ui/).
+export function gasMarginalCost() {           // €/MWh: fuel + carbon-priced CO₂ (ADR 21)
+  const d = BUILDINGS.gas;
+  return d.fuelPerMWh + d.co2PerMWh * G.carbonPrice;
+}
+export function importEventActive() {         // continental weather: neighbours short too (ADR 25)
+  return G.dunkelflaute > 0 || G.heatwave > 0;
+}
+export function importCapNow() {              // MW the link can carry right now
+  return G.importCapMW * (importEventActive() ? INTERCONNECT.eventCapFactor : 1);
+}
+export function importPriceNow() {            // €/MWh the neighbour bills right now
+  return importEventActive() ? INTERCONNECT.eventPrice : INTERCONNECT.price;
+}
+export function h2Reserve() {                 // MWh never sold — Dunkelflaute insurance (ADR 26)
+  return G.h2CapMWh * H2OFFTAKE.reserveFrac;
+}
+export function h2Sellable() {                // MWh above the reserve, available for offtake
+  return Math.max(0, G.h2MWh - h2Reserve());
+}
+
 // ---- demand ------------------------------------------------------------
 // 24 h mean of the load curve below — the demand-response tech compresses
-// the curve toward this value (peaks shaved into the valleys, energy-neutral)
+// the curve toward this value (peaks shaved into the valleys, energy-neutral).
+// HAND-COMPUTED: if you edit the curve, recompute this or the neutrality
+// test in test/energy.test.js ('24h energy unchanged') fails.
 const DEMAND_MEAN = 0.822;
 export function cityDemandCurve() {
   const h = hourOfDay();
@@ -213,8 +238,7 @@ export function tickGrid(gameHours) {
   const inflex = cityMW + indMW + chargeMW;
   // interconnector conditions (ADR 25): a Dunkelflaute/heatwave is continental
   // — the neighbours are short too, so the link thins out and its price spikes
-  const importEvent = G.dunkelflaute > 0 || G.heatwave > 0;
-  const importPrice = importEvent ? INTERCONNECT.eventPrice : INTERCONNECT.price;
+  const importPrice = importPriceNow();
 
   let batteryMW = 0, fcMW = 0, elecMW = 0, impMW = 0, gasMW = 0, curtailMW = 0, unservedMW = 0;
   let surplus = renewable - inflex;
@@ -253,7 +277,7 @@ export function tickGrid(gameHours) {
     // of the carbon ramp). The neighbour bills you their price and their mix
     // CO₂ lands on your emitted ledger; during a region-wide event the link
     // carries only a trickle at near-scarcity prices.
-    impMW = Math.min(deficit, G.importCapMW * (importEvent ? INTERCONNECT.eventCapFactor : 1));
+    impMW = Math.min(deficit, importCapNow());
     deficit -= impMW;
     if (impMW > 0) {
       const cost = impMW * gameHours * importPrice;
@@ -270,13 +294,12 @@ export function tickGrid(gameHours) {
     gasMW = Math.min(deficit, capacity('gas'));
     deficit -= gasMW;
     if (gasMW > 0) {
-      const d = BUILDINGS.gas;
-      const cost = gasMW * gameHours * (d.fuelPerMWh + d.co2PerMWh * G.carbonPrice);
+      const cost = gasMW * gameHours * gasMarginalCost();
       G.money -= cost;
       G.expensesToday += cost;
       G.gasCostToday += cost;
       G.gasMWhToday += gasMW * gameHours;
-      G.co2EmittedTons += gasMW * gameHours * d.co2PerMWh;
+      G.co2EmittedTons += gasMW * gameHours * BUILDINGS.gas.co2PerMWh;
       if (gasMW > 0.3) emit('tip', 'firstGas');
     }
     // 5) blackout — unserved load costs blackout compensation (VoLL): fines
@@ -299,8 +322,7 @@ export function tickGrid(gameHours) {
   // Chemical sales, not grid dispatch: they never touch the electricity price.
   let offMW = 0;
   if (G.offtakeCapMW > 0 && gameHours > 0) {
-    const reserve = G.h2CapMWh * H2OFFTAKE.reserveFrac;
-    offMW = Math.min(G.offtakeCapMW, Math.max(0, (G.h2MWh - reserve) / gameHours));
+    offMW = Math.min(G.offtakeCapMW, h2Sellable() / gameHours);
     if (offMW > 0.01) {
       G.h2MWh -= offMW * gameHours;
       const rev = offMW * gameHours * H2OFFTAKE.pricePerMWh;
@@ -329,8 +351,7 @@ export function tickGrid(gameHours) {
     G.price = MARKET.scarcity;                 // scarcity: demand goes unserved
   } else if (gasMW > 0 || impMW > 0) {
     // the most expensive running dispatchable sets the price (pay-as-clear)
-    const d = BUILDINGS.gas;
-    const gasAsk = gasMW > 0 ? d.fuelPerMWh + d.co2PerMWh * G.carbonPrice + MARKET.gasMarkup : 0;
+    const gasAsk = gasMW > 0 ? gasMarginalCost() + MARKET.gasMarkup : 0;
     const impAsk = impMW > 0 ? importPrice + INTERCONNECT.markup : 0;
     G.price = Math.max(gasAsk, impAsk);
   } else if (curtailMW > 0) {

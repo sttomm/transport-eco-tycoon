@@ -9,6 +9,7 @@ import {
   tickIndustries, tickVehicles, tickCities, createRoute, buyVehicle,
   routeServes, transitServices, happinessFactors, stationRoadTile, findPath,
 } from '../src/sim/transport.js';
+import { CITY } from '../src/sim/data.js';
 import { freshWorld, stationSpotNearCity } from './helpers.js';
 
 let solhaven, windburg;
@@ -94,15 +95,15 @@ test('a bus line carries local passengers and gets paid', () => {
   assert.ok(G.finance.today.bus > 0, 'fares booked under buses');
   assert.equal(transitServices(solhaven).local, true);
   const local = happinessFactors(solhaven).find(f => f.label === 'Local transit');
-  assert.equal(local.got, 10, 'local transit contributes to happiness');
+  assert.equal(local.got, CITY.weights.localTransit, 'local transit contributes to happiness');
 });
 
 test('happiness factors reward power, food and transit explicitly', () => {
   G.servedFraction = 1;
   solhaven.foodLevel = 1;
   const f = happinessFactors(solhaven);
-  assert.equal(f.find(x => x.label === 'Reliable power').got, 25);
-  assert.equal(f.find(x => x.label === 'Food supply').got, 15);
+  assert.equal(f.find(x => x.label === 'Reliable power').got, CITY.weights.power);
+  assert.equal(f.find(x => x.label === 'Food supply').got, CITY.weights.food);
   assert.equal(f.find(x => x.label === 'Local transit').got, 0, 'no transit yet');
   assert.ok(f.some(x => x.label.startsWith('Link to ')), 'intercity links listed per city');
 });

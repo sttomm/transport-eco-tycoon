@@ -4,8 +4,8 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
 import { place } from '../src/sim/grid.js';
-import { tickVehicles, createRoute, buyVehicle, addWagon, sellVehicle, paxCapacity, freightCapacity, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, autoReplaceFleet } from '../src/sim/transport.js';
-import { AGING } from '../src/sim/data.js';
+import { tickVehicles, createRoute, buyVehicle, addWagon, purchaseVehicle, purchaseWagon, sellVehicle, paxCapacity, freightCapacity, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, autoReplaceFleet } from '../src/sim/transport.js';
+import { AGING, VEHICLES, WAGONS } from '../src/sim/data.js';
 import { freshWorld, buildRoad, buildRail } from './helpers.js';
 
 const J = 90;
@@ -228,4 +228,38 @@ test('selling a vehicle refunds 40% and removes it everywhere', () => {
   assert.equal(G.vehicles.length, 0);
   assert.equal(r.vehicles.length, 0);
   assert.deepEqual(events, [v]);
+});
+
+// ---------- player purchase wrappers (sim charges & explains refusals) ----------
+
+test('purchaseVehicle charges the sim-side cost and reports refusal reasons', () => {
+  assert.equal(purchaseVehicle(createRoute(), 'truck'), 'short');
+  const r = roadRoute();
+  assert.equal(purchaseVehicle(r, 'bus'), 'kind', 'truck depots derive a cargo route');
+  G.money = VEHICLES.truck.cost - 1;
+  assert.equal(purchaseVehicle(r, 'truck'), 'poor');
+  assert.equal(G.vehicles.length, 0, 'a refusal buys nothing');
+  G.money = VEHICLES.truck.cost;
+  const v = purchaseVehicle(r, 'truck');
+  assert.equal(v.kind, 'truck');
+  assert.equal(G.money, 0, 'cost charged by the sim, not the UI');
+});
+
+test('purchaseVehicle refuses stops with no adjacent network as access', () => {
+  const r = createRoute();
+  r.stops.push({ i: 40, j: 90, fp: 1 }, { i: 44, j: 90, fp: 1 });
+  assert.equal(purchaseVehicle(r, 'truck'), 'access');
+});
+
+test('purchaseWagon charges, and refuses full trains and empty wallets', () => {
+  const r = railRoute();
+  const v = buyVehicle(r, 'train');
+  const before = G.money;
+  assert.equal(purchaseWagon(v, 'pax').type, 'pax');
+  assert.equal(G.money, before - WAGONS.pax.cost);
+  while (v.wagons.length < v.def.maxWagons) addWagon(v, 'freight');
+  assert.equal(purchaseWagon(v, 'pax'), 'full');
+  v.wagons.length = 0;
+  G.money = 0;
+  assert.equal(purchaseWagon(v, 'pax'), 'poor');
 });

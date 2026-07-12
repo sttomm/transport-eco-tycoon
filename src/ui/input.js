@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { G, spend } from '../sim/state.js';
 import { BUILDINGS } from '../sim/data.js';
 import {
-  tile, tileFromWorld, worldXZ, tileY, canPlace, place, bulldoze, lShapedPath, dragCost,
+  tile, tileFromWorld, worldXZ, tileY, canPlace, place, purchaseBuilding, bulldoze, lShapedPath, dragCost,
 } from '../sim/grid.js';
 import { nameStation, toggleRouteStop } from '../sim/transport.js';
 import { scene, camera, renderer, controls } from '../render/scene.js';
@@ -148,9 +148,9 @@ function onPointerUp(ev) {
   }
   if (G.tool && G.tool !== 'road') {
     const def = BUILDINGS[G.tool];
-    if (!canPlace(G.tool, i, j)) return;
-    if (!spend(def.cost)) { showTipText('Too expensive', `${def.name} costs ${def.cost.toLocaleString()}.`); return; }
-    const ref = place(G.tool, i, j);
+    const ref = purchaseBuilding(G.tool, i, j); // sim validates & charges
+    if (ref === 'blocked') return;
+    if (ref === 'poor') { showTipText('Too expensive', `${def.name} costs ${def.cost.toLocaleString()}.`); return; }
     if (ref.kind === 'station') nameStation(ref);
     return;
   }
