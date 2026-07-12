@@ -369,6 +369,8 @@ export function tickGrid(gameHours) {
   G.money -= gridFee;
   G.expensesToday += gridFee;
   G.gridFeeToday += gridFee;
+  // rich-grid teaching moment (one-shot — the UI dedupes via firedTips)
+  if (G.incomeEnergyToday > 12000 && G.incomeEnergyToday > G.incomeTransportToday) emit('tip', 'richGrid');
   // gas-served and imported MWh are not your renewables — they avoid nothing
   G.co2SavedTons += Math.max(0, servedMW - gasMW - impMW) * gameHours * CO2_PER_MWH;
 
@@ -416,10 +418,17 @@ export function rollFossilFreeDay() {
   G.gridFeeToday = 0;
 }
 
-export function dailyUpkeep() {
+// Fixed daily costs: plant upkeep + age-ramped vehicle upkeep (ADR 27).
+// Shared by dailyUpkeep (bills it) and reports.js closeDay (reports it).
+export function totalUpkeep() {
   let cost = 0;
   for (const p of G.plants) cost += p.def.upkeep || 0;
-  for (const v of G.vehicles) cost += vehicleUpkeep(v); // age-ramped (ADR 27)
+  for (const v of G.vehicles) cost += vehicleUpkeep(v);
+  return cost;
+}
+
+export function dailyUpkeep() {
+  const cost = totalUpkeep();
   G.money -= cost;
   G.expensesToday += cost;
   return cost;

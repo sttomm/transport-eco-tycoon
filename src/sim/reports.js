@@ -4,14 +4,14 @@
 // (blackout / dunkelflaute / storm / heatwave hours). Pure sim — the end-of-day toast and
 // the "Yesterday" dashboard block live in src/ui/hud.js.
 //
-// Call order in main.js's day rollover matters: closeDay() runs BEFORE the
+// Call order in sim/tick.js rollOverDay() matters: closeDay() runs BEFORE the
 // shared daily counters (income/expenses/curtailed/finance) are reset, so the
 // report captures the finished day. closeDay() resets only the counters this
 // module owns (blackoutHoursToday, flauteHoursToday, stormHoursToday,
 // heatHoursToday).
 import { G, emit } from './state.js';
 import { LOAN_RATE } from './loans.js';
-import { vehicleUpkeep } from './transport.js';
+import { totalUpkeep } from './energy.js';
 
 export const REPORT_KEEP = 7;
 
@@ -30,11 +30,8 @@ export function trackDay(gameHours) {
 // both cumulatives and reports start at zero, so it stays consistent).
 export function closeDay() {
   const prev = G.reports[G.reports.length - 1];
-  // fixed daily costs, same formula as energy.js dailyUpkeep (not called —
-  // upkeep is booked into the NEW day right after the rollover)
-  let upkeep = 0;
-  for (const p of G.plants) upkeep += p.def.upkeep || 0;
-  for (const v of G.vehicles) upkeep += vehicleUpkeep(v); // age-ramped (ADR 27)
+  // fixed daily costs (reported here; billed into the NEW day by dailyUpkeep)
+  const upkeep = totalUpkeep();
   const f = G.finance.today;
   const report = {
     day: G.day,

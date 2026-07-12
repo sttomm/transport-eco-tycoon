@@ -10,6 +10,7 @@ import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../sim/loan
 import { solarFactor, climateRiskMult, POWER_PRICE } from '../sim/energy.js';
 import { clearSave } from '../sim/save.js';
 import { startTutorial, skipTutorial, notifyTutorial } from '../sim/tutorial.js';
+import { startResearch } from '../sim/research.js';
 
 const $ = id => document.getElementById(id);
 let activeTab = null;
@@ -30,6 +31,7 @@ export function initUI() {
   on('railBuilt', () => showTip('firstRail'));
   on('vehicleBought', v => { if (v.kind === 'train') showTip('firstTrain'); });
   on('contractsChanged', () => { if (activeTab === 'contracts') renderContracts(); });
+  on('researchDone', () => { if (activeTab === 'research') renderResearch(); });
   on('dayReport', showDayReport);
   initLoanBox();
   initTopbarTooltips();
@@ -352,8 +354,6 @@ export function updateUI(dt) {
     if (activeTab === 'routes') renderRoutesLive();
     if (activeTab === 'research') renderResearchLive();
     if (activeTab === 'contracts') renderContractsLive();
-    // rich-grid teaching moment
-    if (G.incomeEnergyToday > 12000 && G.incomeEnergyToday > G.incomeTransportToday) showTip('richGrid');
   }
   chartTimer += dt;
   if (chartTimer > 0.6 && activeTab === 'dashboard') {
@@ -587,9 +587,9 @@ function renderResearch() {
           `<button data-tech="${t.id}">${fmtMoney(t.cost)} · ${t.days} days</button>`}</div>`;
     const btn = d.querySelector('button');
     if (btn) btn.onclick = () => {
-      if (G.research) { showTipText('Lab busy', 'Your researchers are already working on ' + TECHS.find(x => x.id === G.research.id).name + '.'); return; }
-      if (!spend(t.cost)) { showTipText('Too expensive', 'Not enough funds for this project.'); return; }
-      G.research = { id: t.id, progress: 0, days: t.days };
+      const r = startResearch(t.id); // sim decides; we only explain refusals
+      if (r === 'busy') { showTipText('Lab busy', 'Your researchers are already working on ' + TECHS.find(x => x.id === G.research.id).name + '.'); return; }
+      if (r === 'poor') { showTipText('Too expensive', 'Not enough funds for this project.'); return; }
       renderResearch();
     };
     list.appendChild(d);
@@ -600,21 +600,6 @@ function renderResearchLive() {
   const bar = document.getElementById('prog-' + G.research.id);
   if (bar) bar.style.width = (G.research.progress * 100).toFixed(0) + '%';
   else renderResearch();
-}
-
-// research progression, called from the main loop
-export function tickResearch(gameHours) {
-  if (!G.research) return;
-  G.research.progress += gameHours / (G.research.days * 24);
-  if (G.research.progress >= 1) {
-    const t = TECHS.find(x => x.id === G.research.id);
-    t.fx(G.mult);
-    if (t.apply) t.apply(G); // retrofit existing builds (e.g. LFP upgrades placed batteries)
-    G.techs[t.id] = true;
-    G.research = null;
-    showTipText('Research complete!', `${t.name} — ${t.desc}`);
-    if (activeTab === 'research') renderResearch();
-  }
 }
 
 // ---------- special contracts ----------

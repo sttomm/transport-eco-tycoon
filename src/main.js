@@ -2,26 +2,25 @@
 // Layering rule: sim/ never imports render/ or ui/; they communicate through
 // the event emitter in sim/state.js. See docs/ARCHITECTURE.md.
 import { G } from './sim/state.js';
+import { tickSim } from './sim/tick.js';
 import { initGrid, canPlace, place, bulldoze, decommissionGas, tile } from './sim/grid.js';
-import { updateWeather, tickGrid, sampleHistory, dailyUpkeep, rollFossilFreeDay } from './sim/energy.js';
 import {
-  tickIndustries, tickVehicles, tickCities,
   createRoute, buyVehicle, addWagon, findPath, nameStation,
   replaceVehicle, autoReplaceFleet,
 } from './sim/transport.js';
-import { tickContracts, signContract } from './sim/contracts.js';
-import { takeLoan, repayLoan, dailyLoanInterest } from './sim/loans.js';
-import { closeDay, trackDay } from './sim/reports.js';
-import { loadGame, saveGame, initAutosave } from './sim/save.js';
+import { signContract, tickContracts } from './sim/contracts.js';
+import { takeLoan, repayLoan } from './sim/loans.js';
+import { loadGame, saveGame } from './sim/save.js';
 import { initScene, updateDayNight, tickCamTween, keyboardPan, scene, camera, controls, renderer } from './render/scene.js';
 import { initPostFX, renderPostFX, setPostFX, PFX } from './render/postfx.js';
 import { loadModels } from './render/assets.js';
 import { initWorldRender, updateWorldRender } from './render/world.js';
 import { initVehicleRender, updateVehicleRender } from './render/vehicles.js';
-import { initUI, updateUI, tickResearch, showWelcome } from './ui/hud.js';
+import { initUI, updateUI, showWelcome } from './ui/hud.js';
 import { initQuestPanel, updateQuestPanel } from './ui/quests.js';
 import { initTutorialPanel, updateTutorialPanel } from './ui/tutorial.js';
 import { startTutorial, skipTutorial } from './sim/tutorial.js';
+import { startResearch } from './sim/research.js';
 import { initInput } from './ui/input.js';
 
 // ---------- init (order matters: renderers subscribe to sim events before
@@ -67,11 +66,12 @@ if (!loadedSave) {
   G.batteryMWh = G.batteryCapMWh * 0.5;
   for (const id of ['firstSolar', 'firstWind', 'firstBattery']) delete G.firedTips[id];
 }
-initAutosave();
+// autosave: browser-only concern, so it lives here and not in sim/save.js
+setInterval(saveGame, 10000);           // every 10 real seconds
+addEventListener('pagehide', saveGame); // and when the tab closes
 showWelcome(loadedSave);
 
 // ---------- game loop ----------
-const MIN_PER_SEC = 8; // game minutes per real second at 1x → 1 day = 3 real minutes
 let last = performance.now();
 
 function frame(now) {
@@ -79,32 +79,7 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.06);
   last = now;
 
-  const gm = dt * MIN_PER_SEC * G.speed;     // game minutes this frame
-  const gh = gm / 60;                        // game hours
-  if (gm > 0) {
-    G.minutes += gm;
-    if (Math.floor(G.minutes / 1440) + 1 > G.day) {
-      closeDay(); // capture yesterday's report card before the counters reset
-      G.day = Math.floor(G.minutes / 1440) + 1;
-      rollFossilFreeDay(); // reads gasMWhToday — must run before the daily resets
-      G.incomeTransportToday = 0; G.incomeEnergyToday = 0; G.expensesToday = 0;
-      G.curtailedTodayMWh = 0;
-      G.finance.prev = G.finance.today;   // keep yesterday for the finance drill-down
-      G.finance.today = { bus: 0, truck: 0, train: 0, routes: {} };
-      dailyUpkeep(); // after the reset, so upkeep shows in today's expenses
-      dailyLoanInterest();
-      autoReplaceFleet(); // renew opted-in routes' aged vehicles (ADR 27)
-    }
-    updateWeather(gh);
-    tickGrid(gh);
-    trackDay(gh); // report-card counters (blackout/flaute/storm hours)
-    tickIndustries(gh);
-    tickVehicles(dt, gh);
-    tickCities(gh);
-    tickContracts(gh);
-    tickResearch(gh);
-    sampleHistory(gm);
-  }
+  tickSim(dt); // the whole sim: clock, day rollover, every tick (sim/tick.js)
   updateWorldRender(dt);
   updateVehicleRender(dt);
   updateQuestPanel(dt);
@@ -120,4 +95,4 @@ requestAnimationFrame(frame);
 
 // expose for debugging & programmatic play-testing (see the playtest-game skill)
 window.G = G;
-window.DEBUG = { place, canPlace, tile, bulldoze, decommissionGas, createRoute, buyVehicle, addWagon, findPath, nameStation, replaceVehicle, autoReplaceFleet, saveGame, signContract, tickContracts, takeLoan, repayLoan, startTutorial, skipTutorial, scene, camera, controls, renderer, setPostFX, PFX };
+window.DEBUG = { tickSim, place, canPlace, tile, bulldoze, decommissionGas, createRoute, buyVehicle, addWagon, findPath, nameStation, replaceVehicle, autoReplaceFleet, saveGame, signContract, tickContracts, takeLoan, repayLoan, startResearch, startTutorial, skipTutorial, scene, camera, controls, renderer, setPostFX, PFX };

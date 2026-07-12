@@ -6,11 +6,38 @@
 // [2..21, 84..92] is empty grass for synthetic road/rail fixtures).
 import { G, resetState } from '../src/sim/state.js';
 import { initGrid, tile, canPlace, place } from '../src/sim/grid.js';
+import { tickSim, MIN_PER_SEC } from '../src/sim/tick.js';
 
 export function freshWorld() {
   resetState();
   initGrid();
   return G;
+}
+
+// ---- time stepping through the REAL tick pipeline (sim/tick.js) ----------
+// Advance the sim by `seconds` of real time in dt-sized frames, exactly as
+// main.js does. Game minutes elapsed = seconds × 8 × G.speed.
+export function step(seconds, dt = 0.1) {
+  for (let t = 0; t < seconds - 1e-9; t += dt) tickSim(Math.min(dt, seconds - t));
+}
+
+// Play `days` whole game days through the full pipeline, day rollovers
+// included. Restores G.speed afterwards.
+export function playDays(days, { speed = 10, dt = 0.1 } = {}) {
+  const prev = G.speed;
+  G.speed = speed;
+  const gmPerCall = dt * MIN_PER_SEC * speed;
+  for (let left = days * 1440; left > 1e-9; left -= gmPerCall) tickSim(dt);
+  G.speed = prev;
+}
+
+// Scripted Math.random: pops queued values, then falls back to 0.5 (which
+// zeroes the weather-drift noise term → deterministic mean reversion).
+// Returns a restore function — call it in afterEach.
+export function scriptRandom(...vals) {
+  const orig = Math.random;
+  Math.random = () => (vals.length ? vals.shift() : 0.5);
+  return () => { Math.random = orig; };
 }
 
 // first tile where the given tool can be placed (scan order: row-major)

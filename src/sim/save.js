@@ -23,6 +23,10 @@ import { createRoute, buyVehicle, addWagon } from './transport.js';
 // REJECT every pre-v5 save (the same clean-break rule v1→v2 used for its
 // worldgen change) and start fresh. Non-worldgen bumps could migrate; a
 // worldgen bump cannot. Pinned in test/save.test.js.
+// NOTE: the "-v2" in the localStorage key is FROZEN, not the format version.
+// The key changed once (v1→v2, first worldgen break) and stays put since;
+// the format version is the `v` field inside the payload (currently 5).
+// Renaming this key would orphan every existing player save.
 const KEY = 'transport-eco-tycoon-save-v2';
 const storage = () => (typeof localStorage === 'undefined' ? null : localStorage);
 
@@ -180,9 +184,4 @@ export function loadGame() {
   let d;
   try { d = JSON.parse(storage()?.getItem(KEY)); } catch { return false; }
   return restore(d);
-}
-
-export function initAutosave() {
-  setInterval(saveGame, 10000);          // every 10 real seconds
-  addEventListener('pagehide', saveGame); // and when the tab closes
 }
