@@ -14,50 +14,59 @@ layers** plus a composition root. The rule that keeps everything testable:
 ```mermaid
 flowchart TB
     subgraph browser["Browser only"]
-        MAIN["main.js\ncomposition root + game loop"]
+        MAIN["main.js\ncomposition root + frame loop\n(the only file that knows all layers)"]
         subgraph render["src/render/ — Three.js views"]
             SCENE["scene.js\nrenderer · camera · lights\nsky+IBL · day/night · fly-to"]
             POSTFX["postfx.js\nGTAO · bloom · tilt-shift"]
             RWORLD["world.js — facade over\nterrain.js · buildings.js · scatter.js\ninfrastructure.js · ambient.js (+ rng.js)"]
             RVEH["vehicles.js\nvehicle meshes · +€ FX\ndemand overlay · route highlight"]
-            MESHES["meshes.js\nmesh & texture library"]
+            MESHES["meshes.js + textures.js + assets.js\nprocedural meshes · canvas textures\nglTF loading (ADR 16/17)"]
         end
         subgraph ui["src/ui/ — DOM panels"]
-            HUD["hud.js\ntopbar · tabs · charts\nresearch · routes · advisor"]
-            QPANEL["quests.js\nobjectives panel"]
+            HUD["hud.js — shell over ui/hud/*\ntopbar · toolbar · dashboard · routes\nresearch · contracts · infobox · welcome"]
+            QPANEL["quests.js / tutorial.js\nobjectives · onboarding cards"]
             INPUT["input.js\npointer build/select"]
         end
     end
-    subgraph sim["src/sim/ — pure logic, runs in Node (tested by test/)"]
+    subgraph sim["src/sim/ — pure logic, runs headless in Node (tested by test/)"]
+        TICK["tick.js\ntickSim(): clock · pinned tick order\nday rollover"]
         STATE["state.js\nshared state G · event bus\nseasons · money"]
-        DATA["data.js\nALL game content:\nbuildings · vehicles · industries\ntechs · tips · encyclopedia"]
-        GRID["grid.js\ntiles · worldgen · placement rules"]
-        ENERGY["energy.js\nweather · grid dispatch"]
-        TRANS["transport.js\nA* · stations · vehicles\nindustries · passengers · happiness"]
-        QUESTS["quests.js\nobjective chains"]
-        CONTRACTS["contracts.js\nspecial transport offers"]
-        LOANS["loans.js\nbank loan · daily interest"]
-        SAVE["save.js\nsnapshot / restore"]
-        NOISE["noise.js\nseeded value-noise"]
+        DATA["data.js\nALL content & tuning:\nbuildings · vehicles · industries · techs\ntips · PAX/CITY/MARKET/… constants"]
+        GRID["grid.js\ntiles · worldgen · placement rules\npurchaseBuilding()"]
+        ENERGY["energy.js\nweather · merit-order dispatch\nprices · dispatch selectors"]
+        TRANS["transport.js\nroutes · vehicles · aging\npurchaseVehicle()"]
+        TDOM["pathfinding.js · stations.js\nindustries.js · cities.js\nA*/poses · catchment · production · demand"]
+        MISC["research.js · quests.js · tutorial.js\ncontracts.js · loans.js · reports.js"]
+        SAVE["save.js\nsnapshot / restore (v5)"]
+        NOISE["noise.js · newGame.js\nseeded value-noise · starter grid"]
     end
-    MAIN -->|"ticks each frame"| sim
+    MAIN -->|"tickSim(dt) each frame"| TICK
+    TICK --> ENERGY & TRANS & TDOM & MISC
     MAIN --> render
     MAIN --> ui
     render -->|"reads G, subscribes to events"| sim
-    ui -->|"reads G, calls place()/buyVehicle()…"| sim
-    TESTS["test/*.test.js\nnode --test"] -.->|"imports directly"| sim
+    ui -->|"reads G, calls purchase*()/place()…"| sim
+    TESTS["test/*.test.js\nnode --test · incl. integration.test.js\n(multi-day headless playthroughs)"] -.->|"imports directly"| sim
 ```
 
-Per-frame data flow (`main.js#frame`):
+Per-frame data flow — `main.js#frame` calls `tickSim(dt)` (`sim/tick.js`),
+then the render/ui updates:
 
 ```
-real dt → game minutes (8 min/s × speed)
-  sim:    updateWeather → tickGrid → tickIndustries → tickVehicles
+real dt → game minutes (8 min/s × speed, sim/tick.js)
+  sim:    [midnight? rollOverDay: closeDay → rollFossilFreeDay → counter
+           resets → dailyUpkeep → dailyLoanInterest → autoReplaceFleet]
+          updateWeather → tickGrid → trackDay → tickIndustries → tickVehicles
           → tickCities → tickContracts → tickResearch → sampleHistory
   render: updateWorldRender (roads/rails dirty-rebuild, water, ambient life)
           → updateVehicleRender (mesh poses, FX, overlays) → updateDayNight
-  ui:     updateQuestPanel → updateUI → render
+  ui:     updateQuestPanel → updateTutorialPanel → updateUI → render
 ```
+
+The tick order is load-bearing (documented in `sim/tick.js`, pinned by
+`test/tick.test.js`): dispatch needs fresh weather, report counters need the
+fresh blackout flag, and industries deliberately read *last* tick's
+demand-response flag.
 
 ### The event bus
 
@@ -68,13 +77,20 @@ happened; renderers and UI decide what that looks like. The important events:
 |---|---|---|
 | `placed` / `bulldozed` | grid.js | render/buildings.js (create/remove building mesh) |
 | `roadBuilt` / `railBuilt` | grid.js | render/infrastructure.js (mark instanced layer dirty) |
-| `vehicleBought` / `wagonAdded` / `vehicleSold` | transport.js | render/vehicles.js (mesh lifecycle) |
+| `vehicleBought` / `wagonAdded` / `vehicleSold` / `vehicleReplaced` | transport.js | render/vehicles.js (mesh lifecycle) |
 | `moneyFx` | transport.js | render/vehicles.js (floating +€ text) |
-| `tip` | sim (various) | ui/hud.js (one-shot advisor toast) |
-| `toast` | quests.js, contracts.js | ui/hud.js (generic toast) |
+| `tip` | sim (various) | ui/hud.js (one-shot advisor toast, deduped via `G.firedTips`) |
+| `toast` | quests.js, contracts.js, research.js, transport.js | ui/hud.js (generic toast) |
 | `contractsChanged` | contracts.js | ui/hud.js (re-render 📜 tab) |
 | `plantBuilt` / `stationBuilt` | grid.js | ui/hud.js (teaching tips) |
+| `researchDone` | research.js | ui/hud.js (re-render 🔬 tab) |
+| `dayReport` | reports.js | ui/hud/dashboard.js (end-of-day report toast) |
+| `tutorialStep` / `tutorialDone` | tutorial.js | ui/tutorial.js (card advance / hide) |
 | `flyTo` | ui/quests.js | render/scene.js (camera tween) |
+
+Adding an event: `emit('name', payload)` in sim, `on('name', fn)` in a view's
+init function. Register listeners in init (after `resetState()` in tests) —
+`G.listeners` is reset with the rest of the state.
 
 This is also why **save/load is small**: `restore()` replays the player's
 builds through the normal `place()`/`buyVehicle()` calls, and the renderer
@@ -82,11 +98,13 @@ rebuilds every mesh just by listening.
 
 Because saves only store player deltas replayed onto a freshly-generated world,
 **any worldgen change invalidates old saves** — a delta that landed on grass may
-now land on water (or vice versa), silently mis-restoring. So the save version
-gates on it: non-worldgen bumps migrate old saves with field defaults (v2→v3→v4),
-but a worldgen bump **rejects** them and starts fresh (v1→v2, and **v5** — the
-WP6 river/lake). `restore()` accepts `v === 5` only; the choice is pinned in
-`test/save.test.js`.
+now land on water (or vice versa), silently mis-restoring. Version policy:
+a non-worldgen field addition needs **no bump** (restore defaults missing
+fields — that's how v2→v4 were absorbed historically), but a worldgen change
+**bumps the version and rejects everything older** (v1→v2, and v5 — the WP6
+river/lake). Today `restore()` accepts `v === 5` only; no migration code
+remains. Pinned in `test/save.test.js`; the localStorage KEY is frozen at its
+historical `-v2` suffix (see the note in `sim/save.js`).
 
 ## Key decisions (ADR-style)
 
@@ -486,7 +504,7 @@ base rate per day (capped 3×, billed via `transport.js#vehicleUpkeep` from
 capacity (floored at 65 %, `effectiveBatteryKWh`) — old trucks run shorter
 legs and charge longer. `replaceVehicle()` trades in for 75 % of list price
 and resets the clock; a per-route **auto-replace** flag renews ≥22-day
-vehicles on the day rollover (`autoReplaceFleet`, called from `main.js`).
+vehicles on the day rollover (`autoReplaceFleet`, called from `sim/tick.js`).
 Constants in `data.js` AGING. Save format bumps to **v4** (same key): vehicle
 `age` and route `autoReplace` persist; v2/v3 saves restore with everything
 grandfathered in at age 0.
@@ -629,12 +647,50 @@ Board 07 detail pass makes it read as a finished modern city-builder while the
 sim and content layers stay untouched (all detail is assets + render + one
 worldgen change). ENERGY-MODEL.md is unaffected.
 
+### 32. Maintainability pass: sim heartbeat, domain modules, integration tests
+**Decision** (July 2026): four structural changes, zero behavior change —
+1. **`sim/tick.js` is the heartbeat.** `tickSim(dt)` owns the clock, the
+   pinned tick order and the order-sensitive day rollover that previously
+   lived inline in `main.js`; research progression moved from `ui/hud.js`
+   into `sim/research.js` (it was the one game rule in the DOM layer). The
+   whole game can now be played headless: `test/integration.test.js` runs
+   multi-day playthroughs on the real starter grid (`sim/newGame.js`)
+   asserting cross-system invariants every tick.
+2. **The sim owns purchase rules and dispatch economics.** `purchaseBuilding`
+   / `purchaseVehicle` / `purchaseWagon` charge and return reason codes the UI
+   only translates; `energy.js` exports selectors (`gasMarginalCost`,
+   `importCapNow`/`importPriceNow`, `h2Reserve`/`h2Sellable`) that both
+   `tickGrid` and the infobox read. The money-free primitives
+   (`place`/`buyVehicle`/`addWagon`) stay untouched — the save replay, the
+   starter grid and DEBUG depend on them.
+3. **Domain modules instead of mega-files.** `transport.js` split into
+   `pathfinding` / `stations` / `industries` / `cities` + routes-and-vehicles;
+   `render/world.js` into `terrain` / `buildings` / `scatter` /
+   `infrastructure` / `ambient` (+ shared `rng`); `ui/hud.js` into a shell
+   plus `ui/hud/*` panels. Every split is mechanical; facades keep the old
+   import surfaces.
+4. **Tuning knobs are data.** Passenger/city/freight constants moved to
+   `data.js` (PAX, CITY, FREIGHT), tests read defs instead of pinning
+   literals, and the transport/city balance is tunable without touching code.
+**Why:** the codebase had doubled since ADR 2; game rules were leaking into
+views and the two 1000+-line view files made every change a search problem.
+The refactor restores the original contract — *if you can't test it headless,
+it's in the wrong layer* — and gives balance work an executable harness
+instead of hand-run playthroughs.
+
 ## Persistence
 
-`sim/save.js` — autosave to localStorage every 10 s and on `pagehide`.
+`sim/save.js` — `snapshot()`/`restore()` are pure sim; the autosave timers
+(every 10 s + `pagehide`) live in `main.js`, the browser being a view concern.
 `snapshot()` captures economy + player deltas (roads, rails, plants, stations,
 routes, vehicles, wagons, quest/tech progress); `restore()` replays them onto
-a freshly generated world. Both are pure and covered by `test/save.test.js`.
+a freshly generated world. Covered by `test/save.test.js` and the round-trip
+in `test/integration.test.js`.
+
+**Checklist for a new persistent field** (see the version policy under "The
+event bus" above): add it to `snapshot()`, restore it with a default for old
+saves (`d.field || fallback`), add a round-trip assertion to
+`test/save.test.js`. No version bump needed unless worldgen moved.
 
 ## Known limitations / roadmap
 

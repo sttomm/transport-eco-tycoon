@@ -181,12 +181,15 @@ Plain ES modules, no framework, no build, no dependencies. Three layers
 npm test        # Node's built-in runner, ~100 ms, zero dependencies
 ```
 
-160 tests pin the simulation: dispatch merit order (incl. the legacy gas,
+190 tests pin the simulation: dispatch merit order (incl. the legacy gas,
 import and H₂-offtake steps), storage efficiencies, placement rules & palette
 unlocks, pathfinding, freight & passenger economics, route-kind validation,
-vehicle aging, quests, the guided tutorial, special contracts, loans, weather
-fronts & forecast, dynamic pricing, climate feedback, daily reports, and the
-save round trip.
+vehicle aging, research, quests, the guided tutorial, special contracts,
+loans, weather fronts & forecast, dynamic pricing, climate feedback, daily
+reports, the tick/day-rollover order, and the save round trip — plus
+`test/integration.test.js`, which plays whole game days headless through the
+real tick pipeline and asserts cross-system invariants (solar dark at night,
+storms cut turbines, a Dunkelflaute defeats battery-only grids).
 New features extend the suite (see [CLAUDE.md](CLAUDE.md)).
 
 ## Documentation
