@@ -1,6 +1,6 @@
 // Dashboard tab: daily report card + "Yesterday" block, weather forecast
 // strip, climate box, power/finance canvas charts and the bank loan box.
-import { G, fmtMoney, seasonOf } from '../../sim/state.js';
+import { G, fmtMoney, seasonOf, calendarDate } from '../../sim/state.js';
 import { CARBON, CLIMATE, H2OFFTAKE, MARKET, LEDGER_CATS } from '../../sim/data.js';
 import { climateRiskMult, POWER_PRICE } from '../../sim/energy.js';
 import { ledgerNets } from '../../sim/finance.js';
@@ -64,6 +64,11 @@ const eventBlock = (items, cls) => items.map(e =>
   `<div class="reportrow"><span>${e.icon} <b>${e.headline}</b></span></div>
    <div class="report-advice small ${cls}" style="border:none;padding:0;margin:0 0 4px 0">${e.body}</div>`).join('');
 
+// "Day 14" alone reads oddly next to a topbar that now shows "🗓 April · Y1"
+// (WP9) — pair the exact day with its calendar month everywhere a report
+// names a day, same convention as the clock tooltip (topbar.js).
+const dayLabel = day => `${calendarDate(day).month} · Day ${day}`;
+
 function dayReportBody(r) {
   const day = r.ledger || {};
   const inc = [], op = [], inv = [];
@@ -103,13 +108,13 @@ function dayReportBody(r) {
 export function showDayReport(r) {
   renderYesterday(); // keep the dashboard "Yesterday" block in sync either way
   if (G.tutorial && G.tutorial.active) { showDayReportToast(r); return; }
-  openModal({ title: `📋 Day ${r.day} report`, body: dayReportBody(r) });
+  openModal({ title: `📋 ${dayLabel(r.day)} report`, body: dayReportBody(r) });
 }
 
 function showDayReportToast(r) {
   const el = document.createElement('div');
   el.className = 'toast report-toast';
-  el.innerHTML = `<div class="toast-head">📋 Day ${r.day} report<span class="toast-x">✕</span></div>
+  el.innerHTML = `<div class="toast-head">📋 ${dayLabel(r.day)} report<span class="toast-x">✕</span></div>
     <div class="toast-body">${reportRows(r)}
       <div class="report-advice small">${reportAdvice(r)}</div></div>`;
   el.querySelector('.toast-x').onclick = () => el.remove();
@@ -126,7 +131,7 @@ export function renderYesterday() {
   el.style.display = 'block';
   const perKind = [['🚌', r.incomeBus], ['🚚', r.incomeTruck], ['🚆', r.incomeTrain]]
     .map(([ic, v]) => `${ic} ${fmtMoney(v)}`).join(' · ');
-  el.innerHTML = `<h3>📋 Yesterday <span class="dim small">(day ${r.day})</span></h3>
+  el.innerHTML = `<h3>📋 Yesterday <span class="dim small">(${dayLabel(r.day)})</span></h3>
     ${reportRows(r)}
     ${reportRow('<span class="dim">— transport by kind</span>', `<span class="dim small">${perKind}</span>`)}
     ${reportRow('<span class="dim">— fixed costs</span>', `<span class="dim small">upkeep ${fmtMoney(r.upkeep)}${r.loanInterest > 0 ? ' · interest ' + fmtMoney(r.loanInterest) : ''}</span>`)}

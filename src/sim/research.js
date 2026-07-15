@@ -3,6 +3,7 @@
 // tickResearch() advances the active project each sim tick.
 import { G, emit, spend } from './state.js';
 import { TECHS } from './data.js';
+import { pushNews } from './news.js';
 
 // Returns true when the project started, or a reason string the UI can
 // explain: 'busy' (lab occupied) | 'poor' (can't afford) | 'invalid'.
@@ -25,6 +26,9 @@ export function tickResearch(gameHours) {
     G.techs[t.id] = true;
     G.research = null;
     emit('toast', { title: 'Research complete!', text: `${t.name} — ${t.desc}` });
+    // permanent, easy-to-miss progress (WP10 sweep, D-C) — file it beside the
+    // toast so a finished tech shows up in the 📰 feed, not just a fading toast
+    pushNews({ type: 'research', icon: '🔬', headline: 'Research complete', body: `${t.name} — ${t.desc}` });
     emit('researchDone', t);
   }
 }

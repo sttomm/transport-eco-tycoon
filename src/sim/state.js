@@ -165,10 +165,6 @@ export function fmtMoney(v) {
   const s = a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : v.toFixed(0);
   return '€' + s;
 }
-export function fmtTime() {
-  const h = Math.floor(hourOfDay()), m = Math.floor(G.minutes % 60);
-  return `Day ${G.day}  ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
 // spend(cost, cat): charge the player if affordable, booking it as an expense
 // under `cat` (data.js LEDGER_CATS). earn(v, cat): credit + book as income.
 // `cat` is optional so the money-free primitives (place/buyVehicle) callers

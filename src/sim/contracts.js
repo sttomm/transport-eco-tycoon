@@ -136,8 +136,17 @@ export function tickContracts(gameHours) {
       cs.offers.push(o);
       cs.offerTimer = CONTRACTS.spawnHours;
       emit('tip', 'firstContract');
-      pushNews({ type: 'contract-offer', icon: '📜', headline: 'New contract offer',
-        body: `${contractLabel(o)} — pays ×${o.mult} per delivery plus a €${o.bonus.toLocaleString()} bonus if filled in ${o.days} days. Sign it in the 📜 tab.`,
+      // one-shot spotlight (WP10): the very first offer ever gets a louder
+      // ticker headline pointing at the 📜 tab instead of the routine one —
+      // dedupe via G.firedTips, same mechanism as the advisor tip, but its
+      // own key so it doesn't race the toast's dedupe in ui/hud/toasts.js.
+      const first = !G.firedTips.firstContractSeen;
+      G.firedTips.firstContractSeen = true;
+      pushNews({ type: 'contract-offer', icon: '📜',
+        headline: first ? 'Contracts unlocked!' : 'New contract offer',
+        body: first
+          ? `${contractLabel(o)} — your first transport contract. Pays ×${o.mult} per delivery plus a €${o.bonus.toLocaleString()} bonus if filled in ${o.days} days. Sign it in the 📜 Contracts tab; once it closes, find the payout in that tab's Completed section.`
+          : `${contractLabel(o)} — pays ×${o.mult} per delivery plus a €${o.bonus.toLocaleString()} bonus if filled in ${o.days} days. Sign it in the 📜 tab.`,
         refs: contractDest(o) });
       emit('contractsChanged');
     }

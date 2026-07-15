@@ -217,6 +217,16 @@ test('autoReplaceFleet renews only opted-in routes and only aged vehicles', () =
   assert.equal(autoReplaceFleet(), 0, 'no funds, no renewal');
 });
 
+test('autoReplaceFleet files a news entry so an overnight renewal is not toast-only (WP10 sweep)', () => {
+  const rA = roadRoute();
+  const old = buyVehicle(rA, 'truck');
+  old.ageDays = AGING.autoAtDays + 1;
+  rA.autoReplace = true;
+  assert.equal(G.news.some(n => n.type === 'fleet'), false, 'nothing filed yet');
+  assert.equal(autoReplaceFleet(), 1);
+  assert.ok(G.news.some(n => n.type === 'fleet' && n.headline === 'Fleet renewal'), 'renewal filed to the feed');
+});
+
 test('selling a vehicle refunds 40% and removes it everywhere', () => {
   const r = roadRoute();
   const v = buyVehicle(r, 'truck');

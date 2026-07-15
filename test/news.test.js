@@ -70,6 +70,23 @@ test('producer wiring: a new offer files a contract-offer entry', () => {
   assert.ok(G.news.some(n => n.type === 'contract-offer'), 'offer spawns filed to the feed');
 });
 
+test('WP10: the very first contract offer gets a one-shot spotlight headline', () => {
+  assert.equal(G.firedTips.firstContractSeen, undefined, 'not fired yet on a fresh world');
+  // offerTimer starts at 0 (state.js) so a single tick spawns the first offer,
+  // same assumption test/contracts.test.js already relies on
+  tickContracts(8);
+  const offers = G.news.filter(n => n.type === 'contract-offer');
+  assert.equal(offers.length, 1, 'exactly one offer entry so far');
+  assert.equal(offers[0].headline, 'Contracts unlocked!', 'first offer is spotlighted');
+  assert.match(offers[0].body, /Completed section/, 'points at the Completed section');
+  assert.equal(G.firedTips.firstContractSeen, true, 'one-shot dedupe flag set');
+
+  tickContracts(8); // board isn't full yet (MAX_OFFERS 3) — a second offer spawns
+  const offers2 = G.news.filter(n => n.type === 'contract-offer');
+  assert.equal(offers2.length, 2, 'a second offer spawned');
+  assert.equal(offers2[1].headline, 'New contract offer', 'reverts to the routine headline');
+});
+
 test('producer wiring: completing a quest files a quest entry', () => {
   G.questsDone = {};      // checkQuests reads this map (initQuestState in prod)
   G.stats.paxLocal = 999; // trip the localLine objective (target 40)

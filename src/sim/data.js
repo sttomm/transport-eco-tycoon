@@ -556,7 +556,7 @@ export const TIPS = {
   },
   firstContract: {
     title: 'Special contracts on offer',
-    text: 'Cities and industries post time-limited transport contracts — check the 📜 Contracts tab. Sign one and every matching delivery pays a +50% premium, plus a cash bonus if you hit the target before the deadline. Unsigned offers rotate out after a while, and a missed deadline costs nothing but the bonus.',
+    text: 'Cities and industries post time-limited transport contracts — watch for the 📰 ticker flash under the topbar, then sign one in the 📜 Contracts tab. Every matching delivery pays a +50% premium, plus a cash bonus if you hit the target before the deadline. Unsigned offers rotate out after a while, and a missed deadline costs nothing but the bonus. Once a contract closes, find it — and what it made — in that tab\'s Completed section.',
   },
   firstLoan: {
     title: 'Debt: leverage with a price tag',

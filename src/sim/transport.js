@@ -10,6 +10,7 @@ import { AGING, VEHICLES, WAGONS, CARGO, ROUTE_COLORS } from './data.js';
 import { book } from './finance.js';
 import { isRoad, isRail } from './grid.js';
 import { contractDelivery } from './contracts.js';
+import { pushNews } from './news.js';
 import { findPath, stationRoadTile, passableFor } from './pathfinding.js';
 import { stationCatchment, stationAccepts, LOCAL_MIN_DIST } from './stations.js';
 
@@ -195,10 +196,13 @@ export function autoReplaceFleet() {
       }
     }
   }
-  if (count) emit('toast', {
-    title: '🔧 Fleet renewal',
-    text: `${count} aged vehicle${count > 1 ? 's' : ''} auto-replaced overnight for ${fmtMoney(cost)} — fresh packs, base upkeep.`,
-  });
+  if (count) {
+    const text = `${count} aged vehicle${count > 1 ? 's' : ''} auto-replaced overnight for ${fmtMoney(cost)} — fresh packs, base upkeep.`;
+    emit('toast', { title: '🔧 Fleet renewal', text });
+    // an overnight spend easy to miss if the player wasn't watching the toast
+    // corner (WP10 sweep, D-C) — file it to the 📰 feed too
+    pushNews({ type: 'fleet', icon: '🔧', headline: 'Fleet renewal', body: text });
+  }
   return count;
 }
 

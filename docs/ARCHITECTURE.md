@@ -87,7 +87,7 @@ happened; renderers and UI decide what that looks like. The important events:
 | `dayReport` | reports.js | ui/hud/dashboard.js (pausing report modal; toast only while the tutorial runs — ADR 36) |
 | `tutorialStep` / `tutorialDone` | tutorial.js | ui/tutorial.js (card advance / hide) |
 | `questDone` / `contractDone` | quests.js / contracts.js | nobody yet — announced for future views (both also emit a `toast`) |
-| `news` | news.js (via contracts/quests/energy/reports producers) | ui/hud/news.js (ticker flash + unread badge) |
+| `news` | news.js (via contracts/quests/energy/reports/research/transport producers) | ui/hud/news.js (ticker flash + unread badge) |
 | `flyTo` | ui/quests.js | render/scene.js (camera tween) |
 
 Adding an event: `emit('name', payload)` in sim, `on('name', fn)` in a view's
@@ -1103,6 +1103,38 @@ derived, nothing to save.
 summer, summer ≈ 0, climate mult still not applied, cooldown gates the roll);
 `test/state.test.js` pins the `calendarDate` mapping table and season
 alignment. 251 tests. `test/integration.test.js` untouched and green.
+
+### 42. Contract discoverability polish + toast/news sweep (WP10)
+
+**Problem:** the first contract offer could still slip by unnoticed, and a
+sweep of the Wave 1–3 reworks turned up two producers that stayed
+toast-only after D-C ("nothing with lasting relevance is toast-only") —
+research completions and overnight fleet auto-renewal — plus a few "Day N"
+strings left over from before WP9 gave the topbar a calendar.
+
+**Decisions:** `tickContracts` (`contracts.js`) now spotlights the very
+first offer ever seen — headline "Contracts unlocked!" instead of the
+routine "New contract offer", body pointing at the 📜 tab and its Completed
+section — deduped one-shot via a new `G.firedTips.firstContractSeen` key (the
+existing firedTips mechanism, kept distinct from the advisor tip's own
+`firstContract` key so the two dedupes don't race each other). The
+`firstContract` TIPS entry (`data.js`) now names the 📰 ticker and the
+Completed section instead of just "the tab". `research.js`'s completion toast
+and `transport.js`'s `autoReplaceFleet` toast each gained a matching
+`pushNews` call (`type: 'research'` / `type: 'fleet'`) so both survive after
+the toast fades. Copy: report/news timestamps now read "`<Month>` · Day N"
+(`dashboard.js`'s day-report title/toast/"Yesterday" block, `news.js`'s
+history timestamps) instead of a bare day count, matching the topbar clock's
+own convention; the now-dead `fmtTime()` helper (superseded by the topbar's
+`calendarDate` display) was removed from `state.js`.
+
+**Verified unchanged:** all four modals (welcome, day report, news history,
+stats) already route through `openModal`/`registerModal` — Escape-to-close
+needed no fix. No new bus events; the `news` event-table row was widened to
+name research.js/transport.js as producers.
+
+**Tests:** one-shot spotlight vs. routine headline on the second offer;
+research completion and fleet renewal each file a news entry. 254 tests.
 
 ## Persistence
 

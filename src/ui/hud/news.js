@@ -3,7 +3,7 @@
 // Clicking either opens the reverse-chronological history modal where the
 // player can 🗑 delete or 📌 keep (pin) past messages — the "let me re-read
 // and curate what I missed" ask. Reads G.news; never contains game rules.
-import { G } from '../../sim/state.js';
+import { G, calendarDate } from '../../sim/state.js';
 import { keepNews, deleteNews, markAllRead, unreadCount } from '../../sim/news.js';
 import { $ } from './dom.js';
 import { openModal } from './modal.js';
@@ -45,7 +45,9 @@ function showTicker(entry) {
   tickerTimer = setTimeout(() => { el.className = ''; }, 12000);
 }
 
-const fmtWhen = n => `Day ${n.day} · ${String(Math.floor((n.minutes / 60) % 24)).padStart(2, '0')}:${String(Math.floor(n.minutes % 60)).padStart(2, '0')}`;
+// month alongside the day (WP10 copy polish — the topbar now reads in
+// months, so a bare "Day 14" in a chronological list is the odd one out)
+const fmtWhen = n => `${calendarDate(n.day).month} · Day ${n.day} · ${String(Math.floor((n.minutes / 60) % 24)).padStart(2, '0')}:${String(Math.floor(n.minutes % 60)).padStart(2, '0')}`;
 
 function renderList(container) {
   if (!G.news.length) {

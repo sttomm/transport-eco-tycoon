@@ -47,6 +47,14 @@ test('tickResearch progresses linearly and completes after days×24 game hours',
   assert.deepEqual(events, ['toast:Research complete!', t.id], 'completion announced via the bus');
 });
 
+test('completion files a news entry so a finished tech is not toast-only (WP10 sweep)', () => {
+  const t = rootTech();
+  startResearch(t.id);
+  tickResearch(t.days * 24 + 1);
+  assert.ok(G.news.some(n => n.type === 'research' && n.headline === 'Research complete'),
+    'tech completion filed to the feed');
+});
+
 test('completing a prerequisite unlocks its child tech', () => {
   const locked = childTech();
   G.techs[locked.req] = true;
