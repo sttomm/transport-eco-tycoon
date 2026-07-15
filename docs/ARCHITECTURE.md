@@ -1069,6 +1069,41 @@ new geometry + night window glow + smoke still drifting from the right spot,
 the zoom blur curve at mid and max zoom, and two buses/trucks passing on a
 two-way road (right-hand keep, matching ambient traffic).
 
+### 41. Seasonal Dunkelflaute + display-only calendar (WP9)
+
+**Problem:** (1) the Dunkelflaute roll was a flat `CLIMATE.flauteRisk` per
+hour with no season input, so dark calms struck in July as often as January —
+unrealistic, and it undercut the "winter is the test" teaching. (2) Time was
+shown only as "Day N", which gives no seasonal intuition ("is winter close?").
+
+**Decisions:** the flaute roll is now `CLIMATE.flauteRisk (0.4%/h base) ×
+season().flauteMul` (Spring 0.5, Summer 0.05 ≈ never, Autumn 1.3, Winter 2.2,
+in the `SEASONS` table, `state.js`), plus a post-event cooldown
+(`G.flauteCooldownH`, `CLIMATE.flauteCooldownH` = 96 h, armed in `updateWeather`
+the tick a calm ends) so flautes can't chain back-to-back. The climate-risk
+multiplier is still **excluded** from the flaute roll (only storm/heatwave are
+loaded) — the ADR 24 teaching point (a dark calm is ordinary weather, not a
+climate consequence) is preserved; the *season*, not emissions, shapes it. The
+integration test forces `G.dunkelflaute = 40` directly, so the battery-defeat
+invariant never depended on the probability and stays pinned untouched.
+
+**Calendar is display-only.** `G.day` stays canonical in all sim/tests/saves;
+season length (`DAYS_PER_SEASON` = 7, 28-day year) is unchanged — moving it
+would silently rebalance the carbon ramp and quest pacing. A pure presentation
+function `calendarDate(day)` (`state.js`) maps the 28-day year onto 12 months
+(March→February, month every ~2⅓ days, aligned so every month falls in its
+season) plus a year number. The topbar clock shows "🗓 August · Y1  HH:MM"; its
+tooltip keeps the exact day + season effects. No game rule reads it.
+
+**Persistence:** `G.flauteCooldownH` is an additive v6 field (default 0 if
+missing) — no version bump, consistent with the D-A rule. `calendarDate` is
+derived, nothing to save.
+
+**Invariants:** `test/climate.test.js` updated to the new shape (winter ≫
+summer, summer ≈ 0, climate mult still not applied, cooldown gates the roll);
+`test/state.test.js` pins the `calendarDate` mapping table and season
+alignment. 251 tests. `test/integration.test.js` untouched and green.
+
 ## Persistence
 
 `sim/save.js` — `snapshot()`/`restore()` are pure sim; the autosave timers

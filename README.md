@@ -139,8 +139,15 @@ so storage arbitrage becomes the business model. One rule from the EU's 2022
 playbook: a **windfall levy** skims 80% of any price above €100/MWh, so
 flexibility pays but engineered scarcity doesn't.
 
+The calendar runs in **seasons** (the topbar shows the month and year, e.g.
+🗓 August · Y1 — a display view of the 28-day year; hover it for the exact day
+and what the season does). Season sets solar yield, daylight length, wind and
+heating demand — and how often dark calms strike: Dunkelflauten are a winter
+phenomenon and almost never happen in summer.
+
 The weather brings real phenomena: multi-day **Dunkelflaute** (dark calm) events
-that batteries can't bridge, storms that force turbine cut-outs, and summer
+that batteries can't bridge (rare in summer, common in winter, and never
+back-to-back), storms that force turbine cut-outs, and summer
 **heatwaves** — stagnant heat domes where air conditioning pushes city demand
 +30% while turbines idle (solar, at least, shines on). Fronts
 announce themselves 10–14 h ahead in the dashboard **weather forecast** and a

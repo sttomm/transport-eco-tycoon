@@ -54,8 +54,23 @@ use. Selling routine surplus pays, hoarding for emergencies pays better.
 ## Weather
 
 - Wind & cloud are mean-reverting random walks (per-hour drift + noise).
-- **Dunkelflaute**: random event (~0.6%/h after day 3), forces wind→6%,
-  cloud→92% for 36-54 game hours. The defining stress test of renewable grids.
+- **Dunkelflaute**: random event, forces wind→6%, cloud→92% for 36-54 game
+  hours. The defining stress test of renewable grids. The hourly roll (after
+  day 3) is `CLIMATE.flauteRisk` (0.4%/h base) **× the season's `flauteMul`**,
+  so dark calms are winter-shaped — plus a post-event cooldown
+  (`G.flauteCooldownH`, `CLIMATE.flauteCooldownH` = 96 h) so they can't chain
+  back-to-back:
+
+  | Season | `flauteMul` | Effective roll/h | Meaning |
+  |---|---|---|---|
+  | Spring | 0.5 | 0.20%/h | occasional |
+  | Summer | 0.05 | 0.02%/h | ≈ never — "there's always some sun left" |
+  | Autumn | 1.3 | 0.52%/h | the calms return |
+  | Winter | 2.2 | 0.88%/h | the dark-calm season |
+
+  Real-world anchor: European Dunkelflauten cluster in the low-sun, high-pressure
+  winter half-year and are rare in summer. The roll is **not** climate-risk
+  scaled (see below) — the season shapes it, emissions don't.
 - **Storm**: random gust to 100% wind → turbines cut out (zero output at
   maximum wind — counterintuitive and true).
 - **Fronts & forecast** (ADR 23): both events are *scheduled* 10–14 h ahead
@@ -78,7 +93,7 @@ Burning gas doesn't just cost money — it loads the weather dice. The lifetime
 | Number | Game | Real-world anchor |
 |---|---|---|
 | Risk multiplier | `min(2, 1 + emitted / 1500 t)` on the hourly storm & heatwave rolls (`data.js` CLIMATE, `energy.js#climateRiskMult`) | climate **attribution science**: a warmer atmosphere makes heatwaves and severe storms measurably more frequent and more intense; the effect is on the *frequency of extremes*, not on everyday weather |
-| Base Dunkelflaute roll | **unscaled** (0.6%/h after day 3) | a dark calm is ordinary winter weather variability, not a warming signature — and the teaching must stay "emissions load the dice for extremes" |
+| Dunkelflaute roll | **not risk-scaled** — season-shaped instead (0.4%/h base × `flauteMul`, day 3+, with a 96 h post-event cooldown; see Weather) | a dark calm is ordinary winter weather variability, not a warming signature — and the teaching must stay "emissions load the dice for extremes" |
 | Heatwave | summer only, ~0.5%/h × risk, 18–30 h, scheduled 10–14 h ahead like every front | heatwaves are the most confidently attributed extreme; forecasts see them days out |
 | Heat dome effects | city demand ×1.3 (AC), wind drift target capped at 0.25, clear skies (solar strong) | a heat dome is a stagnant high-pressure system: peak AC load arrives *together with* calm air (Texas 2023, Europe 2022), while cloudless skies keep PV delivering — batteries charged at noon carry the hot evening |
 

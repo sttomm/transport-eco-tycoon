@@ -42,18 +42,57 @@ test('climateRiskMult: 1× at zero emissions, 2× at scaleTons, capped at maxMul
   assert.equal(climateRiskMult(), CLIMATE.maxMult, 'hard cap — gentle by design');
 });
 
-test('risk multiplier scales storm & heatwave rolls but NOT the base Dunkelflaute', () => {
+test('risk multiplier scales storm & heatwave rolls but NOT the season-shaped Dunkelflaute', () => {
   G.day = SUMMER_DAY;
   G.co2EmittedTons = 0;
   const base = eventThresholds();
-  assert.equal(base.flaute, CLIMATE.flauteRisk);
+  // WP9: the flaute base is now shaped by the season (× flauteMul), never by
+  // the climate-risk multiplier — the ADR teaching point (ordinary dark calms
+  // are normal weather, not a climate consequence) survives the reshape.
+  assert.equal(base.flaute, CLIMATE.flauteRisk * seasonOf(SUMMER_DAY).flauteMul, 'flaute = base × season mul');
   assert.equal(base.storm, CLIMATE.stormRisk);
   assert.equal(base.heatwave, CLIMATE.heatRisk);
   G.co2EmittedTons = CLIMATE.scaleTons; // → 2×
   const loaded = eventThresholds();
   assert.equal(loaded.storm, CLIMATE.stormRisk * 2, 'storm dice loaded');
   assert.equal(loaded.heatwave, CLIMATE.heatRisk * 2, 'heatwave dice loaded');
-  assert.equal(loaded.flaute, CLIMATE.flauteRisk, 'ordinary dark calm unaffected');
+  assert.equal(loaded.flaute, CLIMATE.flauteRisk * seasonOf(SUMMER_DAY).flauteMul,
+    'climate change does NOT load the ordinary dark-calm dice — only the season shapes it');
+});
+
+test('Dunkelflaute risk is winter-shaped: winter ≫ summer, summer ≈ never', () => {
+  G.co2EmittedTons = 0;
+  G.day = WINTER_DAY;
+  const winter = eventThresholds().flaute;
+  G.day = SUMMER_DAY;
+  const summer = eventThresholds().flaute;
+  assert.ok(winter > summer * 10, `winter dark calms far more likely than summer (${winter} vs ${summer})`);
+  assert.ok(summer > 0 && summer < 0.001, 'summer ≈ never — there is always some sun left — but not impossible');
+  assert.equal(winter, CLIMATE.flauteRisk * seasonOf(WINTER_DAY).flauteMul, 'winter = base × winter mul');
+});
+
+test('post-event cooldown shuts the flaute roll off entirely, then reopens', () => {
+  G.day = WINTER_DAY; // a season that would otherwise roll readily
+  assert.ok(eventThresholds().flaute > 0, 'open by default (no cooldown pending)');
+  G.flauteCooldownH = 50;
+  assert.equal(eventThresholds().flaute, 0, 'no re-roll while the cooldown burns down');
+  G.flauteCooldownH = 0;
+  assert.ok(eventThresholds().flaute > 0, 'reopens once the cooldown elapses');
+});
+
+test('an ending Dunkelflaute arms the cooldown, blocking a back-to-back re-roll', () => {
+  script(); // constant 0.5 → deterministic, no drift noise, no stray event rolls
+  G.day = WINTER_DAY;
+  G.dunkelflaute = 2;
+  updateWeather(1);
+  assert.equal(G.flauteCooldownH, 0, 'still running — no cooldown yet');
+  updateWeather(1.5); // drains past zero → the calm breaks this tick
+  assert.ok(G.dunkelflaute <= 0, 'calm over');
+  assert.equal(G.flauteCooldownH, CLIMATE.flauteCooldownH, 'cooldown armed on the ending tick');
+  assert.equal(eventThresholds().flaute, 0, 'immediate re-roll blocked');
+  for (let i = 0; i < CLIMATE.flauteCooldownH + 1; i++) updateWeather(1); // burn it down
+  assert.equal(G.flauteCooldownH, 0);
+  assert.ok(eventThresholds().flaute > 0, 'winter rolls resume afterwards');
 });
 
 test('heatwave roll is summer-only; the flaute roll keeps its day-3 grace', () => {

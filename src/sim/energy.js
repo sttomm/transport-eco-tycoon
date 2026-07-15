@@ -29,13 +29,16 @@ export function climateRiskMult() {
 
 // Per-hourly-roll probabilities for the three scheduled events. Factored out
 // (and exported) so tests can pin the climate feedback on the thresholds
-// without fighting Math.random. The base Dunkelflaute is deliberately NOT
+// without fighting Math.random. The Dunkelflaute is deliberately NOT
 // risk-scaled — it is normal weather variability; climate change loads the
-// dice for storms and heatwaves. Heatwaves are summer-only heat domes.
+// dice for storms and heatwaves. Instead the flaute base is shaped by the
+// SEASON (winter ≫ summer ≈ never) and gated by a post-event cooldown so dark
+// calms can't chain back-to-back. Heatwaves are summer-only heat domes.
 export function eventThresholds() {
   const risk = climateRiskMult();
+  const flauteOpen = G.day > 3 && G.flauteCooldownH <= 0;
   return {
-    flaute: G.day > 3 ? CLIMATE.flauteRisk : 0,
+    flaute: flauteOpen ? CLIMATE.flauteRisk * season().flauteMul : 0,
     storm: CLIMATE.stormRisk * risk,
     heatwave: season().name === 'Summer' ? CLIMATE.heatRisk * risk : 0,
   };
@@ -57,12 +60,15 @@ function newsFront(f) {
 let weatherTimer = 0;
 export function updateWeather(gameHours) {
   weatherTimer += gameHours;
+  if (G.flauteCooldownH > 0) G.flauteCooldownH = Math.max(0, G.flauteCooldownH - gameHours);
   const drift = (target, v, rate) => v + (target - v) * rate * gameHours + (Math.random() - 0.5) * 0.08 * Math.sqrt(gameHours);
 
   if (G.dunkelflaute > 0) {
     G.dunkelflaute -= gameHours;
     G.wind = drift(0.06, G.wind, 0.5);
     G.cloud = drift(0.92, G.cloud, 0.5);
+    // the calm just broke: start the cooldown so the next one can't chain on
+    if (G.dunkelflaute <= 0) G.flauteCooldownH = CLIMATE.flauteCooldownH;
   } else if (G.heatwave > 0) {
     // heat dome (ADR 24): stagnant high-pressure air — wind pinned low,
     // skies stay clear (strong solar). The demand side lives in tickGrid.

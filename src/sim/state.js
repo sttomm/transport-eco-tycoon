@@ -41,6 +41,7 @@ function initialState() {
     wind: 0.5,
     cloud: 0.25,
     dunkelflaute: 0,          // remaining hours of low-wind overcast event
+    flauteCooldownH: 0,       // hours left before another Dunkelflaute may roll (post-event cooldown)
     heatwave: 0,              // remaining hours of heat-dome event (high demand, low wind — ADR 24)
     weatherFront: null,       // scheduled front { type: 'dunkelflaute'|'storm'|'heatwave', inHours, durationH }
     forecast: null,           // next-24h outlook (derived each tick by updateWeather, not saved)
@@ -129,14 +130,35 @@ export function hourOfDay() { return (G.minutes / 60) % 24; }
 // sunrise/sunset are kept symmetric around 12:00 so the sun-elevation curve
 // stays continuous across midnight.
 export const DAYS_PER_SEASON = 7;
+// flauteMul: per-season factor on the BASE Dunkelflaute roll (energy.js
+// eventThresholds). Summer ≈ never ("there's always some sun left"), winter is
+// the dark-calm season. Shapes when dark calms strike without touching the
+// climate-risk multiplier (which stays excluded from the flaute roll by design).
 export const SEASONS = [
-  { name: 'Spring', icon: '🌸', solarAmp: 1.0, sunrise: 5.5, sunset: 18.5, windMul: 1.0, demandMul: 1.0 },
-  { name: 'Summer', icon: '☀️', solarAmp: 1.15, sunrise: 4.5, sunset: 19.5, windMul: 0.85, demandMul: 0.95 },
-  { name: 'Autumn', icon: '🍂', solarAmp: 0.8, sunrise: 6.5, sunset: 17.5, windMul: 1.15, demandMul: 1.05 },
-  { name: 'Winter', icon: '❄️', solarAmp: 0.55, sunrise: 8, sunset: 16, windMul: 1.25, demandMul: 1.3 },
+  { name: 'Spring', icon: '🌸', solarAmp: 1.0, sunrise: 5.5, sunset: 18.5, windMul: 1.0, demandMul: 1.0, flauteMul: 0.5 },
+  { name: 'Summer', icon: '☀️', solarAmp: 1.15, sunrise: 4.5, sunset: 19.5, windMul: 0.85, demandMul: 0.95, flauteMul: 0.05 },
+  { name: 'Autumn', icon: '🍂', solarAmp: 0.8, sunrise: 6.5, sunset: 17.5, windMul: 1.15, demandMul: 1.05, flauteMul: 1.3 },
+  { name: 'Winter', icon: '❄️', solarAmp: 0.55, sunrise: 8, sunset: 16, windMul: 1.25, demandMul: 1.3, flauteMul: 2.2 },
 ];
 export function seasonOf(day) { return SEASONS[Math.floor((day - 1) / DAYS_PER_SEASON) % 4]; }
 export function season() { return seasonOf(G.day); }
+
+// ---- calendar: display-only months over the implicit 28-day year ----------
+// The sim only ever knows G.day (canonical everywhere in sim/tests/saves). This
+// is a pure presentation mapping: the 4×DAYS_PER_SEASON-day year is shown as 12
+// months so "August → autumn soon" reads at a glance. The year starts in March
+// (spring); months advance every ~2⅓ days and line up exactly with the seasons
+// (Mar/Apr/May = Spring … Dec/Jan/Feb = Winter). NOT used by any game rule.
+const MONTHS = ['March', 'April', 'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December', 'January', 'February'];
+export function calendarDate(day) {
+  const yearLen = DAYS_PER_SEASON * 4; // 28
+  const d = Math.max(0, Math.floor(day) - 1);
+  const year = Math.floor(d / yearLen) + 1;
+  const dayInYear = d % yearLen;
+  const monthIndex = Math.floor(dayInYear * MONTHS.length / yearLen);
+  return { month: MONTHS[monthIndex], monthIndex, year };
+}
 
 export function fmtMoney(v) {
   const a = Math.abs(v);

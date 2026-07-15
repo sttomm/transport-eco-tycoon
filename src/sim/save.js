@@ -27,6 +27,8 @@ import { syncNewsSeq } from './news.js';
 // v6: playtest-feedback round (news feed, finance ledger, contract history,
 // per-route lifetime counters). Same worldgen, so this is an ADDITIVE bump:
 // restore() still accepts v5 and fills the new fields with defaults.
+// WP9 (still v6): + G.flauteCooldownH (post-Dunkelflaute cooldown). Additive,
+// older saves default it to 0 — no version bump.
 // WP7 (still v6): canPlace() gained a turbine minSpacing rule (grid.js). No
 // new persisted field, but the plant replay below passes { lenient: true } so
 // a save holding turbines closer together than the new rule still restores
@@ -63,6 +65,7 @@ export function snapshot() {
     fossilFreeDays: G.fossilFreeDays, gasDecommissioned: G.gasDecommissioned,
     reports: G.reports,
     wind: G.wind, cloud: G.cloud, dunkelflaute: G.dunkelflaute,
+    flauteCooldownH: G.flauteCooldownH,
     heatwave: G.heatwave, weatherFront: G.weatherFront,
     batteryMWh: G.batteryMWh, h2MWh: G.h2MWh,
     incomeT: G.incomeTransportToday, incomeE: G.incomeEnergyToday,
@@ -127,6 +130,7 @@ export function restore(d) {
   if (d.reports) G.reports = d.reports;
   G.weatherFront = d.weatherFront || null;
   G.wind = d.wind; G.cloud = d.cloud; G.dunkelflaute = d.dunkelflaute || 0;
+  G.flauteCooldownH = d.flauteCooldownH || 0; // v6 additive — older saves: no cooldown pending
   G.heatwave = d.heatwave || 0; // pre-climate v3 saves: no heatwave active
   G.incomeTransportToday = d.incomeT || 0; G.incomeEnergyToday = d.incomeE || 0;
   G.expensesToday = d.expenses || 0; G.curtailedTodayMWh = d.curtailed || 0;

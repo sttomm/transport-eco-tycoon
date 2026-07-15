@@ -109,7 +109,9 @@ export const FORECAST = {
 export const CLIMATE = {
   scaleTons: 1500,    // emitted tons at which extreme-event risk doubles (= the cap)
   maxMult: 2,         // risk multiplier ceiling
-  flauteRisk: 0.006,  // Dunkelflaute per hourly roll (day 4+) — base variability, NOT risk-scaled
+  flauteRisk: 0.004,  // BASE Dunkelflaute per hourly roll (day 4+) — × the season's flauteMul,
+                      // NOT risk-scaled (ordinary weather variability, not a climate consequence)
+  flauteCooldownH: 96, // after a Dunkelflaute ends, hours before another can roll (no back-to-back chains)
   stormRisk: 0.005,   // storm per hourly roll — × risk multiplier
   heatRisk: 0.005,    // heatwave per hourly roll, summer only — × risk multiplier
   heatHmin: 18, heatHmax: 30, // heatwave duration (h); scheduled with the FORECAST lead time
