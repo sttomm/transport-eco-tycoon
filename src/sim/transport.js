@@ -16,7 +16,8 @@ import { stationCatchment, stationAccepts, LOCAL_MIN_DIST } from './stations.js'
 // which ledger category each vehicle kind's delivery income books under
 const INCOME_CAT = { bus: 'transportBus', truck: 'transportTruck', train: 'transportTrain' };
 
-// money earned by a vehicle → today's totals, per-kind and per-route breakdown
+// money earned by a vehicle → today's totals, per-kind and per-route breakdown,
+// plus the route's lifetime earnings (WP5 per-route economics; persisted).
 function credit(v, pay) {
   G.money += pay;
   G.incomeTransportToday += pay;
@@ -24,6 +25,7 @@ function credit(v, pay) {
   const f = G.finance.today;
   f[v.kind] = (f[v.kind] || 0) + pay;
   f.routes[v.route.id] = (f.routes[v.route.id] || 0) + pay;
+  v.route.earnedTotal = (v.route.earnedTotal || 0) + pay;
 }
 
 // the stop tile on the network a vehicle drives on
@@ -44,21 +46,31 @@ export function freightCapacity(v) {
 // ---------- routes & vehicles ----------
 let routeSeq = 1;
 export function createRoute() {
-  const r = { id: routeSeq++, name: 'Route ' + routeSeq, stops: [], vehicles: [], cargoCarried: {} };
+  // spentTotal / earnedTotal: lifetime cost & income attributed to this route
+  // (WP5). Persisted; the route card shows profit = earnedTotal − spentTotal.
+  const r = { id: routeSeq++, name: 'Route ' + routeSeq, stops: [], vehicles: [], cargoCarried: {}, spentTotal: 0, earnedTotal: 0 };
   G.routes.push(r);
   return r;
 }
 
-// Toggle a station in a route's stop list: clicking a station that's already
-// a stop removes that occurrence (undo / remove-a-stop), otherwise it's
-// appended. Removing the last occurrence means a station can't be added twice
-// in a row, which is fine — a two-stop route already ping-pongs because
-// vehicles wrap stopIndex modulo stops.length. Returns the mutated list.
+// Add / remove / finish while editing a route's stop list. Returns a status:
+//   'finished' — clicked the FIRST stop of a ≥2-stop route: traversal already
+//                loops back automatically (stopIndex wraps modulo length), so
+//                re-adding the origin to "close the loop" is never needed. This
+//                finishes editing (like ✔ Done) and toasts the player why. The
+//                origin is NOT re-added — no duplicate stops, no save impact.
+//   'removed'  — clicked an existing (non-origin) stop: toggle it out.
+//   'added'    — clicked a new station: append it.
 export function toggleRouteStop(route, station) {
+  if (route.stops.length >= 2 && station === route.stops[0]) {
+    if (G.routeEdit === route) G.routeEdit = null;
+    emit('toast', { title: '↻ Route loops back', text: 'Routes return to the first stop automatically — no need to re-add it.' });
+    return 'finished';
+  }
   const at = route.stops.lastIndexOf(station);
-  if (at !== -1) route.stops.splice(at, 1);
-  else route.stops.push(station);
-  return route.stops;
+  if (at !== -1) { route.stops.splice(at, 1); return 'removed'; }
+  route.stops.push(station);
+  return 'added';
 }
 
 // which route kind each vehicle type belongs on
@@ -124,6 +136,7 @@ export function purchaseVehicle(route, kind) {
   if (rk && VEHICLE_ROUTE_KIND[kind] !== rk) return 'kind';
   if (!stationRoadTile(route.stops[0], kind === 'train' ? isRail : isRoad)) return 'access';
   if (!spend(VEHICLES[kind].cost, 'buyVehicle')) return 'poor';
+  route.spentTotal = (route.spentTotal || 0) + VEHICLES[kind].cost; // WP5 per-route capex
   return buyVehicle(route, kind);
 }
 
@@ -131,13 +144,16 @@ export function purchaseWagon(v, type) {
   if (v.kind !== 'train' || !WAGONS[type]) return 'kind';
   if (v.wagons.length >= v.def.maxWagons) return 'full';
   if (!spend(WAGONS[type].cost, 'buyWagon')) return 'poor';
+  v.route.spentTotal = (v.route.spentTotal || 0) + WAGONS[type].cost; // WP5
   return addWagon(v, type);
 }
 
 export function sellVehicle(v) {
   v.route.vehicles = v.route.vehicles.filter(x => x !== v);
   G.vehicles = G.vehicles.filter(x => x !== v);
-  earn(v.def.cost * 0.4, 'buyVehicle'); // trade-in credit offsets vehicle capex
+  const tradeIn = v.def.cost * 0.4;
+  earn(tradeIn, 'buyVehicle'); // trade-in credit offsets vehicle capex
+  v.route.spentTotal = Math.max(0, (v.route.spentTotal || 0) - tradeIn); // recover route capex
   emit('vehicleSold', v);
 }
 
@@ -158,7 +174,9 @@ export function effectiveBatteryKWh(v) {
 
 // trade in the old vehicle for a factory-fresh one (same kind, wagons stay)
 export function replaceVehicle(v) {
-  if (!spend(v.def.cost * AGING.replaceFrac, 'replaceFleet')) return false;
+  const cost = v.def.cost * AGING.replaceFrac;
+  if (!spend(cost, 'replaceFleet')) return false;
+  if (v.route) v.route.spentTotal = (v.route.spentTotal || 0) + cost; // WP5 per-route capex
   v.ageDays = 0;
   v.battery = v.def.batteryKWh;
   emit('vehicleReplaced', v);

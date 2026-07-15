@@ -2,10 +2,11 @@
 // haulage, delivery payment and the stats counters that drive quests.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { G } from '../src/sim/state.js';
+import { G, on } from '../src/sim/state.js';
 import { place, canPlace } from '../src/sim/grid.js';
-import { INDUSTRY_TYPES } from '../src/sim/data.js';
-import { tickVehicles, createRoute, buyVehicle, toggleRouteStop } from '../src/sim/transport.js';
+import { INDUSTRY_TYPES, VEHICLES } from '../src/sim/data.js';
+import { tickVehicles, createRoute, buyVehicle, purchaseVehicle, toggleRouteStop, vehicleUpkeep } from '../src/sim/transport.js';
+import { dailyUpkeep } from '../src/sim/energy.js';
 import { tickIndustries } from '../src/sim/industries.js';
 import { stationCatchment, stationAccepts } from '../src/sim/stations.js';
 import { freshWorld, buildRoad, fakeIndustry } from './helpers.js';
@@ -62,16 +63,56 @@ test('stations pull produced cargo from industries in range', () => {
   assert.ok((depotA.cargo.grain || 0) > 9, 'depot collected the grain');
 });
 
-test('toggleRouteStop adds a station, then removes it when clicked again', () => {
+test('toggleRouteStop: new station adds, a non-origin existing stop removes', () => {
   const r = createRoute();
   assert.deepEqual(r.stops, [], 'starts empty');
-  toggleRouteStop(r, depotA);
-  toggleRouteStop(r, depotB);
+  assert.equal(toggleRouteStop(r, depotA), 'added');
+  assert.equal(toggleRouteStop(r, depotB), 'added');
   assert.deepEqual(r.stops, [depotA, depotB], 'two clicks add two stops');
+  // depotB is the non-origin (last) stop → toggles out
+  assert.equal(toggleRouteStop(r, depotB), 'removed', 'clicking a non-origin stop removes it');
+  assert.deepEqual(r.stops, [depotA]);
+});
+
+test('clicking the FIRST stop of a ≥2-stop route finishes editing (routes loop back)', () => {
+  const r = createRoute();
   toggleRouteStop(r, depotA);
-  assert.deepEqual(r.stops, [depotB], 'clicking depotA again removes it');
   toggleRouteStop(r, depotB);
-  assert.deepEqual(r.stops, [], 'clicking the last stop again clears the route');
+  G.routeEdit = r;
+  const toasts = [];
+  on('toast', t => toasts.push(t));
+  const res = toggleRouteStop(r, depotA); // first stop, length 2
+  assert.equal(res, 'finished', 'signals the caller to stop editing');
+  assert.deepEqual(r.stops, [depotA, depotB], 'origin neither re-added nor removed — no duplicate, no loss');
+  assert.equal(G.routeEdit, null, 'editing ended, exactly like ✔ Done');
+  assert.ok(toasts.some(t => /loop/i.test(t.title + ' ' + t.text)), 'told the player the loop is automatic');
+});
+
+test('a single-stop route: clicking that stop still just removes it', () => {
+  const r = createRoute();
+  toggleRouteStop(r, depotA);
+  assert.equal(toggleRouteStop(r, depotA), 'removed', 'only ≥2-stop routes finish on a first-stop click');
+  assert.deepEqual(r.stops, []);
+});
+
+test('per-route economics: purchase, daily upkeep and delivery all attribute to the route', () => {
+  const r = createRoute();
+  r.stops.push(depotA, depotB);
+  assert.equal(r.spentTotal, 0, 'new route starts even');
+  assert.equal(r.earnedTotal, 0);
+  const truck = purchaseVehicle(r, 'truck'); // player path: charges AND books capex
+  assert.ok(truck && typeof truck === 'object', 'road/kind ok, bought');
+  assert.equal(r.spentTotal, VEHICLES.truck.cost, 'vehicle purchase booked to route capex');
+
+  const beforeUpkeep = r.spentTotal;
+  dailyUpkeep();
+  assert.ok(Math.abs((r.spentTotal - beforeUpkeep) - vehicleUpkeep(truck)) < 1e-6,
+    'daily upkeep adds exactly this vehicle’s upkeep to its route');
+
+  step(600); // haul grain A→B and get paid
+  assert.ok(r.earnedTotal > 0, 'delivery income accrues on the route');
+  assert.ok(Math.abs(r.earnedTotal - G.finance.today.routes[r.id]) < 1e-6,
+    'earnedTotal mirrors today’s per-route income within a single (un-rolled) day');
 });
 
 test('a truck hauls grain to the food plant: payment, stats, input stock', () => {

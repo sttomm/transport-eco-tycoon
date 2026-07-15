@@ -159,9 +159,11 @@ function onPointerUp(ev) {
   const t = tile(i, j);
   if (!t) return;
   if (t.occ && t.occ.kind === 'station' && G.routeEdit) {
-    toggleRouteStop(G.routeEdit, t.occ); // click a station to add it; click it again to remove
+    // add / remove a stop; clicking the first stop of a ≥2-stop route finishes
+    // editing (routes loop back automatically — see toggleRouteStop)
+    const res = toggleRouteStop(G.routeEdit, t.occ);
     renderRoutes();
-    G.selected = t.occ;
+    if (res !== 'finished') G.selected = t.occ;
     return;
   }
   if (t.occ && ['industry', 'station', 'plant'].includes(t.occ.kind)) G.selected = t.occ;

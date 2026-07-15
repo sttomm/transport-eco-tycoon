@@ -81,6 +81,7 @@ export function snapshot() {
     routes: G.routes.map(r => ({
       name: r.name, stops: r.stops.map(stIx), cargoCarried: r.cargoCarried || {},
       autoReplace: r.autoReplace || false,
+      spentTotal: r.spentTotal || 0, earnedTotal: r.earnedTotal || 0, // WP5 (v6 additive)
       vehicles: r.vehicles.map(v => ({
         kind: v.kind, battery: v.battery, cargo: v.cargo,
         stopIndex: v.stopIndex, wagons: v.wagons.map(w => w.type),
@@ -170,6 +171,8 @@ export function restore(d) {
     r.stops = rd.stops.map(ix => placed[ix]).filter(Boolean);
     r.cargoCarried = rd.cargoCarried || {}; // pre-routeKind saves: rebuilt on next delivery
     r.autoReplace = !!rd.autoReplace;
+    r.spentTotal = rd.spentTotal || 0; // WP5 lifetime counters — v5 saves default to 0
+    r.earnedTotal = rd.earnedTotal || 0;
     for (const vd of rd.vehicles || []) {
       // skipKindCheck grandfathers vehicles whose kind no longer matches the
       // route's derived kind — validation applies to new purchases only

@@ -5,7 +5,7 @@
 // Coordinating shell: owns the sim-event subscriptions, the tab router, the
 // keyboard/speed controls and the update throttles. The panels themselves
 // live in ./hud/*.js; this module re-exports the surface other files import.
-import { G, on } from '../sim/state.js';
+import { G, on, emit } from '../sim/state.js';
 import { decommissionGas } from '../sim/grid.js';
 import { notifyTutorial } from '../sim/tutorial.js';
 import { $, setSpeed } from './hud/dom.js';
@@ -18,7 +18,7 @@ import {
 } from './hud/dashboard.js';
 import { renderResearch, renderResearchLive } from './hud/research.js';
 import { renderContracts, renderContractsLive } from './hud/contracts.js';
-import { renderRoutes, renderRoutesLive } from './hud/routes.js';
+import { renderRoutes, renderRoutesLive, quickBuyVehicle } from './hud/routes.js';
 import { renderLearn } from './hud/learn.js';
 import { renderInfobox } from './hud/infobox.js';
 import { initNews, onNews } from './hud/news.js';
@@ -56,11 +56,29 @@ export function initUI() {
   initTopbarTooltips();
   initNews();
   initStats();
+  anchorSidePanel();
+  window.addEventListener('resize', anchorSidePanel);
   // delegated: the infobox re-renders every 0.25 s, so a handler on the button
   // itself could vanish between mousedown and click (same trick as the vehlist)
   $('infobox').addEventListener('click', e => {
-    if (e.target.id !== 'decomgas') return;
-    if (decommissionGas()) G.selected = null; // tip fires from the sim
+    if (e.target.id === 'decomgas') { if (decommissionGas()) G.selected = null; return; } // tip fires from the sim
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    // WP5 click-through: city "show busiest stop", station "edit"/"+ vehicle"
+    if (btn.dataset.flySt !== undefined) {
+      const st = G.stations[+btn.dataset.flySt];
+      if (st) { emit('flyTo', { i: st.i, j: st.j }); G.selected = st; }
+      return;
+    }
+    if (btn.dataset.editroute !== undefined) {
+      const r = G.routes.find(x => x.id === +btn.dataset.editroute);
+      if (r) { G.routeEdit = r; openTab('routes', true); }
+      return;
+    }
+    if (btn.dataset.addveh !== undefined) {
+      const r = G.routes.find(x => x.id === +btn.dataset.addveh);
+      if (r) { quickBuyVehicle(r); openTab('routes', true); }
+    }
   });
 
   $('speeds').addEventListener('click', e => {
@@ -92,23 +110,34 @@ function toggleDemand() {
   $('demandbtn').classList.toggle('on', G.showDemand);
 }
 
+// The side panel's CSS `bottom` is a static fallback that loses to the real
+// toolbar height (which grows when the bar wraps). Anchor it to the live
+// height — same trick topbar.js uses for the weather banner (WP5).
+function anchorSidePanel() {
+  const tb = $('toolbar');
+  if (tb) $('sidepanel').style.bottom = (tb.offsetHeight + 10) + 'px';
+}
+
 // ---------- side panel tabs ----------
+// Open (or, when it's already open, toggle shut) a side-panel tab. Exported so
+// click-throughs (e.g. the station infobox "✎ edit" button) can jump straight
+// to the routes tab. `force` keeps a tab open instead of toggling it.
+export function openTab(tab, force = false) {
+  activeTab = (!force && activeTab === tab) ? null : tab;
+  G.routeHover = null;
+  document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
+  $('sidepanel').style.display = activeTab ? 'flex' : 'none';
+  document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
+  if (activeTab) { notifyTutorial('tab:' + activeTab); anchorSidePanel(); }
+  if (activeTab === 'dashboard') { renderYesterday(); renderForecast(); renderClimate(); }
+  if (activeTab === 'contracts') renderContracts();
+  if (activeTab === 'research') { renderResearch(); showTip('research'); }
+  if (activeTab === 'routes') renderRoutes();
+  if (activeTab === 'learn') renderLearn();
+}
 function buildTabs() {
   document.querySelectorAll('#tabbtns button').forEach(b => {
-    b.onclick = () => {
-      const tab = b.dataset.tab;
-      activeTab = activeTab === tab ? null : tab;
-      G.routeHover = null;
-      document.querySelectorAll('#tabbtns button').forEach(x => x.classList.toggle('on', x.dataset.tab === activeTab));
-      $('sidepanel').style.display = activeTab ? 'flex' : 'none';
-      document.querySelectorAll('.tabpage').forEach(p => p.style.display = p.id === 'tab-' + activeTab ? 'block' : 'none');
-      if (activeTab) notifyTutorial('tab:' + activeTab);
-      if (activeTab === 'dashboard') { renderYesterday(); renderForecast(); renderClimate(); }
-      if (activeTab === 'contracts') renderContracts();
-      if (activeTab === 'research') { renderResearch(); showTip('research'); }
-      if (activeTab === 'routes') renderRoutes();
-      if (activeTab === 'learn') renderLearn();
-    };
+    b.onclick = () => openTab(b.dataset.tab);
   });
 }
 

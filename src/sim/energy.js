@@ -475,7 +475,11 @@ export function totalUpkeep() {
 export function dailyUpkeep() {
   let plants = 0, vehicles = 0;
   for (const p of G.plants) plants += p.def.upkeep || 0;
-  for (const v of G.vehicles) vehicles += vehicleUpkeep(v);
+  for (const v of G.vehicles) {
+    const u = vehicleUpkeep(v);
+    vehicles += u;
+    if (v.route) v.route.spentTotal = (v.route.spentTotal || 0) + u; // WP5 per-route opex
+  }
   const cost = plants + vehicles;
   G.money -= cost;
   G.expensesToday += cost;

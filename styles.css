@@ -105,9 +105,41 @@
   .route.editing { border-color: var(--warn); box-shadow: 0 0 8px rgba(240, 198, 74, 0.3); }
   .route-head { display: flex; gap: 6px; align-items: center; }
   .route-head b { flex: 1; }
-  .route-veh { margin-top: 5px; display: flex; gap: 6px; }
+  .route-veh { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
   .veh { padding: 2px 0; border-top: 1px dashed var(--line); }
   button.big { width: 100%; padding: 7px; margin: 8px 0 2px; }
+
+  /* ---- shared card tokens (WP5 route cards; reused by WP6 tutorial card) ---- */
+  /* rounded emoji chip — route kind / tutorial step icon */
+  .icon-chip { display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px; font-size: 15px;
+    background: var(--panel); border: 1px solid var(--line); flex: none; }
+  /* value badge, green when positive / red when negative — profit, reward chip */
+  .stat-badge { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; font-size: 12.5px;
+    padding: 1px 8px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); }
+  .stat-badge.pos { color: var(--good); border-color: rgba(126, 216, 126, 0.5); }
+  .stat-badge.neg { color: var(--bad); border-color: rgba(255, 107, 94, 0.5); }
+  /* thin progress / load meter — reusable for the tutorial progress bar */
+  .meter { height: 8px; background: #1a222c; border-radius: 4px; overflow: hidden; margin: 5px 0; }
+  .meter > i { display: block; height: 100%; background: linear-gradient(90deg, #4fc3f7, #7ed87e); transition: width 0.4s; }
+  /* connected chip chain — route stops as a cycle (A → B → C ↻ A) */
+  .chip-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 5px 0; }
+  .chain-node { padding: 2px 8px; border-radius: 10px; font-size: 12px; background: var(--panel);
+    border: 1px solid var(--line); white-space: nowrap; }
+  .chain-node.origin { opacity: 0.65; border-style: dashed; }
+  .chain-link { color: var(--dim); font-size: 11px; }
+  .chain-loop { color: var(--accent); font-weight: 700; }
+  /* chunky rounded button — buy vehicle, edit, click-through actions */
+  button.pill-btn { padding: 5px 11px; border-radius: 9px; font-size: 12.5px; }
+
+  /* ---- route card live metrics (WP5) ---- */
+  .route-metrics { margin: 4px 0 2px; }
+  .metric-row { display: flex; align-items: center; gap: 8px; }
+  .metric-today { font-size: 12px; color: var(--dim); }
+  .route-waits { margin-top: 3px; line-height: 1.5; }
+  .route-serve { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+  .serve-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .serve-name { flex: 1; font-size: 12.5px; }
 
   details.learn { background: var(--panel2); border-radius: 7px; padding: 7px 10px; margin: 5px 0; }
   details.learn summary { cursor: pointer; font-weight: 600; }

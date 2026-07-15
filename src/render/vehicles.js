@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { G, on } from '../sim/state.js';
 import { worldXZ, tileY, isRoad, isRail } from '../sim/grid.js';
-import { routeColor } from '../sim/transport.js';
+import { routeColor, routeKind } from '../sim/transport.js';
 import { pathPose, findPath, stationRoadTile } from '../sim/pathfinding.js';
 import { buildVehicleMesh, buildWagonMesh, makeTextSprite } from './meshes.js';
 
@@ -249,12 +249,33 @@ function rebuildHl(r) {
     tag.position.set(x, tileY(st.i, st.j) + 6.5, z);
     hlGroup.add(tag);
   });
+  // while EDITING: pulsing green rings over stations you can still add — those
+  // matching this route's kind (a kindless empty route accepts any) and not yet
+  // a stop. Teaches "click these to add them" (WP5). Read-only view of state.
+  if (r === G.routeEdit) {
+    const rk = routeKind(r);
+    const addMat = new THREE.MeshBasicMaterial({ color: '#8fe89a', transparent: true, opacity: 0.8, depthWrite: false });
+    addMat.userData = { pulse: true };
+    const addGeo = new THREE.TorusGeometry(2.5, 0.16, 6, 28).rotateX(-Math.PI / 2);
+    for (const st of G.stations) {
+      if (r.stops.includes(st)) continue;
+      const sk = st.stype === 'bus' ? 'bus' : st.stype === 'train' ? 'rail' : 'cargo';
+      if (rk && sk !== rk) continue; // non-matching kind: not addable to this route
+      const [x, z] = worldXZ(st.i, st.j);
+      const ring = new THREE.Mesh(addGeo, addMat);
+      ring.position.set(x, tileY(st.i, st.j) + 0.35, z);
+      ring.renderOrder = 20;
+      hlGroup.add(ring);
+    }
+  }
   scene.add(hlGroup);
 }
 
 function updateRouteHighlight(dt) {
   const r = G.routeEdit || G.routeHover;
-  const sig = r ? `${r.id}:${r.stops.map(s => s.i + ',' + s.j).join(';')}` : '';
+  // the edit/hover flag is in the signature so starting to edit an already-
+  // hovered route rebuilds and reveals the addable-station rings
+  const sig = r ? `${r === G.routeEdit ? 'E' : 'H'}${r.id}:${r.stops.map(s => s.i + ',' + s.j).join(';')}:${G.stations.length}` : '';
   if (sig !== hlSig) { hlSig = sig; rebuildHl(r); }
   if (!r) { for (const ring of vehRings) ring.visible = false; return; }
   hlPulse += dt * 3.5;

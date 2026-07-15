@@ -1,10 +1,13 @@
 // ---------- selection infobox ----------
 import { G, fmtMoney } from '../../sim/state.js';
-import { CARBON, CARGO, H2OFFTAKE, INTERCONNECT, MARKET } from '../../sim/data.js';
+import { CARBON, CARGO, CITY, H2OFFTAKE, INTERCONNECT, MARKET } from '../../sim/data.js';
 import {
   POWER_PRICE, gasMarginalCost, importEventActive, importCapNow, importPriceNow, h2Reserve, h2Sellable,
 } from '../../sim/energy.js';
 import { happinessFactors } from '../../sim/cities.js';
+import { stationCatchment } from '../../sim/stations.js';
+import { routeColor } from '../../sim/transport.js';
+import { routesServingStation } from './routes.js';
 import { $ } from './dom.js';
 
 export function renderInfobox() {
@@ -55,10 +58,20 @@ export function renderInfobox() {
       for (const [c, a] of Object.entries(s.cargo)) if (c !== 'pax' && a > 0.5) parts.push(`${CARGO[c].name}: ${a.toFixed(0)}`);
     }
     const carg = parts.join(' · ') || 'nothing waiting';
+    // routes serving this station: quick jump to edit / add a vehicle (WP5)
+    const serving = routesServingStation(s);
+    const servingHTML = serving.length
+      ? `<div class="small" style="margin-top:6px"><b>Routes serving this stop</b></div>` +
+        serving.map(r => `<div class="route-serve"><span class="serve-dot" style="background:${routeColor(r)}"></span>
+          <span class="serve-name">${r.name}</span>
+          <button class="pill-btn" data-editroute="${r.id}">✎ edit</button>
+          <button class="pill-btn" data-addveh="${r.id}">+ 🚐</button></div>`).join('')
+      : '';
     html = `<b>${s.def.icon} ${s.name || s.def.name}</b><div class="small">Waiting: ${carg}</div>
       ${s.stype === 'bus' ? '<div class="small dim">Buses only board passengers their route can deliver — local trips need a 2nd stop ≥5 tiles away in the same city; intercity trips need a stop at the destination. Press V for the demand overlay.</div>' : ''}
       ${s.stype === 'train' ? '<div class="small dim">Serves passengers AND freight in radius 7. Trains only board what their wagons can carry and their route can deliver.</div>' : ''}
-      <div class="small dim">${G.routeEdit ? (G.routeEdit.stops.includes(s) ? 'Click again to remove from ' + G.routeEdit.name : 'Click to add to ' + G.routeEdit.name) : ''}</div>`;
+      <div class="small dim">${G.routeEdit ? (G.routeEdit.stops.includes(s) ? (G.routeEdit.stops[0] === s && G.routeEdit.stops.length >= 2 ? 'Click to finish — routes loop back automatically ↻' : 'Click again to remove from ' + G.routeEdit.name) : 'Click to add to ' + G.routeEdit.name) : ''}</div>
+      ${servingHTML}`;
   } else if (s.kind === 'city') {
     const hp = Math.round(s.happiness * 100);
     const cls = hp >= 70 ? 'good' : hp >= 45 ? 'warn' : 'bad';
@@ -69,9 +82,26 @@ export function renderInfobox() {
         return `<div class="hfact bad">⚠ ${x.label} <b>${x.got}%</b> — ${x.hint}</div>`;
       return `<div class="hfact dim">○ ${x.label} <b>+${x.got}/${x.max}%</b> — ${x.hint}</div>`;
     }).join('');
+    // overcrowding: point the player at the busiest stop serving this city (WP5)
+    const stuck = s.paxLocal + s.paxTo.reduce((a, b) => a + b, 0);
+    let overcrowdHTML = '';
+    if (stuck > CITY.overcrowdAt) {
+      let busiest = null, max = -1;
+      G.stations.forEach((st, idx) => {
+        if (st.stype !== 'bus' && st.stype !== 'train') return;
+        if (!stationCatchment(st).cities.includes(s)) return;
+        const w = st.cargo.pax || 0;
+        if (w > max) { max = w; busiest = { st, idx }; }
+      });
+      overcrowdHTML = `<div class="hfact bad" style="margin-top:5px">⚠ Overcrowded — ${Math.round(stuck)} travellers stranded</div>` +
+        (busiest
+          ? `<button class="pill-btn" data-fly-st="${busiest.idx}" style="margin-top:4px">📍 Show busiest stop (${Math.round(max)} waiting)</button>`
+          : '<div class="small dim">No bus/rail stop serves this city yet — build one nearby and route to it.</div>');
+    }
     html = `<b>🏙 ${s.name}</b><div class="small">Population ${Math.floor(s.pop).toLocaleString()} · Happiness <b class="${cls}">${hp}%</b></div>
       <div class="small" style="margin-top:4px"><b>Happiness factors</b> <span class="dim">(base 35%)</span></div>
       ${facts}
+      ${overcrowdHTML}
       <div class="small dim" style="margin-top:3px">Happy cities grow — more people, more passengers, more power sales.</div>`;
   }
   el.innerHTML = html + '<div class="small dim" style="margin-top:4px">(click elsewhere to deselect)</div>';

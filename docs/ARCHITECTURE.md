@@ -797,6 +797,61 @@ item also lands as `type:'city'` news. Modal pause/restore is a UI concern
 verified in-browser (the sim-observable part is the card + news, asserted
 headless).
 
+### 37. Route management UX: loop-back editing & per-route economics (WP5)
+
+**Problem:** four route pains surfaced in playtest. (1) Closing a loop:
+players clicked the first stop again to "return home", but that *removed* it —
+traversal was already circular (`stopIndex = (stopIndex+1) % stops.length`),
+so re-adding the origin was never needed. (2) While editing you couldn't tell
+which stations were addable. (3) A route's profitability was invisible —
+income existed per route but costs vanished into global lumps. (4) The city
+overcrowding warning and station infobox were dead ends.
+
+**Decisions:**
+- **Loop-back, not a data change.** `toggleRouteStop` now returns
+  `'added'|'removed'|'finished'`. Clicking the **first** stop of a ≥2-stop
+  route returns `'finished'`, clears `G.routeEdit` (like ✔ Done) and toasts
+  "routes loop back automatically" — the origin is neither re-added (no
+  duplicate) nor removed (no loss). Non-origin stops still toggle. Route cards
+  draw the stop list as a cycle (`A → B → C ↻ A`). No save impact.
+- **Addable-station highlight (render, no new event).** `render/vehicles.js`
+  reads `G.routeEdit` in its per-frame `updateRouteHighlight`; while editing it
+  draws pulsing green ground rings over every station matching the route's
+  `routeKind` (a kindless empty route accepts any) that isn't already a stop.
+  Read-only view of state, rebuilt on the same stop-signature change as the
+  route line. (Dimming non-matching stations was left out — positively
+  highlighting the addable set teaches the same thing without mutating shared
+  station-mesh materials.)
+- **Per-route lifetime economics (persisted, v6-additive).** Routes gain
+  `spentTotal` / `earnedTotal`. `credit()` accrues delivery income to
+  `earnedTotal`; `purchaseVehicle`/`purchaseWagon`/`replaceVehicle` book capex
+  and `energy.js#dailyUpkeep` books each vehicle's upkeep to its route's
+  `spentTotal` (a sell trade-in refunds it). The card's live block (rebuilt
+  every 0.25 s in `renderRoutesLive`) shows a profit badge (`earnedTotal −
+  spentTotal`), today's booked income, a load-factor meter and waiting
+  pax/cargo per stop. Both fields ride in `snapshot()`/`restore()` with a
+  default of 0 for v5 saves — no version bump (ADR/D-A additive rule).
+- **Click-through.** The city infobox overcrowding line gains a "show busiest
+  stop" button → `emit('flyTo', …)` + selects that station; the station infobox
+  lists the routes serving it with "✎ edit" / "+ vehicle" actions. Both are
+  handled by the delegated `#infobox` click listener in `hud.js` (the box
+  re-renders every 0.25 s, so per-element handlers would go stale), calling the
+  exported `routesServingStation`/`quickBuyVehicle` and the new `openTab()`.
+- **Panel overlap fix.** `#sidepanel`'s CSS `bottom` is a static fallback;
+  `hud.js#anchorSidePanel()` sets it to the toolbar's live `offsetHeight + 10`
+  on init, resize and tab-open (the same trick topbar.js uses for the weather
+  banner).
+- **Restyle with shared tokens.** New reusable CSS classes — `.icon-chip`,
+  `.stat-badge(.pos/.neg)`, `.meter > i`, `.chip-chain`/`.chain-node`/
+  `.chain-link`/`.chain-loop`, `button.pill-btn` — carry the card's look and
+  are intended for reuse by the WP6 tutorial-card restyle.
+
+**Invariants (tested):** `test/transport.test.js` pins the loop-back status
+codes and that the first-stop click finishes without mutating stops, plus
+purchase + `dailyUpkeep` + a played delivery attributing to the right route
+counters; `test/save.test.js` round-trips the counters and defaults them to 0
+for a v5 save. The render highlight and DOM restyle are verified in-browser.
+
 ## Persistence
 
 `sim/save.js` — `snapshot()`/`restore()` are pure sim; the autosave timers

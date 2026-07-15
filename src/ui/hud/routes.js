@@ -1,13 +1,14 @@
 // ---------- routes ----------
 import { G, fmtMoney } from '../../sim/state.js';
 import { AGING, CARGO, VEHICLES, WAGONS } from '../../sim/data.js';
-import { createRoute, purchaseVehicle, purchaseWagon, sellVehicle, routeColor, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle } from '../../sim/transport.js';
+import { createRoute, purchaseVehicle, purchaseWagon, sellVehicle, routeColor, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, paxCapacity, freightCapacity } from '../../sim/transport.js';
 import { $ } from './dom.js';
 import { showTipText } from './toasts.js';
 
 // module-level UI state (display only — never saved, game rules live in the sim)
 const ROUTE_GROUPS = [['bus', '🚌', 'Bus'], ['rail', '🚆', 'Rail'], ['cargo', '🚚', 'Cargo']];
 const KIND_BUTTONS = { bus: ['bus'], rail: ['train'], cargo: ['truck'] }; // routeKind → buyable vehicle kinds
+const KIND_ICON = { bus: '🚌', rail: '🚆', cargo: '🚚' };
 let routeFilter = 'all';      // 'all' | 'bus' | 'rail' | 'cargo'
 let cargoFilter = null;       // cargo id — narrows the cargo group to routes that delivered it
 const routeGroupClosed = {};  // routeKind → true when the section is collapsed
@@ -71,23 +72,66 @@ export function renderRoutes() {
   renderRoutesLive();
 }
 
-// one route card: name, stops, vehicle-buy buttons (only kinds matching the
-// route's derived kind), finance-relevant vehicle list
+// buy one vehicle of `kind` for a route; translate the sim's refusal codes into
+// advisor toasts. Shared by the route card buttons and the station click-through.
+function buyVehicleFeedback(r, kind) {
+  const v = purchaseVehicle(r, kind); // sim validates & charges
+  if (v === 'short') showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).');
+  else if (v === 'poor') showTipText('Too expensive', 'Not enough funds.');
+  else if (v === 'kind') {
+    const rk2 = routeKind(r);
+    showTipText('Wrong vehicle type', `${r.name} is a ${rk2} route — its stops only serve ${KIND_BUTTONS[rk2].map(k => VEHICLES[k].name.toLowerCase() + 's').join('/')}.`);
+  } else if (v === 'access') {
+    showTipText(kind === 'train' ? 'No rail access' : 'No road access',
+      kind === 'train' ? 'The first stop has no adjacent rail track — trains need Rail Stations connected by track.' : 'The first stop has no adjacent road.');
+  }
+  return v;
+}
+
+// ---------- click-through from the station infobox ----------
+// routes whose stop list includes this station (infobox "routes serving here")
+export function routesServingStation(st) {
+  return G.routes.filter(r => r.stops.includes(st));
+}
+// buy the route's derived-kind vehicle (station infobox "+ vehicle"); the tab
+// switch is the caller's job (avoids a routes.js → hud.js import cycle)
+export function quickBuyVehicle(r) {
+  if (!r) return;
+  const rk = routeKind(r);
+  buyVehicleFeedback(r, rk ? KIND_BUTTONS[rk][0] : 'bus');
+  renderRoutes();
+}
+
+// stop list drawn as a cycle: A → B → C ↻ A (routes loop back automatically)
+function stopChainHTML(r) {
+  if (!r.stops.length) return '<i class="dim">click stations on the map…</i>';
+  const name = s => s.name || s.def.name;
+  const nodes = r.stops.map(s => `<span class="chain-node">${name(s)}</span>`).join('<span class="chain-link">→</span>');
+  const loop = r.stops.length >= 2
+    ? `<span class="chain-loop" title="routes loop back automatically">↻</span><span class="chain-node origin">${name(r.stops[0])}</span>`
+    : '';
+  return `<div class="chip-chain">${nodes}${loop}</div>`;
+}
+
+// one route card: name, kind chip, profit/live metrics, stops as a chain,
+// vehicle-buy buttons (only kinds matching the route's derived kind), fleet list
 function routeCard(r) {
   const d = document.createElement('div');
   d.className = 'route' + (G.routeEdit === r ? ' editing' : '');
   d.style.borderLeft = `4px solid ${routeColor(r)}`;
   d.onmouseenter = () => { G.routeHover = r; };
   d.onmouseleave = () => { if (G.routeHover === r) G.routeHover = null; };
-  const stops = r.stops.map(s => s.name || s.def.name).join(' → ') || '<i class="dim">click stations on the map…</i>';
   const rk = routeKind(r);
   const kinds = rk ? KIND_BUTTONS[rk] : ['truck', 'bus', 'train']; // kindless route: all options open
-  d.innerHTML = `<div class="route-head"><b>${r.name}</b>
-      ${G.routeEdit === r ? '<button data-a="done">✔ Done</button>' : '<button data-a="edit">✎</button>'}
-      <button data-a="del">🗑</button></div>
-    <div class="small">${stops}</div>
+  d.innerHTML = `<div class="route-head">
+      <span class="icon-chip" style="background:${routeColor(r)}22;border-color:${routeColor(r)}">${rk ? KIND_ICON[rk] : '📍'}</span>
+      <b>${r.name}</b>
+      ${G.routeEdit === r ? '<button class="pill-btn" data-a="done">✔ Done</button>' : '<button class="pill-btn" data-a="edit">✎</button>'}
+      <button class="pill-btn" data-a="del">🗑</button></div>
+    ${stopChainHTML(r)}
+    <div class="route-metrics" data-rm="${r.id}"></div>
     <div class="route-veh">
-      ${kinds.map(k => `<button data-a="${k}">+ ${VEHICLES[k].icon} ${fmtMoney(VEHICLES[k].cost)}</button>`).join('')}
+      ${kinds.map(k => `<button class="pill-btn" data-a="${k}">+ ${VEHICLES[k].icon} ${fmtMoney(VEHICLES[k].cost)}</button>`).join('')}
     </div>
     ${r.vehicles.length ? `<label class="small dim" style="display:block;margin-top:3px"><input type="checkbox" data-a="auto"${r.autoReplace ? ' checked' : ''}> 🔧 auto-replace aged vehicles (at ${AGING.autoAtDays} days, ${Math.round(AGING.replaceFrac * 100)}% of list price)</label>` : ''}
     <div class="vehlist" data-r="${r.id}"></div>`;
@@ -104,19 +148,7 @@ function routeCard(r) {
   const ab = d.querySelector('[data-a=auto]');
   if (ab) ab.onchange = e => { r.autoReplace = e.target.checked; };
   for (const kind of kinds) {
-    d.querySelector(`[data-a=${kind}]`).onclick = () => {
-      const v = purchaseVehicle(r, kind); // sim validates & charges; we translate refusals
-      if (v === 'short') showTipText('Route too short', 'Add at least 2 stops first (click ✎, then click stations on the map).');
-      else if (v === 'poor') showTipText('Too expensive', 'Not enough funds.');
-      else if (v === 'kind') {
-        const rk2 = routeKind(r);
-        showTipText('Wrong vehicle type', `${r.name} is a ${rk2} route — its stops only serve ${KIND_BUTTONS[rk2].map(k => VEHICLES[k].name.toLowerCase() + 's').join('/')}.`);
-      } else if (v === 'access') {
-        showTipText(kind === 'train' ? 'No rail access' : 'No road access',
-          kind === 'train' ? 'The first stop has no adjacent rail track — trains need Rail Stations connected by track.' : 'The first stop has no adjacent road.');
-      }
-      renderRoutes();
-    };
+    d.querySelector(`[data-a=${kind}]`).onclick = () => { buyVehicleFeedback(r, kind); renderRoutes(); };
   }
   // wagon & replace buttons live inside the constantly re-rendered vehlist → delegate clicks
   d.querySelector('.vehlist').onclick = e => {
@@ -138,8 +170,38 @@ function routeCard(r) {
   };
   return d;
 }
+// live per-route economics: profit badge, today's income, load-factor meter,
+// waiting pax/cargo per stop. Rebuilt every 0.25 s (renderRoutesLive).
+function routeMetricsHTML(r) {
+  const profit = (r.earnedTotal || 0) - (r.spentTotal || 0);
+  const today = (G.finance.today.routes || {})[r.id] || 0;
+  let cap = 0, load = 0;
+  for (const v of r.vehicles) {
+    cap += paxCapacity(v) + freightCapacity(v);
+    load += (v.pax || []).reduce((a, g) => a + g.n, 0) + Object.values(v.cargo || {}).reduce((a, b) => a + b, 0);
+  }
+  const lf = cap > 0 ? Math.min(1, load / cap) : 0;
+  const waits = r.stops.map(st => {
+    let w = 0;
+    if (st.pax) w = (st.pax.local || 0) + Object.values(st.pax.inter || {}).reduce((a, b) => a + b, 0);
+    else w = Object.entries(st.cargo || {}).filter(([c]) => c !== 'pax').reduce((a, [, n]) => a + n, 0);
+    return { name: st.name || st.def.name, w: Math.round(w) };
+  }).filter(x => x.w >= 1);
+  const badge = `<span class="stat-badge ${profit >= 0 ? 'pos' : 'neg'}" title="lifetime earnings − costs">${profit >= 0 ? '▲' : '▼'} ${fmtMoney(profit)}</span>`;
+  const todayTag = `<span class="metric-today" title="income booked to this route today">today ${today >= 0.5 ? '+' + fmtMoney(today) : '—'}</span>`;
+  const meter = r.vehicles.length
+    ? `<div class="meter" title="average fleet load ${Math.round(lf * 100)}%"><i style="width:${Math.round(lf * 100)}%"></i></div>`
+    : '';
+  const waitLine = waits.length
+    ? `<div class="route-waits small dim" title="travellers / cargo waiting per stop">${waits.map(x => `${x.name}: <b>${x.w}</b>`).join(' · ')}</div>`
+    : '';
+  return `<div class="metric-row">${badge}${todayTag}</div>${meter}${waitLine}`;
+}
+
 export function renderRoutesLive() {
   for (const r of G.routes) {
+    const mEl = document.querySelector(`.route-metrics[data-rm="${r.id}"]`);
+    if (mEl) mEl.innerHTML = routeMetricsHTML(r);
     const el = document.querySelector(`.vehlist[data-r="${r.id}"]`);
     if (!el) continue;
     el.innerHTML = r.vehicles.map((v, vi) => {

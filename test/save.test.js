@@ -27,6 +27,7 @@ test('snapshot → fresh world → restore preserves the whole game', () => {
   r.stops.push(depotA, depotB);
   const truck = buyVehicle(r, 'truck');
   truck.cargo = { grain: 7 };
+  r.spentTotal = 34000; r.earnedTotal = 51000; // WP5 lifetime counters
   // some progress
   G.money = 123456;
   G.day = 9; G.minutes = 9 * 1440 + 60;
@@ -73,6 +74,26 @@ test('snapshot → fresh world → restore preserves the whole game', () => {
   assert.equal(G.routes[0].stops.length, 2);
   assert.equal(G.routes[0].vehicles.length, 1);
   assert.deepEqual(G.routes[0].vehicles[0].cargo, { grain: 7 });
+  assert.equal(G.routes[0].spentTotal, 34000, 'route lifetime spend restored (WP5)');
+  assert.equal(G.routes[0].earnedTotal, 51000, 'route lifetime earnings restored (WP5)');
+});
+
+test('v5 saves (pre-WP5) restore route counters as 0, not undefined', () => {
+  freshWorld();
+  buildRoad(2, J, 20, J);
+  const a = place('truckStop', 4, J - 1);
+  const b = place('truckStop', 16, J - 1);
+  const r = createRoute();
+  r.stops.push(a, b);
+  buyVehicle(r, 'truck');
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  snap.v = 5;                              // pretend it predates WP5
+  delete snap.routes[0].spentTotal;        // …and the fields didn't exist yet
+  delete snap.routes[0].earnedTotal;
+  freshWorld();
+  assert.equal(restore(snap), true, 'additive bump: v5 still loads');
+  assert.equal(G.routes[0].spentTotal, 0, 'defaulted, not undefined');
+  assert.equal(G.routes[0].earnedTotal, 0);
 });
 
 test('trains restore with their wagons', () => {
