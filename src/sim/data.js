@@ -297,6 +297,18 @@ export const CITY = {
   minPop: 400,
 };
 
+// Daily-report alerting (WP2, sim/reports.js). closeDay() diffs yesterday↔today
+// against these thresholds to surface problems (red) and achievements (green)
+// on the report card AND in the news feed — so a bad day never passes unseen.
+export const REPORT_ALERTS = {
+  happinessDrop: 0.05,        // city happiness falling > this day-over-day → problem
+  blackoutHours: 0.05,        // blackout time logged today above this → problem
+  contractDeadlineMin: 1440,  // active contract due within this many minutes → problem
+  supplyThreshold: 0.8,       // food/goods crossing this upward → achievement
+  happyRecordMin: 0.75,       // only celebrate a happiness record at/above this
+  fossilFreeMilestones: [3, 7, 14, 28], // fossil-free streak lengths worth a cheer
+};
+
 // Finance ledger categories (WP3, sim/finance.js). Every money mutation is
 // booked into one of these; the daily report, money-hover breakdown and the
 // Finance stats tab read them. `kind` groups income vs expense for the trees;

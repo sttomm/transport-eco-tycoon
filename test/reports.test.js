@@ -6,8 +6,16 @@ import assert from 'node:assert/strict';
 import { G, resetState, on } from '../src/sim/state.js';
 import { closeDay, trackDay, REPORT_KEEP } from '../src/sim/reports.js';
 import { LOAN_RATE } from '../src/sim/loans.js';
+import { REPORT_ALERTS } from '../src/sim/data.js';
 
 beforeEach(() => resetState());
+
+// minimal city good enough for happinessFactors() (no routes/neighbors)
+function makeCity(name, over = {}) {
+  return { name, ci: 5, cj: 5, neighbors: [], paxLocal: 0, paxTo: [],
+    happiness: 0.6, foodLevel: 0.5, goodsLevel: 0.5, ...over };
+}
+const cityNews = () => G.news.filter(n => n.type === 'city');
 
 function playDay() {
   G.incomeEnergyToday = 5000;
@@ -122,6 +130,92 @@ test('trackDay accumulates blackout, dunkelflaute, storm and heatwave hours', ()
   assert.equal(G.flauteHoursToday, 2);
   assert.equal(G.stormHoursToday, 2);
   assert.equal(G.heatHoursToday, 2);
+});
+
+// ---- problems & achievements (WP2) -----------------------------------------
+
+test('report card always carries problems & achievements arrays', () => {
+  const r = closeDay();
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(r.achievements, []);
+});
+
+test('day 1 has no baseline, so no happiness diff fires', () => {
+  G.cities = [makeCity('Solhaven', { happiness: 0.3 })];
+  const r = closeDay();
+  assert.equal(r.problems.length, 0, 'nothing to diff against on the first day');
+  assert.ok(r.cityStats[0].peak >= 0.3, 'peak seeded from day 1');
+});
+
+test('happiness dropping more than the threshold raises a problem + city news', () => {
+  G.cities = [makeCity('Solhaven', { happiness: 0.8 })];
+  closeDay();                       // day 1 baseline (peak 0.8)
+  G.day = 2;
+  G.cities[0].happiness = 0.8 - REPORT_ALERTS.happinessDrop - 0.05; // clear drop
+  const before = cityNews().length;
+  const r = closeDay();
+  assert.equal(r.problems.length, 1);
+  assert.match(r.problems[0].headline, /unhappy/i);
+  assert.ok(r.problems[0].body.includes('shortfall'), 'names the dominant factor');
+  assert.equal(cityNews().length, before + 1, "also pushed as type:'city' news");
+});
+
+test('a happiness drop AT OR BELOW the threshold does not fire', () => {
+  G.cities = [makeCity('Solhaven', { happiness: 0.8 })];
+  closeDay();
+  G.day = 2;
+  G.cities[0].happiness = 0.8 - REPORT_ALERTS.happinessDrop * 0.5; // small dip
+  const r = closeDay();
+  assert.equal(r.problems.length, 0);
+});
+
+test('food crossing the supply threshold upward is an achievement', () => {
+  G.cities = [makeCity('Solhaven', { foodLevel: REPORT_ALERTS.supplyThreshold - 0.2 })];
+  closeDay();
+  G.day = 2;
+  G.cities[0].foodLevel = REPORT_ALERTS.supplyThreshold + 0.1; // crossed up
+  const r = closeDay();
+  assert.equal(r.achievements.length, 1);
+  assert.match(r.achievements[0].headline, /well supplied/i);
+  assert.equal(cityNews().at(-1).type, 'city');
+});
+
+test('a new happiness high above the celebration floor is an achievement', () => {
+  G.cities = [makeCity('Solhaven', { happiness: 0.72 })]; // below happyRecordMin
+  closeDay();                                             // peak 0.72, no record (day1)
+  G.day = 2;
+  G.cities[0].happiness = 0.9; // new high, above the floor
+  const r = closeDay();
+  assert.ok(r.achievements.some(a => /record/i.test(a.headline)));
+});
+
+test('blackout hours today raise a problem', () => {
+  G.blackoutHoursToday = 3.2;
+  const r = closeDay();
+  assert.ok(r.problems.some(p => /blackout/i.test(p.headline)));
+});
+
+test('a fossil-free streak milestone is an achievement', () => {
+  G.fossilFreeDays = REPORT_ALERTS.fossilFreeMilestones[1] - 1; // e.g. 6 → will be 7
+  G.gasMWhToday = 0;                                            // clean day just ended
+  const r = closeDay();
+  assert.ok(r.achievements.some(a => /fossil-free/i.test(a.headline)));
+});
+
+test('a non-milestone fossil-free streak stays quiet', () => {
+  G.fossilFreeDays = 0; // this clean day makes it 1 — not a milestone
+  G.gasMWhToday = 0;
+  const r = closeDay();
+  assert.equal(r.achievements.filter(a => /fossil-free/i.test(a.headline)).length, 0);
+});
+
+test('a contract deadline within a day raises a problem', () => {
+  G.cities = [makeCity('Solhaven')];
+  G.minutes = 5000;
+  G.contracts.active = [{ kind: 'cargo', cargoId: 'food', toCity: 0, toInd: null,
+    amount: 100, progress: 40, deadline: G.minutes + 600 }]; // < 1440 min left
+  const r = closeDay();
+  assert.ok(r.problems.some(p => /deadline/i.test(p.headline)));
 });
 
 test('report counters survive a save/load round trip', async () => {

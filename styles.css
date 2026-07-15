@@ -127,6 +127,11 @@
   .report-toast { min-width: 240px; }
   .reportrow { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
   .report-advice { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); color: var(--dim); }
+  /* daily-report modal: two nets side by side (ui/hud/dashboard.js dayReportBody) */
+  .reportnets { display: flex; gap: 10px; margin: 8px 0; }
+  .reportnet { flex: 1; text-align: center; padding: 7px 4px; border-radius: 8px;
+    background: var(--panel2); border: 1px solid var(--line); }
+  .reportnet b { display: block; font-size: 16px; margin-top: 2px; }
   #yesterday { background: var(--panel2); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
   #yesterday h3 { margin: 0 0 4px; }
 

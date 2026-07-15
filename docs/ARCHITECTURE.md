@@ -84,7 +84,7 @@ happened; renderers and UI decide what that looks like. The important events:
 | `contractsChanged` | contracts.js | ui/hud.js (re-render 📜 tab) |
 | `plantBuilt` / `stationBuilt` | grid.js | ui/hud.js (teaching tips) |
 | `researchDone` | research.js | ui/hud.js (re-render 🔬 tab) |
-| `dayReport` | reports.js | ui/hud/dashboard.js (end-of-day report toast) |
+| `dayReport` | reports.js | ui/hud/dashboard.js (pausing report modal; toast only while the tutorial runs — ADR 36) |
 | `tutorialStep` / `tutorialDone` | tutorial.js | ui/tutorial.js (card advance / hide) |
 | `questDone` / `contractDone` | quests.js / contracts.js | nobody yet — announced for future views (both also emit a `toast`) |
 | `news` | news.js (via contracts/quests/energy/reports producers) | ui/hud/news.js (ticker flash + unread badge) |
@@ -759,6 +759,43 @@ non-neighbour pools stay empty; a headless multi-day run shows signing two
 contracts clearly beats ignoring them (`test/contracts.test.js`). WP4 is
 economically neutral for a *passive* player (no routes → no deliveries → no
 contract income; express demand only pools).
+
+### 36. Daily report: a pausing modal with problems & achievements (WP2)
+
+**Problem:** the end-of-day report was an auto-fading bottom-left toast
+(explicitly "never pauses") — at 3×/10× it vanished before it could be read,
+its rows were all-gray-all-minus, and a city sliding into unhappiness or a
+contract about to lapse never announced itself.
+
+**Decision:** on `'dayReport'` the report opens through the shared modal
+helper (ADR/D-B `ui/hud/modal.js`), which pauses the sim and restores the
+prior speed on close — the game waits while you read. The body renders the
+day's `report.ledger` snapshot as an income tree / operating-cost tree /
+investments tree (green +, red −, ADR 34 categories), `netOperating` and
+`netTotal` side by side, and the CO₂ + grid-quality row. **Exception:** while
+`G.tutorial.active` it stays the old non-pausing toast so the scripted
+onboarding flow isn't interrupted; from tutorial completion onward it's the
+modal. The dashboard "Yesterday" block is untouched (the passive recap).
+
+**Problems & achievements** are computed in `closeDay()` (sim layer,
+`reports.js`), diffing yesterday's report card against today via a per-card
+`cityStats` snapshot (`{name, happiness, foodLevel, goodsLevel, peak}`; `peak`
+carries the all-time happiness high forward through the chain, so it survives
+saves). Thresholds are data (`REPORT_ALERTS` in data.js). Problems: a city's
+happiness dropped > 5 pts (the dominant negative `happinessFactors` gap is
+named), blackout hours logged, a signed contract due within a day.
+Achievements: food/goods crossing the well-supplied threshold upward, a new
+happiness high above a celebration floor, fossil-free-streak milestones. Each
+is stored on the report card (`report.problems` / `report.achievements`) AND
+pushed to the news feed as `type:'city'` (ADR 34's producer list already
+names reports.js) — so the same signal survives after the modal is closed.
+
+**Invariants (tested, `test/reports.test.js`):** the card always carries both
+arrays; day 1 has no baseline so no diff fires; each detector fires on its
+scripted city/contract state and stays quiet below threshold; every detected
+item also lands as `type:'city'` news. Modal pause/restore is a UI concern
+verified in-browser (the sim-observable part is the card + news, asserted
+headless).
 
 ## Persistence
 

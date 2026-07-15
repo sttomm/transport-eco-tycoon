@@ -10,9 +10,13 @@
 // report captures the finished day. closeDay() resets only the counters this
 // module owns (blackoutHoursToday, flauteHoursToday, stormHoursToday,
 // heatHoursToday).
-import { G, emit } from './state.js';
+import { G, emit, fmtMoney } from './state.js';
 import { LOAN_RATE } from './loans.js';
 import { totalUpkeep } from './energy.js';
+import { REPORT_ALERTS } from './data.js';
+import { happinessFactors } from './cities.js';
+import { contractLabel, contractDest } from './contracts.js';
+import { pushNews } from './news.js';
 
 export const REPORT_KEEP = 28; // one game year (4 × 7-day seasons) of report cards
 
@@ -70,6 +74,23 @@ export function closeDay() {
     // entry and this snapshot can't alias and drift.
     ledger: { ...G.ledger.today },
   };
+  // per-city snapshot for tomorrow's yesterday↔today diff. `peak` carries the
+  // all-time happiness high forward through the report chain (survives saves).
+  report.cityStats = G.cities.map(c => {
+    const was = prev && prev.cityStats ? prev.cityStats.find(s => s.name === c.name) : null;
+    return {
+      name: c.name,
+      happiness: c.happiness,
+      foodLevel: c.foodLevel || 0,
+      goodsLevel: c.goodsLevel || 0,
+      peak: Math.max(c.happiness, was ? was.peak || 0 : 0),
+    };
+  });
+  // problems & achievements: diff yesterday↔today, store on the card AND push
+  // to the news feed (type:'city') so nothing passes unseen (WP2).
+  const { problems, achievements } = detectReportEvents(report, prev);
+  report.problems = problems;
+  report.achievements = achievements;
   G.reports.push(report);
   while (G.reports.length > REPORT_KEEP) G.reports.shift();
   // reset only the counters this module owns — main.js resets the shared ones
@@ -79,4 +100,76 @@ export function closeDay() {
   G.heatHoursToday = 0;
   emit('dayReport', report);
   return report;
+}
+
+// Build one problem/achievement record AND drop it in the news feed (type
+// 'city'). The returned object is what the report card and the modal render.
+function alert(list, icon, headline, body, refs = null) {
+  list.push({ icon, headline, body, refs });
+  pushNews({ type: 'city', icon, headline, body, refs });
+}
+
+// Diff the finished day against the previous report to surface what changed.
+// Pure sim — no DOM. `prev` is yesterday's card (undefined on day 1 / after a
+// reset), so every check tolerates a missing baseline.
+function detectReportEvents(report, prev) {
+  const A = REPORT_ALERTS;
+  const problems = [], achievements = [];
+  const before = name => (prev && prev.cityStats) ? prev.cityStats.find(s => s.name === name) : null;
+
+  for (const c of G.cities) {
+    const was = before(c.name);
+    // problem: happiness fell more than the threshold — name the dominant gap
+    if (was && c.happiness < was.happiness - A.happinessDrop) {
+      const worst = happinessFactors(c)
+        .map(f => ({ label: f.label, gap: f.max - f.got }))
+        .filter(x => x.gap > 0)
+        .sort((a, b) => b.gap - a.gap)[0];
+      const drop = Math.round((was.happiness - c.happiness) * 100);
+      alert(problems, '🏙', `${c.name} is getting unhappy`,
+        `Happiness fell ${drop} pts to ${Math.round(c.happiness * 100)}%` +
+        (worst ? ` — biggest shortfall: ${worst.label.toLowerCase()}.` : '.'),
+        { i: c.ci, j: c.cj, name: c.name });
+    }
+    if (was) {
+      // achievement: food / goods crossed the well-supplied threshold upward
+      for (const [key, label] of [['foodLevel', 'Food'], ['goodsLevel', 'Goods']]) {
+        if ((was[key] || 0) < A.supplyThreshold && (c[key] || 0) >= A.supplyThreshold)
+          alert(achievements, '📦', `${c.name} is well supplied`,
+            `${label} in ${c.name} crossed ${Math.round(A.supplyThreshold * 100)}% — happiness will climb.`,
+            { i: c.ci, j: c.cj, name: c.name });
+      }
+      // achievement: a new happiness high (only celebrated once it's genuinely high)
+      if (c.happiness >= A.happyRecordMin && c.happiness > (was.peak || 0) + 1e-4)
+        alert(achievements, '🌟', `${c.name} happiness record`,
+          `${c.name} reached a new high of ${Math.round(c.happiness * 100)}% happiness.`,
+          { i: c.ci, j: c.cj, name: c.name });
+    }
+  }
+
+  // problem: blackout hours logged today
+  if (report.blackoutHours > A.blackoutHours)
+    alert(problems, '⚠', 'Blackouts on the grid',
+      `${report.blackoutHours.toFixed(1)} h of blackout today` +
+      ((report.compCost || 0) > 500 ? ` — ${fmtMoney(report.compCost)} paid in compensation` : '') +
+      ' — add generation or storage before the peak.');
+
+  // problem: a signed contract whose deadline is now within a day
+  for (const c of G.contracts.active) {
+    if (c.deadline == null) continue;
+    const left = c.deadline - G.minutes;
+    if (left > 0 && left <= A.contractDeadlineMin)
+      alert(problems, '📜', 'Contract deadline approaching',
+        `${contractLabel(c)} — ${Math.round(c.progress)}/${Math.round(c.amount)} delivered, deadline in under a day.`,
+        contractDest(c));
+  }
+
+  // achievement: fossil-free streak milestone. rollFossilFreeDay() runs AFTER
+  // closeDay(), so derive the streak this clean day WILL produce.
+  const streak = report.gasMWh === 0 ? G.fossilFreeDays + 1 : 0;
+  if (A.fossilFreeMilestones.includes(streak))
+    alert(achievements, '🌱', `${streak}-day fossil-free streak`,
+      `The grid ran ${streak} day${streak === 1 ? '' : 's'} straight without firing the gas plant.`);
+
+  return { problems, achievements };
 }

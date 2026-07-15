@@ -1,11 +1,13 @@
 // Dashboard tab: daily report card + "Yesterday" block, weather forecast
 // strip, climate box, power/finance canvas charts and the bank loan box.
 import { G, fmtMoney, seasonOf } from '../../sim/state.js';
-import { CARBON, CLIMATE, H2OFFTAKE, MARKET } from '../../sim/data.js';
+import { CARBON, CLIMATE, H2OFFTAKE, MARKET, LEDGER_CATS } from '../../sim/data.js';
 import { climateRiskMult, POWER_PRICE } from '../../sim/energy.js';
+import { ledgerNets } from '../../sim/finance.js';
 import { routeColor } from '../../sim/transport.js';
 import { takeLoan, repayLoan, LOAN_STEP, LOAN_MAX, LOAN_RATE } from '../../sim/loans.js';
 import { $, liveTip } from './dom.js';
+import { openModal } from './modal.js';
 import { showTipText } from './toasts.js';
 
 // ---------- daily report card ----------
@@ -30,21 +32,81 @@ function reportAdvice(r) {
 const reportRow = (n, v, cls = '') =>
   `<div class="reportrow"><span>${n}</span><span class="${cls}">${v}</span></div>`;
 
+// CO₂ and grid-quality cells, shared by the toast, the modal and the dashboard
+// "Yesterday" block so all three speak the same language.
+const co2Cell = r => (r.co2Emitted > 0.05 ? `<span class="bad">+${r.co2Emitted.toFixed(1)} t emitted</span> · ` : '') +
+  `<span class="good">${r.co2Saved.toFixed(1)} t avoided</span>`;
+const gridCell = r => r.blackoutHours > 0.05
+  ? `<span class="bad">${r.blackoutHours.toFixed(1)} h blackout</span>`
+  : r.curtailedMWh > 0.5 ? `<span class="warn">${r.curtailedMWh.toFixed(0)} MWh curtailed</span>` : '<span class="good">stable</span>';
+
 function reportRows(r) {
-  const co2 = (r.co2Emitted > 0.05 ? `<span class="bad">+${r.co2Emitted.toFixed(1)} t emitted</span> · ` : '') +
-    `<span class="good">${r.co2Saved.toFixed(1)} t avoided</span>`;
-  const grid = r.blackoutHours > 0.05
-    ? `<span class="bad">${r.blackoutHours.toFixed(1)} h blackout</span>`
-    : r.curtailedMWh > 0.5 ? `<span class="warn">${r.curtailedMWh.toFixed(0)} MWh curtailed</span>` : '<span class="good">stable</span>';
   return reportRow('Income', fmtMoney(r.incomeEnergy + r.incomeTransport), 'good') +
     reportRow('Expenses', '−' + fmtMoney(r.expenses), 'bad') +
     reportRow('<b>Net</b>', `<b>${fmtMoney(r.net)}</b>`, r.net >= 0 ? 'good' : 'bad') +
-    reportRow('CO₂', co2) +
-    reportRow('Grid', grid);
+    reportRow('CO₂', co2Cell(r)) +
+    reportRow('Grid', gridCell(r));
 }
 
-// end-of-day toast: dismissible, auto-fades after ~8 s, never pauses the game
+// income / expense trees from the day's ledger snapshot (WP3): green +, red −,
+// investments split out, so build costs stop hiding in one gray "expenses" lump.
+const catRow = (id, v) => {
+  const d = LEDGER_CATS[id];
+  return `<div class="reportrow finsub"><span>${d.icon} ${d.label}</span><span class="${v >= 0 ? 'good' : 'bad'}">${fmtMoney(v)}</span></div>`;
+};
+const treeSection = (title, entries, cls) => {
+  const total = entries.reduce((a, [, v]) => a + v, 0);
+  const rows = entries.length ? entries.map(([id, v]) => catRow(id, v)).join('')
+    : '<div class="reportrow finsub dim">nothing</div>';
+  return `<div class="reportrow"><span><b>${title}</b></span><span class="${cls}"><b>${fmtMoney(total)}</b></span></div>${rows}`;
+};
+const eventBlock = (items, cls) => items.map(e =>
+  `<div class="reportrow"><span>${e.icon} <b>${e.headline}</b></span></div>
+   <div class="report-advice small ${cls}" style="border:none;padding:0;margin:0 0 4px 0">${e.body}</div>`).join('');
+
+function dayReportBody(r) {
+  const day = r.ledger || {};
+  const inc = [], op = [], inv = [];
+  for (const [id, def] of Object.entries(LEDGER_CATS)) {
+    const v = day[id];
+    if (!v || def.balance) continue;
+    if (def.kind === 'income') inc.push([id, v]);
+    else if (def.invest) inv.push([id, v]);
+    else op.push([id, v]);
+  }
+  const bySize = (a, b) => Math.abs(b[1]) - Math.abs(a[1]);
+  inc.sort(bySize); op.sort(bySize); inv.sort(bySize);
+  const { netOperating, netTotal } = ledgerNets(day);
+  const problems = r.problems || [], achievements = r.achievements || [];
+  const el = document.createElement('div');
+  el.className = 'dayreport';
+  el.innerHTML =
+    treeSection('Income', inc, 'good') +
+    treeSection('Operating costs', op, 'bad') +
+    (inv.length ? treeSection('Investments', inv, 'bad') : '') +
+    `<div class="reportnets">
+       <div class="reportnet"><div class="dim small">Net operating</div><b class="${netOperating >= 0 ? 'good' : 'bad'}">${fmtMoney(netOperating)}</b></div>
+       <div class="reportnet"><div class="dim small">Net total</div><b class="${netTotal >= 0 ? 'good' : 'bad'}">${fmtMoney(netTotal)}</b></div>
+     </div>` +
+    reportRow('CO₂', co2Cell(r)) +
+    reportRow('Grid', gridCell(r)) +
+    (problems.length ? `<h3>⚠ Problems</h3>${eventBlock(problems, 'bad')}` : '') +
+    (achievements.length ? `<h3>🏆 Achievements</h3>${eventBlock(achievements, 'good')}` : '') +
+    `<div class="report-advice small">${reportAdvice(r)}</div>`;
+  return el;
+}
+
+// The end-of-day report. From tutorial completion onward it is a pausing modal
+// (D-B): the game halts so the player actually reads it, prior speed restored
+// on close. WHILE the tutorial is active it stays the old auto-fading toast so
+// the scripted flow isn't interrupted.
 export function showDayReport(r) {
+  renderYesterday(); // keep the dashboard "Yesterday" block in sync either way
+  if (G.tutorial && G.tutorial.active) { showDayReportToast(r); return; }
+  openModal({ title: `📋 Day ${r.day} report`, body: dayReportBody(r) });
+}
+
+function showDayReportToast(r) {
   const el = document.createElement('div');
   el.className = 'toast report-toast';
   el.innerHTML = `<div class="toast-head">📋 Day ${r.day} report<span class="toast-x">✕</span></div>
@@ -53,7 +115,6 @@ export function showDayReport(r) {
   el.querySelector('.toast-x').onclick = () => el.remove();
   $('advisor').appendChild(el);
   setTimeout(() => { el.classList.add('fade'); setTimeout(() => el.remove(), 1200); }, 8000);
-  renderYesterday(); // keep the dashboard block in sync
 }
 
 // "Yesterday" block at the top of the dashboard tab (hidden until day 2)
