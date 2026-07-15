@@ -59,9 +59,13 @@ export function tickCities(gameHours) {
     // buildCityNeighbors in grid.js) — remote trips happen via the towns in
     // between. Within the neighbourhood a gravity model applies: bigger and
     // closer cities attract more travellers, each pair with its own cap.
-    // non-neighbour pools stay empty — also drains pools restored from saves
-    // made when the pair was (or graph rules were) different
-    c.paxTo.forEach((n, oi) => { if (n && !c.neighbors.includes(oi)) c.paxTo[oi] = 0; });
+    // non-neighbour pools stay empty — EXCEPT this city's express destinations
+    // (ADR 35). Also drains pools restored from saves made when the pair was
+    // (or graph rules were) different.
+    const express = c.express || [];
+    c.paxTo.forEach((n, oi) => {
+      if (n && !c.neighbors.includes(oi) && !express.includes(oi)) c.paxTo[oi] = 0;
+    });
     const totalPop = c.neighbors.reduce((a, oi) => a + G.cities[oi].pop, 0) || 1;
     for (const oi of c.neighbors) {
       const o = G.cities[oi];
@@ -69,6 +73,13 @@ export function tickCities(gameHours) {
       const attract = (o.pop / totalPop) * (1.4 - Math.min(0.8, dist / 110));
       const cap = 12 + o.pop * 0.012;
       c.paxTo[oi] = Math.min(c.paxTo[oi] + want * PAX.interShare * attract, cap);
+    }
+    // express (long-haul) demand: a share of `want` streams to each far
+    // express destination, with its own cap. Pay scales with distance, so
+    // these are the lucrative trips electric rail is built for.
+    if (express.length) {
+      const perDest = want * PAX.expressShare / express.length;
+      for (const oi of express) c.paxTo[oi] = Math.min(c.paxTo[oi] + perDest, PAX.expressCap);
     }
     // supply levels decay — cities need a steady stream, not one delivery
     c.foodLevel = Math.max(0, (c.foodLevel || 0) - CITY.foodDecay * gameHours);

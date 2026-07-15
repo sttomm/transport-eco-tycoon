@@ -38,7 +38,7 @@ export const QUESTS = [
     value: () => G.stats.paxLocal + G.stats.paxInter,
   },
   {
-    id: 'happy', where: saddestCity, req: 'interLine', title: '🏙 Happy region', target: 70, reward: 40000,
+    id: 'happy', where: saddestCity, req: 'interLine', title: '🏙 Happy region', target: 70, reward: 250000,
     desc: 'Get EVERY city to at least 70% happiness. Reliable power, food deliveries and bus service keep citizens happy — and happy cities grow.',
     value: () => Math.min(...G.cities.map(c => c.happiness)) * 100,
     fmt: v => v.toFixed(0) + '%',

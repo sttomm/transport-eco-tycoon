@@ -8,8 +8,10 @@ import { place } from '../src/sim/grid.js';
 import { INDUSTRY_TYPES, CARGO } from '../src/sim/data.js';
 import {
   tickContracts, signContract, contractDelivery, contractLabel, contractDest,
+  contractsDone, contractsExpired,
   MAX_OFFERS, MAX_ACTIVE, PREMIUM,
 } from '../src/sim/contracts.js';
+import { CONTRACTS } from '../src/sim/data.js';
 import { tickVehicles, createRoute, buyVehicle } from '../src/sim/transport.js';
 import { tickIndustries } from '../src/sim/industries.js';
 import { freshWorld, buildRoad, fakeIndustry } from './helpers.js';
@@ -35,7 +37,9 @@ test('tickContracts fills the board with offers that reference real relations', 
     assert.ok(o.expires > G.minutes, 'signing window open');
     assert.equal(o.deadline, null, 'not signed yet');
     if (o.kind === 'pax') {
-      assert.ok(G.cities[o.fromCity].neighbors.includes(o.toCity), 'pax offers link neighbouring cities');
+      const from = G.cities[o.fromCity];
+      assert.ok(from.neighbors.includes(o.toCity) || from.express.includes(o.toCity),
+        'pax offers link a neighbour OR a far express city (ADR 35)');
     } else if (o.cargoId === 'grain' || o.cargoId === 'ore') {
       const want = o.cargoId === 'grain' ? 'food' : 'steel';
       assert.equal(G.industries[o.toInd].type, want, 'cargo goes to the right processor');
@@ -83,8 +87,12 @@ test('matching deliveries pay the premium and complete the contract with a bonus
   const before = G.money;
   contractDelivery('grain', { toCity: null, toInd: 3 }, 4, 400);
   assert.equal(G.money, before + 5000, 'completion bonus paid');
-  assert.equal(G.contracts.completed, 1);
+  assert.equal(contractsDone(), 1);
   assert.equal(G.contracts.active.length, 0);
+  assert.equal(G.contracts.history.length, 1, 'archived to history');
+  assert.equal(G.contracts.history[0].outcome, 'done');
+  assert.equal(G.contracts.history[0].bonus, 5000);
+  assert.ok(G.contracts.history[0].earned > 0, 'accumulated premium recorded');
   assert.match(toasts.join(), /fulfilled/);
 });
 
@@ -102,7 +110,9 @@ test('a missed deadline fails the contract without a money penalty', () => {
   const before = G.money;
   tickContracts(0.1);
   assert.equal(G.contracts.active.length, 0);
-  assert.equal(G.contracts.failed, 1);
+  assert.equal(contractsExpired(), 1);
+  assert.equal(G.contracts.history[0].outcome, 'expired');
+  assert.equal(G.contracts.history[0].bonus, 0, 'no bonus on expiry');
   assert.equal(G.money, before, 'no penalty');
   assert.match(toasts.join(), /expired/);
 });
@@ -129,4 +139,43 @@ test('end to end: a signed grain contract boosts a real truck delivery', () => {
   // the premium lands in the same finance books as the base pay
   assert.ok(G.incomeTransportToday > 0, 'delivery + premium paid');
   assert.equal(G.finance.today.truck, G.incomeTransportToday, 'premium booked under trucks');
+});
+
+// run the SAME grain truck operation from a fresh world, signing `n` matching
+// contracts (sized to complete), and return the money earned over the run.
+function grainRunEarnings(n) {
+  freshWorld();
+  const J = 90;
+  buildRoad(2, J, 20, J);
+  const depotA = place('truckStop', 4, J - 1);
+  const depotB = place('truckStop', 16, J - 1);
+  fakeIndustry('farm', INDUSTRY_TYPES.farm, 4, J - 4);
+  const food = fakeIndustry('food', INDUSTRY_TYPES.food, 16, J - 4);
+  const toInd = G.industries.indexOf(food);
+  for (let k = 0; k < n; k++) {
+    G.contracts.active.push({
+      id: 500 + k, kind: 'cargo', cargoId: 'grain', fromCity: null, toCity: null,
+      toInd, amount: 18, mult: PREMIUM, bonus: 5000, progress: 0, earned: 0,
+      days: 6, expires: 0, deadline: G.minutes + 6 * 1440,
+    });
+  }
+  const r = createRoute();
+  r.stops.push(depotA, depotB);
+  buyVehicle(r, 'truck'); // money-free (purchase wrapper charges; this doesn't)
+  G.speed = 10;
+  const gh = 0.1 * 8 * G.speed / 60;
+  const start = G.money;
+  for (let k = 0; k < 900; k++) { tickIndustries(gh); tickVehicles(0.1, gh); }
+  return G.money - start;
+}
+
+test('headless run: signing 2 contracts clearly beats ignoring them', () => {
+  const none = grainRunEarnings(0);
+  const two = grainRunEarnings(2);
+  assert.ok(none > 0, `baseline delivery income exists (${Math.round(none)})`);
+  // two completed contracts add both €5,000 bonuses plus a +50% premium on
+  // every matching delivery — the signed operation must win comfortably.
+  assert.ok(two > none + 9000,
+    `signing 2 contracts (${Math.round(two)}) must beat ignoring them (${Math.round(none)}) by ≥ the two bonuses`);
+  assert.equal(contractsDone(), 2, 'both contracts completed within the deadline');
 });

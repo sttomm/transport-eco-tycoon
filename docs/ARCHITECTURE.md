@@ -206,7 +206,8 @@ happiness, and no reason for a hub-and-spoke network. The RNG graph contains
 the minimum spanning tree, so the whole region is still reachable via
 neighbour hops, and central cities naturally become transfer hubs. Non-
 neighbour pools are actively drained each tick so stale saves can't strand
-phantom travellers.
+phantom travellers — *except* each city's 1–2 seeded "express destinations",
+the long-haul exception added in ADR 35.
 **Why:** "carry pax between two cities" alone made intra-city lines useless
 and demand invisible. Pools + the 👥 demand overlay (V) turn passenger work
 into a read-the-map puzzle, and the no-clogging rule keeps stops from filling
@@ -721,6 +722,43 @@ money delta over any played span — every mutation is booked.
 hover) renders four tabs — Dashboard KPIs, Finance (income/expense trees +
 28-day stacked bar chart with an "include investments" toggle), Energy (the
 power chart), Cities — via the shared modal helper (ADR/D-B, `ui/hud/modal.js`).
+
+### 35. Express pairs & richer contracts: long-distance demand (WP4)
+**Decision (long-distance demand):** ADR 10 kept intercity travel between
+*neighbours only* — but once every neighbour is linked, intercity work runs
+dry. Worldgen now also assigns each city 1–2 **express destinations**: far
+(> `PAX.expressMinDist` ≈ 60 tiles), non-neighbour cities, chosen
+deterministically on a SEPARATE seeded rand stream (split-stream discipline,
+like the river) so it never perturbs the shared `rand` the placement draws
+from — worldgen stays byte-identical and no save bump is needed. Links are
+symmetric (one route serves both ways). `tickCities` streams a share
+(`PAX.expressShare` ≈ 0.15 of `want`) into those slots with their own cap
+(`PAX.expressCap`); all *other* non-neighbour pools still drain to zero.
+`routeServes`/`stationCatchment` need no change — any city on the route
+qualifies — and pay already scales with distance, so express passengers are
+naturally lucrative: rail's niche. Long-haul **passenger contracts** between
+express pairs enter the contract pool too.
+**Decision (contracts):** contract tuning moved out of code into
+`data.js CONTRACTS` (offers/active caps, premium, per-cargo `sizes`, bonus
+mult). Contracts are longer and richer — `days` 3–6 (was 2.5–3) with
+proportionally larger targets, and the completion bonus is ≈4× raw cargo value
+(was ≈2×). Each contract tracks `earned` (accumulated premium). The bare
+`completed`/`failed` counters are gone: `G.contracts.history`
+(`{...contract, outcome, closedDay, earned, bonus}`, bounded ring) is the
+ledger of record and the counts are derived (`contractsDone`/`contractsExpired`).
+Fulfillment fires a celebratory `moneyFx` at the destination on top of the WP1
+news entry. Save v6 additive field (`G.contracts.history`, default `[]` on
+older loads — no version bump).
+**Why:** playtesters connected all neighbours and then had no passenger growth
+left, and missed contracts entirely (bonus too small to chase, no record of
+what they'd fulfilled). Express pairs keep the map's demand alive as a
+long-haul rail game; the history + bigger bonus make contracts worth reading.
+**Invariants (tested):** express pairs are deterministic, non-neighbour and
+symmetric (`test/express.test.js`); express demand flows while other
+non-neighbour pools stay empty; a headless multi-day run shows signing two
+contracts clearly beats ignoring them (`test/contracts.test.js`). WP4 is
+economically neutral for a *passive* player (no routes → no deliveries → no
+contract income; express demand only pools).
 
 ## Persistence
 

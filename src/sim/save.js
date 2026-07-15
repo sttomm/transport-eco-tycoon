@@ -102,7 +102,11 @@ export function restore(d) {
   G.news = d.news || []; // v5 saves: start with an empty feed
   syncNewsSeq();
   G.loan = d.loan || 0;
-  if (d.contracts) G.contracts = d.contracts; // pre-contract saves keep the fresh default
+  if (d.contracts) {
+    G.contracts = d.contracts; // pre-contract saves keep the fresh default
+    // v6 additive (ADR 35): earlier saves have no contract history — default it
+    if (!G.contracts.history) G.contracts.history = [];
+  }
   // v3 energy-transition fields — v2 saves keep the initialState defaults
   if (d.carbonPrice != null) G.carbonPrice = d.carbonPrice;
   G.co2EmittedTons = d.co2Emitted || 0;

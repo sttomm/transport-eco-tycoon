@@ -1,7 +1,7 @@
 // ---------- special contracts ----------
 import { G, emit, fmtMoney } from '../../sim/state.js';
 import { CARGO } from '../../sim/data.js';
-import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS } from '../../sim/contracts.js';
+import { signContract, contractLabel, contractDest, MAX_ACTIVE, MAX_OFFERS, contractsDone, contractsExpired } from '../../sim/contracts.js';
 import { $ } from './dom.js';
 import { showTipText } from './toasts.js';
 
@@ -22,6 +22,23 @@ function contractCard(c, signed) {
   </div>`;
 }
 
+// "Completed" section: the contract history (most recent first) with each
+// contract's outcome and the total money it made (premiums + completion bonus).
+function historySection(cs) {
+  const hist = cs.history || [];
+  if (!hist.length) return '';
+  const done = contractsDone(), expired = contractsExpired();
+  const rows = [...hist].reverse().slice(0, 12).map(h => {
+    const made = Math.round((h.earned || 0) + (h.bonus || 0));
+    const ok = h.outcome === 'done';
+    return `<div class="small" style="display:flex;justify-content:space-between;gap:8px">
+      <span>${ok ? '✅' : '✖'} ${contractLabel(h)}</span>
+      <span class="${ok ? 'good' : 'dim'}">${ok ? '+' + fmtMoney(made) : 'expired'}</span>
+    </div>`;
+  }).join('');
+  return `<h3 style="margin-top:8px">Completed <span class="dim small">(✅ ${done} · ✖ ${expired})</span></h3>${rows}`;
+}
+
 export function renderContracts() {
   const el = $('tab-contracts');
   const cs = G.contracts;
@@ -31,7 +48,7 @@ export function renderContracts() {
     ${cs.active.map(c => contractCard(c, true)).join('') || '<div class="small dim">No signed contracts.</div>'}
     <h3 style="margin-top:8px">Open offers <span class="dim small">(${cs.offers.length}/${MAX_OFFERS})</span></h3>
     ${cs.offers.map(c => contractCard(c, false)).join('') || '<div class="small dim">Nothing on the board — new offers appear within a few hours.</div>'}
-    ${cs.completed + cs.failed ? `<div class="small dim" style="margin-top:6px">✅ ${cs.completed} fulfilled · ✖ ${cs.failed} expired</div>` : ''}`;
+    ${historySection(cs)}`;
   el.querySelectorAll('[data-sign]').forEach(b => b.onclick = () => {
     const c = cs.offers.find(x => x.id === +b.dataset.sign);
     if (!c) return;
@@ -48,7 +65,7 @@ let lastContractSig = '';
 export function renderContractsLive() {
   const cs = G.contracts;
   const sig = cs.active.map(c => `${c.id}:${Math.floor(c.progress)}:${Math.floor((c.deadline - G.minutes) / 60)}`).join() + '|' +
-    cs.offers.map(c => `${c.id}:${Math.floor((c.expires - G.minutes) / 60)}`).join();
+    cs.offers.map(c => `${c.id}:${Math.floor((c.expires - G.minutes) / 60)}`).join() + '|' + (cs.history?.length || 0);
   if (sig === lastContractSig) return;
   lastContractSig = sig;
   renderContracts();

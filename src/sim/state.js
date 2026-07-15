@@ -34,8 +34,9 @@ function initialState() {
     // finance ledger (sim/finance.js): per-category income/expense tallies.
     // `today` accumulates the current day; `days` is the 28-day archive ring.
     ledger: { today: {}, days: [] },
-    // special transport offers & signed contracts (see sim/contracts.js)
-    contracts: { offers: [], active: [], completed: 0, failed: 0, offerTimer: 0, seq: 1 },
+    // special transport offers & signed contracts (see sim/contracts.js).
+    // `history` is the ledger of record (done/expired); counters are derived.
+    contracts: { offers: [], active: [], history: [], offerTimer: 0, seq: 1 },
     // weather (0..1)
     wind: 0.5,
     cloud: 0.25,

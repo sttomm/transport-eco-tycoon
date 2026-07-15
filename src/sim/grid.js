@@ -4,7 +4,7 @@
 // keeps the Three.js scene in sync.
 import { G, emit, spend, earn } from './state.js';
 import { makeNoise } from './noise.js';
-import { BUILDINGS, CARBON, INDUSTRY_TYPES, UNLOCKS } from './data.js';
+import { BUILDINGS, CARBON, INDUSTRY_TYPES, UNLOCKS, PAX } from './data.js';
 
 export const WORLD_SEED = 20260612;
 export const WATER_Y = -0.35;
@@ -143,6 +143,38 @@ function buildCityNeighbors() {
     const between = cs.some(m =>
       m !== cs[a] && m !== cs[b] && Math.max(dist(m, cs[a]), dist(m, cs[b])) < dab);
     if (!between) { cs[a].neighbors.push(b); cs[b].neighbors.push(a); }
+  }
+  buildExpressPairs();
+}
+
+// Express (long-haul) pairs (ADR 35): give each city 1–2 far, non-neighbour
+// "express destinations" so intercity demand survives after every neighbour is
+// linked. Deterministic from the world seed, drawn on a SEPARATE rand stream
+// (split-stream discipline, like the river) so it never perturbs the shared
+// `rand` the cities/industries placement draws from — worldgen stays identical
+// and no save bump is needed. Links are symmetric so one route serves both
+// directions; each city is capped at MAX_EXPRESS.
+const MAX_EXPRESS = 2;
+function buildExpressPairs() {
+  const cs = G.cities;
+  const er = makeNoise(WORLD_SEED ^ 0x5e7a91).rand;
+  const dist = (a, b) => Math.hypot(a.ci - b.ci, a.cj - b.cj);
+  for (const c of cs) c.express = [];
+  for (const c of cs) {
+    const want = 1 + (er() < 0.5 ? 1 : 0); // aim for 1 or 2
+    // candidates: far, non-neighbour, not already linked, room on both sides.
+    // stable order = farthest first (express = long-haul), tie-break by idx.
+    let cands = cs.filter(o => o !== c
+      && !c.neighbors.includes(o.idx) && !c.express.includes(o.idx)
+      && o.express.length < MAX_EXPRESS
+      && dist(c, o) > PAX.expressMinDist)
+      .sort((a, b) => dist(c, b) - dist(c, a) || a.idx - b.idx);
+    while (c.express.length < want && c.express.length < MAX_EXPRESS && cands.length) {
+      const o = cands.shift();
+      c.express.push(o.idx);
+      o.express.push(c.idx);
+      cands = cands.filter(x => x.express.length < MAX_EXPRESS);
+    }
   }
 }
 

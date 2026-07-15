@@ -38,7 +38,8 @@ test('snapshot → fresh world → restore preserves the whole game', () => {
   G.loan = 150000;
   G.contracts.offers.push({ id: 1, kind: 'cargo', cargoId: 'grain', fromCity: null, toCity: null, toInd: 2, amount: 40, mult: 1.5, bonus: 1500, progress: 0, days: 2.5, expires: G.minutes + 500, deadline: null });
   G.contracts.active.push({ id: 2, kind: 'pax', cargoId: 'pax', fromCity: 0, toCity: 1, toInd: null, amount: 30, mult: 1.5, bonus: 1000, progress: 12, days: 2.5, expires: 0, deadline: G.minutes + 900 });
-  G.contracts.completed = 3; G.contracts.seq = 5;
+  G.contracts.history.push({ id: 9, kind: 'cargo', cargoId: 'grain', outcome: 'done', closedDay: 8, earned: 900, bonus: 5000 });
+  G.contracts.seq = 5;
 
   const snap = JSON.parse(JSON.stringify(snapshot())); // through-JSON like localStorage
 
@@ -55,7 +56,8 @@ test('snapshot → fresh world → restore preserves the whole game', () => {
   assert.equal(G.loan, 150000, 'loan restored');
   assert.equal(G.contracts.offers.length, 1, 'open offers restored');
   assert.equal(G.contracts.active[0].progress, 12, 'signed contract progress restored');
-  assert.equal(G.contracts.completed, 3);
+  assert.equal(G.contracts.history.length, 1, 'contract history restored');
+  assert.equal(G.contracts.history[0].outcome, 'done');
   assert.equal(G.contracts.seq, 5, 'id sequence continues');
 
   assert.equal(tile(10, J).t, 'road', 'roads rebuilt');

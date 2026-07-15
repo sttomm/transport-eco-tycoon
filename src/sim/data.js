@@ -239,6 +239,41 @@ export const PAX = {
   stopFlowPerHour: 16,   // travellers walking to a city's stops per hour (split across its stops)
   interFlowFrac: 0.6,    // intercity travellers walk a bit slower than local ones
   stopWaitingCap: 40,    // max people waiting at one stop (no-clogging rule)
+  // Express (long-haul) demand (ADR 35): each city is assigned 1–2 far, non-
+  // neighbour "express destinations" at worldgen (grid.js buildExpressPairs).
+  // A share of travel demand streams to them, keeping intercity work alive
+  // after every neighbour is linked — the niche electric rail fills, since pay
+  // scales with distance. Non-express, non-neighbour pools still drain to zero.
+  expressMinDist: 60,    // tiles: minimum distance for an express destination
+  expressShare: 0.15,    // of new demand: to a far express destination
+  expressCap: 14,        // max express travellers pooled toward one express city
+};
+
+// Special transport contracts (sim/contracts.js): time-limited A→B offers a
+// player can sign for a delivery premium plus a completion bonus. Longer and
+// richer than a plain delivery so signing one is a real detour decision:
+// `sizes` set a target of `base` units (jittered ±25% per offer) over `days`
+// to deliver — throughput ≈ the old contracts', but the longer window rewards
+// planning. `bonusMult` puts the completion prize at ≈4× the raw cargo value.
+export const CONTRACTS = {
+  maxOffers: 3,        // open offers on the board to pick from
+  maxActive: 3,        // signed contracts running in parallel
+  offerDays: 1.5,      // how long an unsigned offer stays on the board
+  spawnHours: 8,       // a new offer appears at most every 8 game hours
+  premium: 1.5,        // matching deliveries pay ×1.5 while signed
+  bonusMult: 4,        // completion bonus ≈ raw cargo value × this (was 2)
+  bonusRound: 500,     // round the completion bonus to the nearest €
+  amountJitter: 0.5,   // amount = base × (0.75 … 1.25)
+  historyKeep: 40,     // completed/expired contracts kept as the ledger of record
+  // per-cargo sizing: target units + completion window (days). Longer windows
+  // than the old 2.5–3 days (plan WP4) with proportionally larger targets.
+  sizes: {
+    pax:   { base: 36, days: 3 },
+    grain: { base: 72, days: 4 },
+    ore:   { base: 66, days: 5 },
+    food:  { base: 56, days: 4 },
+    steel: { base: 40, days: 6 },
+  },
 };
 
 // Freight buffers (transport.js).

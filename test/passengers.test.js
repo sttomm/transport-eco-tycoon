@@ -45,16 +45,17 @@ test('cities accumulate local and intercity travel demand', () => {
   assert.ok(solhaven.paxTo.some(n => n > 0), 'people want to visit other cities');
 });
 
-test('travel demand streams only between neighbouring cities', () => {
+test('travel demand streams to neighbours and express cities only (ADR 35)', () => {
   G.minutes = 12 * 60;
   tickCities(24); // a full day of demand
   for (const c of G.cities) {
     assert.ok(c.neighbors.length >= 1, `${c.name} has a neighbour`);
     c.paxTo.forEach((n, oi) => {
       if (c.neighbors.includes(oi)) assert.ok(n > 0, `${c.name} → ${G.cities[oi].name} flows`);
+      else if (c.express.includes(oi)) assert.ok(n > 0, `${c.name} ⇒ ${G.cities[oi].name} express flows`);
       else if (oi !== c.idx) assert.equal(n, 0, `${c.name} → ${G.cities[oi].name} must stay empty`);
     });
-    // happiness only asks for links to neighbours
+    // happiness only asks for links to neighbours (express is a bonus, not a need)
     const links = happinessFactors(c).filter(f => f.label.startsWith('Link to '));
     assert.equal(links.length, c.neighbors.length);
   }
