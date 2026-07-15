@@ -25,6 +25,11 @@ export function initBuildings(sc) {
     const [x, z] = worldXZ(ref.i, ref.j);
     const cx = x + (ref.fp - 1) * G.TILE / 2, cz = z + (ref.fp - 1) * G.TILE / 2;
     g.position.set(cx, tileY(ref.i, ref.j) + 0.02, cz);
+    // turbines are authored nacelle-forward on +X (meshes.js / wind_turbine.py);
+    // turn the whole placed group 180° so the nacelle/rotor face the camera's
+    // usual approach instead of the tower's blind side (WP8, both the glTF and
+    // procedural branches go through this same group)
+    if (ref.type === 'wind') g.rotation.y = Math.PI;
     scene.add(g);
     groupOf.set(ref, g);
     if (g.userData.rotor) {

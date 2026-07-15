@@ -427,6 +427,16 @@ const SPECS = {
   ind_panel: [metalPanel, 1.6, 0.06],
   ind_silo: [c => corrugated(c, 0.12), 0.8, 0.15],
   ind_stainless: [metalPanel, 1.2, 0.05],
+  // legacy gas plant (WP8)
+  gas_corrugated: [corrugated, 1.0, 0.35],
+  gas_rib: [metalPanel, 0.8, 0.06],
+  gas_roof: [corrugated, 1.0, 0.3],
+  gas_steel: [metalPanel, 1.2, 0.06],
+  gas_stack: [c => corrugated(c, 0.15), 0.8, 0.15],
+  gas_tank: [metalPanel, 1.3, 0.05],
+  gas_dark_steel: [metalPanel, 1.0, 0.06],
+  gas_yard_steel: [metalPanel, 1.0, 0.08],
+  gas_control_wall: [concrete, 2.0, 0.10],
   // stations
   sta_brick_red: [brick, 1.6, 0.3],
   sta_pave: [pave, 2.0, 0.15],

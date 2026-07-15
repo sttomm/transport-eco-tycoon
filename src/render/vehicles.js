@@ -13,6 +13,17 @@ import { buildVehicleMesh, buildWagonMesh, makeTextSprite } from './meshes.js';
 const VEH_Y = 0.25, TRAIN_Y = 0.40; // VEH_Y just above the road deck top (world.js ROAD_TOP)
 const vehY = v => v.kind === 'train' ? TRAIN_Y : VEH_Y;
 const WAGON_SPACING = 0.85;
+// right-hand-traffic lane offset (WP8, render-only presentation — the sim
+// path stays the centerline, pathfinding.js pathPose). yaw follows pathPose's
+// convention (mesh nose +X forward at yaw=0); the right-of-travel direction
+// in this renderer's right-handed, Y-up axes is cross(forward, up) =
+// (sin(yaw), cos(yaw)) — that keeps a vehicle right of the centerline in the
+// direction it's driving (German right-hand traffic). Trains/rails never
+// call this (single track, no passing).
+const LANE_L = 0.28 * G.TILE;
+export function laneOffset(yaw) {
+  return [Math.sin(yaw) * LANE_L, Math.cos(yaw) * LANE_L];
+}
 
 let scene;
 const vehMesh = new Map();   // vehicle -> THREE.Group
@@ -55,7 +66,11 @@ function syncVehiclePoses() {
     if (v.path && v.path.length) {
       const D = v.pathPos + Math.min(v.prog, 1);
       const [x, z, yaw, ti] = pathPose(v.path, D);
-      mesh.position.set(x, tileY(ti[0], ti[1]) + vehY(v), z);
+      // trains stay on the centerline (single track); road vehicles (bus/
+      // truck) keep right of it. Only trains carry wagons, and those never
+      // get an offset either.
+      const [ox, oz] = (v.kind !== 'train' && yaw !== null) ? laneOffset(yaw) : [0, 0];
+      mesh.position.set(x + ox, tileY(ti[0], ti[1]) + vehY(v), z + oz);
       if (yaw !== null) mesh.rotation.y = yaw;
       v.wagons.forEach((w, k) => {
         const wm = wagonMesh.get(w);

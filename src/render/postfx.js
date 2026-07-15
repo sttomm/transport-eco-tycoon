@@ -94,7 +94,9 @@ export function renderPostFX() {
   if (!enabled) { renderer.render(scene, camera); return; }
   // miniature look: sharp band at the camera target, blur grows with zoom-out
   const dist = camera.position.distanceTo(controls.target);
-  const amount = THREE.MathUtils.smoothstep(dist, 90, 380) * 0.0035;
+  // WP8: start later and weaker — the old (90, 380)*0.0035 curve blurred the
+  // playable mid-zoom range too aggressively
+  const amount = THREE.MathUtils.smoothstep(dist, 170, 560) * 0.0022;
   focusV.copy(controls.target).project(camera);
   const focus = THREE.MathUtils.clamp(focusV.y * 0.5 + 0.5, 0.15, 0.85);
   for (const p of [tiltH, tiltV]) {

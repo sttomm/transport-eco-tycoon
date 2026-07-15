@@ -100,7 +100,10 @@ export function updateAmbient(dt) {
     const [x0, z0] = worldXZ(c.i, c.j), [x1, z1] = worldXZ(c.ti, c.tj);
     const dirx = x1 - x0, dirz = z1 - z0;
     const lane = 0.9;
-    const lx = dirz !== 0 ? Math.sign(dirz) * lane : 0, lz = dirx !== 0 ? -Math.sign(dirx) * lane : 0;
+    // right-of-travel = cross(forward, up) = (-dirz, dirx) direction (WP8;
+    // same handedness as render/vehicles.js's laneOffset) — was flipped
+    // (drove on the left) before this fix
+    const lx = dirz !== 0 ? -Math.sign(dirz) * lane : 0, lz = dirx !== 0 ? Math.sign(dirx) * lane : 0;
     _p.set(x0 + dirx * c.prog + lx, tileY(c.i, c.j) + ROAD_TOP + 0.01, z0 + dirz * c.prog + lz);
     _e.set(0, Math.atan2(dirx, dirz) - Math.PI / 2, 0); _q.setFromEuler(_e); // nose (+X) leads travel
     _m.compose(_p, _q, _s);

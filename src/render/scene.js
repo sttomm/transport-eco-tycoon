@@ -59,6 +59,12 @@ const SKY = {
   day: new THREE.Color('#9cc8e8'), dusk: new THREE.Color('#d97a5a'),
 };
 const skyCol = new THREE.Color();
+// sun color's 3 stops — same night/horizon/day read as the old hard ternary,
+// but crossfaded (WP8) instead of snapping at elev -0.05 / 0.25
+const SUN = {
+  night: new THREE.Color('#aabdff'), horizon: new THREE.Color('#ffb070'), day: new THREE.Color('#fff6e8'),
+};
+const sunCol = new THREE.Color();
 
 function initLights() {
   sun = new THREE.DirectionalLight('#ffffff', 2.6);
@@ -123,6 +129,11 @@ function updateSky(elev, az) {
   // clouds mirror the sim's weather: an overcast sky is WHY solar is low
   sky.material.uniforms.cloudCoverage.value = 0.1 + G.cloud * 0.6;
   sky.material.uniforms.time.value = G.minutes * 0.02; // game time, keeps saves deterministic
+  // WP8 considered tightening this to ~0.05 for smoother IBL during the sun
+  // color crossfade above, but with no frame-time measurement available in
+  // this pass (browser preview off-limits — see the WP8 summary), left as
+  // the throttled 0.08 rather than risk reintroducing the hitches it fixed;
+  // a human profiling pass can retune it.
   if (Math.abs(elev - lastEnvElev) > 0.08) { // ~1 bake per few real seconds; tighter thresholds cause visible hitches
     lastEnvElev = elev;
     for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG'])
@@ -148,7 +159,12 @@ export function updateDayNight() {
   const dayAmount = THREE.MathUtils.clamp(elev * 2.2 + 0.15, 0, 1);
   // night keeps a generous moonlight floor so the map stays readable
   sun.intensity = 0.85 + dayAmount * 1.75;
-  sun.color.set(elev < -0.05 ? '#aabdff' : elev < 0.25 ? '#ffb070' : '#fff6e8');
+  // crossfade night -> horizon -> day (mirrors the skyCol lerpColors pattern
+  // below) instead of the old hard 3-branch ternary snap
+  const fHorizon = THREE.MathUtils.smoothstep(elev, -0.15, 0.05);
+  const fDay = THREE.MathUtils.smoothstep(elev, 0.15, 0.45);
+  sunCol.copy(SUN.night).lerp(SUN.horizon, fHorizon).lerp(SUN.day, fDay);
+  sun.color.copy(sunCol);
   // at day the env map carries the ambient; at night hemi is the moonlight
   // floor that keeps the map readable (teaching mission > realism)
   hemi.intensity = 0.55;

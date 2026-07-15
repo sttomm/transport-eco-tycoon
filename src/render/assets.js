@@ -16,6 +16,7 @@ import { applyTexture, facadeTexture, grainTexture } from './textures.js';
 // building/vehicle type -> asset file; add entries as types are migrated
 const MODEL_FILES = {
   wind: 'assets/models/wind_turbine.glb',
+  gas: 'assets/models/gas_plant.glb',
 };
 const BUILDINGS_FILE = 'assets/models/buildings.glb';
 // library files: every top-level node registers as a model under its own
@@ -204,6 +205,25 @@ function makeWindowLightsTexture() {
 
 export function buildingSet() { return buildingLib; }
 
+// gas-plant smoke: 3 rising/fading puffs, animated by updateBuildings()
+// (render/buildings.js) driving userData.phase. Mirrors the procedural
+// fallback's inline group (meshes.js buildPlantMesh 'gas' branch) — kept as a
+// small duplicate here rather than importing from meshes.js, which already
+// imports modelInstance from this file (avoids a circular import).
+function buildSmokeGroup() {
+  const g = new THREE.Group();
+  for (let k = 0; k < 3; k++) {
+    const puff = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 8, 6),
+      new THREE.MeshStandardMaterial({ color: '#b9b9b6', transparent: true, opacity: 0.55, roughness: 1, depthWrite: false }),
+    );
+    puff.userData.phase = k / 3;
+    g.add(puff);
+  }
+  g.visible = false;
+  return g;
+}
+
 // Fresh scene-graph clone (geometry & materials shared across instances),
 // or null if the type has no glTF model. Wires userData.rotor for world.js.
 export function modelInstance(name) {
@@ -214,5 +234,13 @@ export function modelInstance(name) {
   if (rotor) g.userData.rotor = rotor;
   const glow = g.getObjectByName('glow');
   if (glow) glow.material = glow.material.clone(); // per-instance emissive drive
+  // 'smoke' (gas_plant.glb) is an EMPTY anchor, not geometry — attach the
+  // animated puff group as its child so it inherits the anchor's position
+  const smokeAnchor = g.getObjectByName('smoke');
+  if (smokeAnchor) {
+    const smoke = buildSmokeGroup();
+    smokeAnchor.add(smoke);
+    g.userData.smoke = smoke;
+  }
   return g;
 }
