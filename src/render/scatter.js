@@ -4,7 +4,7 @@
 // worldgen decoration, reads sim state from G and never mutates it.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { G } from '../sim/state.js';
+import { G, on } from '../sim/state.js';
 import { makeNoise } from '../sim/noise.js';
 import { WORLD_SEED, WATER_Y, heightAt, worldXZ, tile, tileFromWorld } from '../sim/grid.js';
 import { M, noCull } from './meshes.js';
@@ -18,6 +18,64 @@ export function initScatter(sc) {
   buildTrees();
   buildGroundScatter();
   buildFarmFields();
+  initConstructionClearing();
+}
+
+// ---------- construction clearing (WP7) ----------
+// scatter.js is a one-shot builder: trees and ground cover placed at worldgen
+// used to clip straight through anything built on top of them later, because
+// nothing here ever subscribed to sim events. Every instance registered below
+// (trees + ground scatter; farm fields are deliberately NOT tracked — see
+// buildFarmFields' comment, they're far from any buildable spot and clipping
+// there was already an accepted look) is keyed by its source tile, so a
+// 'placed'/'roadBuilt'/'railBuilt' event can hide exactly the instances whose
+// tile became occupied — same zero-scale-matrix idiom ambient.js uses to hide
+// inactive cars/pedestrians. Save replay re-fires 'placed'/'roadBuilt'/
+// 'railBuilt' through place(), so restores clear the same trees for free; no
+// sim change, no save bump.
+const tileInstances = new Map(); // "i,j" -> [{inst, index}]
+const HIDDEN_SCALE = new THREE.Matrix4().makeScale(0, 0, 0);
+const clearedTiles = new Set();
+
+function trackInstance(i, j, inst, index) {
+  const key = i + ',' + j;
+  let arr = tileInstances.get(key);
+  if (!arr) tileInstances.set(key, arr = []);
+  arr.push({ inst, index });
+}
+
+function clearTile(key) {
+  if (clearedTiles.has(key)) return;
+  const arr = tileInstances.get(key);
+  if (!arr) return;
+  clearedTiles.add(key);
+  const touched = new Set();
+  for (const { inst, index } of arr) { inst.setMatrixAt(index, HIDDEN_SCALE); touched.add(inst); }
+  for (const inst of touched) inst.instanceMatrix.needsUpdate = true;
+}
+
+// 'placed' carries the exact footprint (fp x fp from ref.i/ref.j) — clear
+// just those tiles.
+function onPlaced(ref) {
+  const fp = ref.fp || 1;
+  for (let dj = 0; dj < fp; dj++) for (let di = 0; di < fp; di++) clearTile((ref.i + di) + ',' + (ref.j + dj));
+}
+// 'roadBuilt'/'railBuilt' carry no payload (grid.js just marks the instanced
+// layer dirty) — sweep the tiles we actually track and clear any that turned
+// into road/rail/occupied since the last sweep. Cheap: bounded by the fixed
+// scatter instance count, not the whole 192×192 grid.
+function sweepBuiltTiles() {
+  for (const key of tileInstances.keys()) {
+    if (clearedTiles.has(key)) continue;
+    const [i, j] = key.split(',').map(Number);
+    const t = tile(i, j);
+    if (t && (t.occ || t.t === 'road' || t.t === 'rail')) clearTile(key);
+  }
+}
+function initConstructionClearing() {
+  on('placed', onPlaced);
+  on('roadBuilt', sweepBuiltTiles);
+  on('railBuilt', sweepBuiltTiles);
 }
 
 // ---------- trees ----------
@@ -66,6 +124,7 @@ function buildTreesGLTF(lib, spots) {
       s.set(sc, sc * (0.9 + rand() * 0.25), sc);
       m4.compose(p, q, s);
       inst.setMatrixAt(k, m4);
+      trackInstance(t.i, t.j, inst, k);
       const tone = 0.8 + rand() * 0.35;
       col.setRGB(tone, tone * (0.95 + rand() * 0.1), tone * 0.95);
       inst.setColorAt(k, col);
@@ -89,6 +148,8 @@ function buildTreesProcedural(spots) {
     p.set(x + ox, t.h + 0.5 * sc, z + oz); s.set(sc, sc, sc);
     m.compose(p, q, s); trunks.setMatrixAt(k, m);
     p.y = t.h + (1 + 1.1) * sc; m.compose(p, q, s); crowns.setMatrixAt(k, m);
+    trackInstance(t.i, t.j, trunks, k);
+    trackInstance(t.i, t.j, crowns, k);
     col.setHSL(0.31 + rand() * 0.06, 0.45, 0.3 + rand() * 0.12);
     crowns.setColorAt(k, col);
   });
@@ -289,6 +350,8 @@ function scatterInstances(name, geo, count, test, opts = {}) {
     s.set(sc, sc * (0.85 + srand() * 0.3), sc);
     m4.compose(p, q, s);
     inst.setMatrixAt(k, m4);
+    const [ti, tj] = tileFromWorld(spot.x, spot.z);
+    trackInstance(ti, tj, inst, k);
     const tone = 0.85 + srand() * 0.3; // near-neutral: brightness jitter only, hue stays the baked vertex colour
     col.setRGB(tone, tone, tone);
     inst.setColorAt(k, col);

@@ -239,8 +239,24 @@ export function isUnlocked(toolId) {
 }
 export const unlockHint = toolId => UNLOCKS.find(x => x.tool === toolId)?.hint || '';
 
+// wind turbines need clear air from each other (wake/noise separation, ADR
+// 39): no other plant of the SAME type within Chebyshev radius def.minSpacing.
+// Data-driven so any future plant type can opt in the same way `nearWater`
+// does. Exported for the UI hover hint (input.js) so it can name the exact
+// reason a spot is blocked, distinct from "footprint occupied".
+export function tooCloseToOther(toolId, i, j) {
+  const def = BUILDINGS[toolId];
+  if (!def || !def.minSpacing) return false;
+  return G.plants.some(p => p.type === toolId
+    && Math.max(Math.abs(p.i - i), Math.abs(p.j - j)) <= def.minSpacing);
+}
+
 // ---------- placement ----------
-export function canPlace(toolId, i, j) {
+// `opts.lenient` skips the minSpacing check — used ONLY by save.js's replay so
+// an old save holding turbines placed before this rule existed (or before a
+// future spacing tightening) isn't silently dropped on restore. Never pass it
+// from player-facing code (input.js/purchaseBuilding/newGame.js).
+export function canPlace(toolId, i, j, opts = {}) {
   const def = BUILDINGS[toolId];
   if (!def) return false;
   if (toolId === 'bulldoze') {
@@ -257,6 +273,7 @@ export function canPlace(toolId, i, j) {
   }
   const fp = def.footprint;
   if (!areaFree(i, j, fp)) return false;
+  if (def.minSpacing && !opts.lenient && tooCloseToOther(toolId, i, j)) return false;
   if (def.nearRoad) {
     let ok = false;
     for (let d = -1; d <= fp; d++) {

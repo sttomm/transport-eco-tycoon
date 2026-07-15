@@ -261,6 +261,25 @@ test('v5 round-trips the energy-transition fields', () => {
   assert.deepEqual(G.reports, [{ day: 4, energyIncome: 1000 }]);
 });
 
+// WP7 (ADR 39): canPlace() gained a wind-turbine minSpacing rule, but place()
+// itself never enforced it (only canPlace-gated callers do), so a save made
+// before the rule existed can hold turbines closer together than it allows.
+// restore() must grandfather them in via canPlace(..., { lenient: true }),
+// not silently drop the "extra" one the new rule would otherwise reject.
+test('save replay grandfathers turbines placed closer than minSpacing', () => {
+  freshWorld();
+  const [wi, wj] = findSpot('wind');
+  place('wind', wi, wj);       // place() has no placement-rule check — this
+  place('wind', wi + 1, wj);   // simulates a pre-rule save's adjacent turbines
+  assert.equal(G.plants.filter(p => p.type === 'wind').length, 2, 'fixture: two adjacent turbines');
+
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.equal(G.plants.filter(p => p.type === 'wind').length, 2,
+    'both turbines survive replay — lenient replay skips the spacing rule');
+});
+
 test('a bridge over the river round-trips through v5 (water tiles restore)', () => {
   freshWorld();
   const [wi, wj] = findWater();          // a river/lake tile

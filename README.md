@@ -62,7 +62,8 @@ locked while it runs.
    unserved MWh costs **€500 blackout compensation** and unhappy cities
    shrink. Keep prices out of crisis territory, too: above **€150/MWh** your
    industries pause production rather than pay (restarting below €100), and
-   idle factories starve your freight routes.
+   idle factories starve your freight routes. Wind turbines need 2 tiles of
+   clear air from each other — pack them tighter and the ghost turns red.
 
 **Special contracts (📜 tab):** cities and industries post up to three
 time-limited offers to move a specific cargo or passenger relation (à la
@@ -94,7 +95,9 @@ e-fuel refinery after your first H₂ stockpile, and the interconnector when
 the Smart Market opens. Locked tools show a 🔒 with exactly what earns them.
 
 **Controls:** right-drag pan · middle-drag rotate · WASD/arrows pan · wheel
-zoom · Space pause · 1/2/3 speed · V passenger demand · ESC cancel tool.
+zoom · Space pause · 1/2/3 speed · V passenger demand · ESC cancel tool ·
+right-click cancel · click a city (its floating name label works too) to see
+its stats.
 
 ## The energy game (and what it teaches)
 

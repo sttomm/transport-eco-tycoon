@@ -35,6 +35,7 @@ export const BUILDINGS = {
   },
   wind: {
     name: 'Wind Turbine', icon: '🌬', cost: 30000, upkeep: 160, footprint: 1, category: 'energy', capMW: 4,
+    minSpacing: 2, // Chebyshev tiles: no other wind turbine within this radius (ADR 39, wake/noise separation)
     desc: '4 MW onshore turbine. Needs wind: cut-in ~11 km/h, rated ~43 km/h, storm cut-out ~90 km/h.',
   },
   hydro: {

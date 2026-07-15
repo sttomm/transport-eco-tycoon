@@ -7,11 +7,13 @@ import { G, spend, earn } from '../sim/state.js';
 import { BUILDINGS } from '../sim/data.js';
 import {
   tile, tileFromWorld, worldXZ, tileY, canPlace, place, purchaseBuilding, bulldoze, lShapedPath, dragCost,
+  tooCloseToOther,
 } from '../sim/grid.js';
 import { toggleRouteStop } from '../sim/transport.js';
 import { nameStation } from '../sim/stations.js';
 import { scene, camera, renderer, controls } from '../render/scene.js';
 import { buildPlantMesh } from '../render/meshes.js';
+import { pickCityLabel } from '../render/labels.js';
 import { renderRoutes, showTipText, selectTool } from './hud.js';
 import { pickEscapeLayer } from './hud/escape.js';
 
@@ -170,12 +172,24 @@ function onPointerUp(ev) {
   if (G.tool && G.tool !== 'road') {
     const def = BUILDINGS[G.tool];
     const ref = purchaseBuilding(G.tool, i, j); // sim validates & charges
-    if (ref === 'blocked') return;
+    if (ref === 'blocked') {
+      // name the reason when it's the WP7 turbine spacing rule, not a generic
+      // "occupied" block — the red ghost already shows something's wrong
+      if (def.minSpacing && tooCloseToOther(G.tool, i, j)) {
+        showTipText('Too close to another turbine', `${def.name}s need at least ${def.minSpacing + 1} tiles of clear air between them.`);
+      }
+      return;
+    }
     if (ref === 'poor') { showTipText('Too expensive', `${def.name} costs ${def.cost.toLocaleString()}.`); return; }
     if (ref.kind === 'station') nameStation(ref);
     return;
   }
-  // no tool → selection / route editing
+  // no tool → selection / route editing (label pick first: city name sprites
+  // float above the map and aren't tied to a single occupied tile)
+  if (!G.tool && !G.routeEdit) {
+    const cityHit = pickCityLabel(ray);
+    if (cityHit) { G.selected = Object.assign(cityHit, { kind: 'city' }); return; }
+  }
   const t = tile(i, j);
   if (!t) return;
   if (t.occ && t.occ.kind === 'station' && G.routeEdit) {

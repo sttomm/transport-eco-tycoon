@@ -27,6 +27,11 @@ import { syncNewsSeq } from './news.js';
 // v6: playtest-feedback round (news feed, finance ledger, contract history,
 // per-route lifetime counters). Same worldgen, so this is an ADDITIVE bump:
 // restore() still accepts v5 and fills the new fields with defaults.
+// WP7 (still v6): canPlace() gained a turbine minSpacing rule (grid.js). No
+// new persisted field, but the plant replay below passes { lenient: true } so
+// a save holding turbines closer together than the new rule still restores
+// them — the rule only ever blocks NEW placements, never grandfathers away
+// old ones. Pinned in test/save.test.js.
 // NOTE: the "-v2" in the localStorage key is FROZEN, not the format version.
 // The key changed once (v1→v2, first worldgen break) and stays put since;
 // the format version is the `v` field inside the payload (currently 5).
@@ -144,7 +149,10 @@ export function restore(d) {
 
   for (const [i, j] of d.roads || []) if (canPlace('road', i, j)) place('road', i, j);
   for (const [i, j] of d.rails || []) if (canPlace('rail', i, j)) place('rail', i, j);
-  for (const p of d.plants || []) if (canPlace(p.type, p.i, p.j)) place(p.type, p.i, p.j);
+  // lenient: true — skip the WP7 turbine minSpacing rule on replay so a save
+  // made before the rule existed (or with turbines packed tighter than a
+  // future spacing tightening) doesn't silently lose grandfathered plants.
+  for (const p of d.plants || []) if (canPlace(p.type, p.i, p.j, { lenient: true })) place(p.type, p.i, p.j);
 
   // stations: keep index alignment with the saved routes' stop lists
   const placed = (d.stations || []).map(s => {

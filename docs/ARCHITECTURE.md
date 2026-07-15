@@ -18,7 +18,7 @@ flowchart TB
         subgraph render["src/render/ — Three.js views"]
             SCENE["scene.js\nrenderer · camera · lights\nsky+IBL · day/night · fly-to"]
             POSTFX["postfx.js\nGTAO · bloom · tilt-shift"]
-            RWORLD["world.js — facade over\nterrain.js · buildings.js · scatter.js\ninfrastructure.js · ambient.js (+ rng.js)"]
+            RWORLD["world.js — facade over\nterrain.js · buildings.js · scatter.js\ninfrastructure.js · ambient.js · labels.js\n(+ rng.js)"]
             RVEH["vehicles.js\nvehicle meshes · +€ FX\ndemand overlay · route highlight"]
             MESHES["meshes.js + textures.js + assets.js\nprocedural meshes · canvas textures\nglTF loading (ADR 16/17)"]
         end
@@ -911,6 +911,83 @@ The right-click gesture, the contextmenu suppression and the responsive
 breakpoints are DOM/CSS and were verified by code review — **the two
 breakpoints (920 px hard cutoff, 1200 px soft wrap) need a human browser
 check** (`resize_window` mobile/tablet presets) that this session didn't run,
+per the "don't drive the shared preview tab" rule.
+
+### 39. Turbine spacing, construction clearing & persistent city labels (WP7)
+
+**Problem:** three small playtest-friction items with no shared theme except
+"placement/worldgen polish": (1) wind turbines could be packed edge-to-edge,
+which reads wrong (real turbines need clear air from each other) and gives no
+feedback about why; (2) `render/scatter.js` builds every tree and ground-cover
+instance ONCE at worldgen with zero event subscriptions, so a building placed
+later visually clips straight through trees still standing on its tiles;
+(3) city names only ever appeared inside the demand overlay (`G.showDemand`
+or a selected city), never as a normal, always-on map label.
+
+**Decision (turbine spacing):** `BUILDINGS.wind.minSpacing = 2` (data.js) — a
+new plant of the same type is rejected within Chebyshev radius `minSpacing` of
+an existing one (`tooCloseToOther()`, `grid.js`). **Save-compat trap:**
+`restore()` replays every saved plant through `canPlace()`/`place()`
+(`save.js`), so a save made before this rule existed (or one from a future
+stricter tightening) could hold turbines closer together than the new rule
+allows — and lose the "extra" ones silently, the same class of hazard ADR's
+v5 worldgen note already documents. Fix: `canPlace(toolId, i, j, { lenient })`
+— a third, optional parameter that skips ONLY the spacing check, used
+EXCLUSIVELY by `save.js`'s plant replay line. Every player-facing call site
+(`input.js`, `purchaseBuilding()`, `newGame.js`) keeps calling the 2-arg form,
+so the rule is always live for anything the player actually clicks. `input.js`
+also names the reason on a blocked click ("Too close to another turbine")
+instead of the generic silent no-op every other blocked placement gets — the
+red ghost/highlight tile itself needed no new code, since it already colors
+red whenever `canPlace()` returns false.
+
+**Decision (construction clearing):** `scatter.js` now tracks every tree and
+ground-scatter `InstancedMesh` entry it creates in a `Map<"i,j", {inst,
+index}[]>` keyed by source tile, then subscribes to the exact events
+`infrastructure.js`/`buildings.js` already use — `placed` (footprint-exact:
+clear only the new building's tiles), `roadBuilt`/`railBuilt` (no tile
+payload, so a cheap sweep over the tracked keys — bounded by the fixed
+scatter count, not the 192×192 grid — clears any that turned into
+road/rail/occupied). Hiding reuses `ambient.js`'s zero-scale-matrix idiom
+(`instanceMatrix.needsUpdate` after `setMatrixAt(i, HIDDEN_SCALE)`) rather
+than rebuilding the instanced mesh. Farm fields (WP8, `buildFarmFields()`)
+are deliberately NOT tracked — that code already documents player
+construction over a field as an accepted look, and a field's multi-tile
+footprint doesn't key cleanly to one `(i,j)`. No sim change: the renderer
+purely reacts to events grid.js already emits, so save replay (which re-fires
+`placed`/`roadBuilt`/`railBuilt` through `place()`) clears the same trees for
+free with no version bump.
+
+**Decision (city labels):** a new `render/labels.js` builds one persistent
+`makeTextSprite(city.name)` per city ONCE from `initWorldRender` (via the
+`world.js` facade) — NOT the demand overlay's rebuild-every-1.2 s pattern
+(`vehicles.js`), since a city's name and position never change after
+worldgen. Distance-attenuated scale (bigger when far, so it stays legible
+without ballooning up close) and a fade-in when the camera is right on top of
+a city (the 3D buildings already make it obvious by then). `input.js`'s click
+handler raycasts against the label sprites (a new check, since the rest of
+click-to-select is tile-occupant based, not mesh-based) before falling back
+to the tile lookup; a hit sets `G.selected = city` the same way clicking a
+`cityBlock` tile already does, so the existing infobox needs no changes. The
+demand overlay (`vehicles.js`) was left as-is rather than merged into these —
+its labels carry live, frequently-changing data (waiting pax, happiness) that
+doesn't fit a create-once sprite, and merging them was judged not worth the
+risk of losing that content; a future pass could highlight-instead-of-
+duplicate if it re-touches that code anyway.
+
+**Why:** all three are the kind of small, well-scoped fix that doesn't
+justify its own package; grouping them let one session touch `grid.js`,
+`scatter.js` and add `labels.js` without three separate save/architecture
+reviews.
+
+**Invariants (tested):** `test/grid.test.js` pins the spacing rejection
+(adjacent + at-limit blocked, `minSpacing + 1` clear) and that `{lenient:
+true}` bypasses it; `test/save.test.js` adds a fixture using `place()`
+directly (which has no rule check) to simulate two pre-rule adjacent
+turbines, snapshots, restores onto a fresh world, and asserts both survive.
+The tree-hiding, label rendering and raycast pick are render-layer and can't
+be unit-tested — verified by code review only; **this needs a human browser
+check** (build over standing trees, zoom in/out on a city label, click one)
 per the "don't drive the shared preview tab" rule.
 
 ## Persistence

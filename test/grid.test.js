@@ -140,6 +140,28 @@ test('hydro must touch water; solar/wind must not overlap anything', () => {
   assert.equal(canPlace('solar', si, sj), false, 'footprint now occupied');
 });
 
+test('wind turbines need clearance from each other; {lenient:true} bypasses it for save replay (ADR 39)', () => {
+  const [wi, wj] = findSpot('wind');
+  const near = [wi + 1, wj];               // Chebyshev distance 1
+  const atLimit = [wi + BUILDINGS.wind.minSpacing, wj]; // distance == minSpacing
+  const clear = [wi + BUILDINGS.wind.minSpacing + 1, wj]; // distance == minSpacing + 1
+  // baseline: before any turbine exists, all three are otherwise placeable —
+  // proves the later rejections come from spacing, not some other rule
+  assert.equal(canPlace('wind', ...near), true);
+  assert.equal(canPlace('wind', ...atLimit), true);
+  assert.equal(canPlace('wind', ...clear), true);
+
+  place('wind', wi, wj);
+  assert.equal(canPlace('wind', ...near), false, 'adjacent turbine rejected');
+  assert.equal(canPlace('wind', ...atLimit), false, 'still within the minSpacing radius');
+  assert.equal(canPlace('wind', ...clear), true, 'clear one tile beyond minSpacing');
+
+  // lenient: true — the ONLY escape hatch, used by save.js's replay so an old
+  // save holding turbines packed tighter than this rule still restores them
+  assert.equal(canPlace('wind', ...near, { lenient: true }), true, 'lenient bypasses spacing');
+  assert.equal(canPlace('wind', ...atLimit, { lenient: true }), true, 'lenient bypasses spacing');
+});
+
 test('storage buildings register capacity on place and deregister on bulldoze', () => {
   const [i, j] = findSpot('battery');
   place('battery', i, j);
