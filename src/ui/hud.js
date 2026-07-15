@@ -21,6 +21,8 @@ import { renderContracts, renderContractsLive } from './hud/contracts.js';
 import { renderRoutes, renderRoutesLive } from './hud/routes.js';
 import { renderLearn } from './hud/learn.js';
 import { renderInfobox } from './hud/infobox.js';
+import { initNews, onNews } from './hud/news.js';
+import { closeTopModal, modalOpen } from './hud/modal.js';
 
 // external surface (main.js, input.js) — unchanged by the ./hud/ split
 export { showTipText } from './hud/toasts.js';
@@ -48,8 +50,10 @@ export function initUI() {
   on('contractsChanged', () => { if (activeTab === 'contracts') renderContracts(); });
   on('researchDone', () => { if (activeTab === 'research') renderResearch(); });
   on('dayReport', showDayReport);
+  on('news', onNews);
   initLoanBox();
   initTopbarTooltips();
+  initNews();
   // delegated: the infobox re-renders every 0.25 s, so a handler on the button
   // itself could vanish between mousedown and click (same trick as the vehlist)
   $('infobox').addEventListener('click', e => {
@@ -63,17 +67,21 @@ export function initUI() {
   });
   $('demandbtn').onclick = toggleDemand;
   document.addEventListener('keydown', e => {
-    if ($('welcome')) return; // game is paused behind the welcome screen
+    // Escape peels one layer: top modal first, then tool/route-edit, selection,
+    // demand overlay (WP6 formalises the chain; the modal step lands here).
+    if (e.key === 'Escape') {
+      if (closeTopModal()) { e.preventDefault(); return; }
+      selectTool(null);
+      G.selected = null;
+      if (G.showDemand) toggleDemand(); // also dismisses the demand arrows
+      return;
+    }
+    if (modalOpen()) return; // game is paused behind a modal (welcome, report, …)
     if (e.key === ' ') { setSpeed(G.speed === 0 ? (G._lastSpeed || 1) : 0); e.preventDefault(); }
     if (e.key === '1') setSpeed(1);
     if (e.key === '2') setSpeed(3);
     if (e.key === '3') setSpeed(10);
     if (e.key === 'v' || e.key === 'V') toggleDemand();
-    if (e.key === 'Escape') {
-      selectTool(null);
-      G.selected = null;
-      if (G.showDemand) toggleDemand(); // also dismisses the demand arrows
-    }
   });
 }
 

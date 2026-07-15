@@ -7,6 +7,7 @@ import { G } from './state.js';
 import { TECHS } from './data.js';
 import { place, canPlace } from './grid.js';
 import { createRoute, buyVehicle, addWagon } from './transport.js';
+import { syncNewsSeq } from './news.js';
 
 // v2: 192×192 world with 8 cities — v1 saves store tile coords of the old
 // 96×96 map and would silently mis-restore, so they are left under their old key.
@@ -23,6 +24,9 @@ import { createRoute, buyVehicle, addWagon } from './transport.js';
 // REJECT every pre-v5 save (the same clean-break rule v1→v2 used for its
 // worldgen change) and start fresh. Non-worldgen bumps could migrate; a
 // worldgen bump cannot. Pinned in test/save.test.js.
+// v6: playtest-feedback round (news feed, finance ledger, contract history,
+// per-route lifetime counters). Same worldgen, so this is an ADDITIVE bump:
+// restore() still accepts v5 and fills the new fields with defaults.
 // NOTE: the "-v2" in the localStorage key is FROZEN, not the format version.
 // The key changed once (v1→v2, first worldgen break) and stays put since;
 // the format version is the `v` field inside the payload (currently 5).
@@ -43,8 +47,9 @@ export function clearSave() {
 export function snapshot() {
   const stIx = st => G.stations.indexOf(st);
   return {
-    v: 5,
+    v: 6,
     minutes: G.minutes, day: G.day, money: G.money, co2: G.co2SavedTons,
+    news: G.news,
     loan: G.loan, contracts: G.contracts, // contracts hold only indices → plain JSON
     carbonPrice: G.carbonPrice, co2Emitted: G.co2EmittedTons,
     gasMWhToday: G.gasMWhToday, gasCostToday: G.gasCostToday,
@@ -86,12 +91,15 @@ export function snapshot() {
 
 // apply a snapshot onto a freshly generated world; returns true on success
 export function restore(d) {
-  // v5 only: pre-v5 saves predate the WP6 river/lake worldgen and would
-  // mis-restore onto the new terrain (see the version note above).
-  if (!d || d.v !== 5) return false;
+  // v5 & v6: pre-v5 saves predate the WP6 river/lake worldgen and would
+  // mis-restore onto the new terrain (see the version note above). v6 is an
+  // additive bump — v5 saves load with defaults for the new fields.
+  if (!d || (d.v !== 5 && d.v !== 6)) return false;
 
   G.minutes = d.minutes; G.day = d.day; G.money = d.money;
   G.co2SavedTons = d.co2 || 0;
+  G.news = d.news || []; // v5 saves: start with an empty feed
+  syncNewsSeq();
   G.loan = d.loan || 0;
   if (d.contracts) G.contracts = d.contracts; // pre-contract saves keep the fresh default
   // v3 energy-transition fields — v2 saves keep the initialState defaults

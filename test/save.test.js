@@ -137,10 +137,36 @@ test('restore rejects unknown versions', () => {
 test('pre-v5 saves are rejected (WP6 worldgen change — no silent mis-restore)', () => {
   freshWorld();
   const snap = JSON.parse(JSON.stringify(snapshot()));
-  assert.equal(snap.v, 5, 'new saves are v5');
+  assert.equal(snap.v, 6, 'new saves are v6');
   for (const v of [2, 3, 4]) {
     assert.equal(restore({ ...snap, v }), false, `v${v} save must be rejected, not migrated`);
   }
+});
+
+// v6 is an ADDITIVE bump (news feed, ledger, contract history, route counters)
+// on the SAME worldgen as v5, so v5 saves must still load — with defaults for
+// the fields v5 never had. This is the non-worldgen migration path (save.js
+// version block); the pre-v5 rejection above stays untouched.
+test('v5 saves still restore (additive v6 bump — news feed defaults empty)', () => {
+  freshWorld();
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  delete snap.news;      // a genuine v5 payload had no news field
+  freshWorld();
+  assert.equal(restore({ ...snap, v: 5 }), true, 'v5 accepted, not rejected');
+  assert.deepEqual(G.news, [], 'missing news defaults to an empty feed');
+});
+
+test('v6 round-trips the news feed', () => {
+  freshWorld();
+  G.news = [
+    { id: 3, day: 2, minutes: 100, type: 'contract-offer', icon: '📜', headline: 'Offer', body: '', refs: null, kept: true, read: false },
+  ];
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.equal(G.news.length, 1);
+  assert.equal(G.news[0].kept, true);
+  assert.equal(G.news[0].headline, 'Offer');
 });
 
 test('v5 round-trips vehicle age, route auto-replace and the import/H₂ counters', () => {
@@ -178,7 +204,7 @@ test('v5 round-trips the energy-transition fields', () => {
   G.reports = [{ day: 4, energyIncome: 1000 }];
 
   const snap = JSON.parse(JSON.stringify(snapshot()));
-  assert.equal(snap.v, 5);
+  assert.equal(snap.v, 6);
   assert.ok(!('forecast' in snap), 'forecast is derived — never saved, rebuilt by updateWeather after load');
 
   freshWorld();

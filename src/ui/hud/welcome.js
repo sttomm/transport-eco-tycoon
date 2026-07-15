@@ -2,8 +2,8 @@
 import { G } from '../../sim/state.js';
 import { clearSave } from '../../sim/save.js';
 import { startTutorial, skipTutorial } from '../../sim/tutorial.js';
-import { setSpeed } from './dom.js';
 import { showTip } from './toasts.js';
+import { registerModal } from './modal.js';
 
 // stylised scene: sun→solar, wind, hydro, storage feeding a city + e-transport
 const WELCOME_SVG = `
@@ -89,11 +89,10 @@ const WELCOME_SVG = `
 </svg>`;
 
 export function showWelcome(hasSaveFlag) {
-  G._lastSpeed = G.speed || 1;
-  G.speed = 0; // pause behind the overlay
   const el = document.createElement('div');
   el.id = 'welcome';
-  el.innerHTML = `<div id="welcome-card">
+  el.className = 'modal-overlay';
+  el.innerHTML = `<div id="welcome-card" class="modal-card">
     ${WELCOME_SVG}
     <h1>🌍 Transport Eco Tycoon</h1>
     <p class="wlead">You run this region's <b>transport company</b> — and its <b>100% renewable power grid</b>.</p>
@@ -111,15 +110,18 @@ export function showWelcome(hasSaveFlag) {
     </div>
   </div>`;
   document.body.appendChild(el);
-  // withTutorial: guided steps for new players; otherwise the tutorial is
-  // marked done (silently) and the classic welcome tip fires instead
-  const start = withTutorial => {
-    el.remove();
-    setSpeed(1);
-    if (hasSaveFlag) return;
-    if (withTutorial) startTutorial();
-    else { skipTutorial(); showTip('welcome'); }
-  };
+  // the modal stack owns pause + speed restore (D-B): closing restores the
+  // prior speed (not a hardcoded 1×), and suppresses keybinds while shown.
+  let withTutorial = false;
+  const close = registerModal(el, {
+    pause: true,
+    onClose: () => {
+      if (hasSaveFlag) return;
+      if (withTutorial) startTutorial();
+      else { skipTutorial(); showTip('welcome'); }
+    },
+  });
+  const start = wt => { withTutorial = wt; close(); };
   const bs = el.querySelector('#w-start'), bt = el.querySelector('#w-tutorial'),
     bc = el.querySelector('#w-continue'), bn = el.querySelector('#w-new');
   if (bs) bs.onclick = () => start(false);

@@ -6,6 +6,7 @@
 // Pure logic — the 📜 tab UI lives in src/ui/hud.js.
 import { G, emit } from './state.js';
 import { CARGO } from './data.js';
+import { pushNews } from './news.js';
 
 export const MAX_OFFERS = 3;      // open offers to pick from
 export const MAX_ACTIVE = 3;      // signed contracts running in parallel
@@ -65,6 +66,7 @@ function makeOffer(rnd = Math.random) {
       if (!targets.length) continue;
       c.toInd = G.industries.indexOf(targets[Math.floor(rnd() * targets.length)]);
     } else {
+      if (!G.cities.length) continue; // food/steel need a destination city
       c.toCity = Math.floor(rnd() * G.cities.length);
     }
     // no duplicate relation on the board or in the portfolio
@@ -107,6 +109,9 @@ export function tickContracts(gameHours) {
       cs.active = cs.active.filter(x => x !== c);
       cs.failed++;
       emit('toast', { title: '📜 Contract expired', text: `${contractLabel(c)} — the deadline passed at ${Math.round(c.progress)}/${c.amount} delivered. No penalty, but the bonus is gone.` });
+      pushNews({ type: 'contract-expired', icon: '📜', headline: 'Contract expired',
+        body: `${contractLabel(c)} — deadline passed at ${Math.round(c.progress)}/${c.amount} delivered. No penalty, but the bonus is gone.`,
+        refs: contractDest(c) });
       emit('contractsChanged');
     }
   }
@@ -120,6 +125,9 @@ export function tickContracts(gameHours) {
       cs.offers.push(o);
       cs.offerTimer = SPAWN_HOURS;
       emit('tip', 'firstContract');
+      pushNews({ type: 'contract-offer', icon: '📜', headline: 'New contract offer',
+        body: `${contractLabel(o)} — pays ×${o.mult} per delivery plus a €${o.bonus.toLocaleString()} bonus if filled in ${o.days} days. Sign it in the 📜 tab.`,
+        refs: contractDest(o) });
       emit('contractsChanged');
     }
   }
@@ -145,6 +153,9 @@ export function contractDelivery(cargoId, dest, amount, basePay) {
       G.money += c.bonus;
       G.incomeTransportToday += c.bonus;
       emit('toast', { title: '📜 Contract fulfilled!', text: `${contractLabel(c)} — bonus €${c.bonus.toLocaleString()} paid out.` });
+      pushNews({ type: 'contract-done', icon: '🎉', headline: 'Contract fulfilled!',
+        body: `${contractLabel(c)} — €${c.bonus.toLocaleString()} completion bonus paid out.`,
+        refs: contractDest(c) });
       emit('contractDone', c);
       emit('contractsChanged');
     }

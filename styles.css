@@ -203,3 +203,51 @@
   .wbtns button { padding: 9px 18px; font-size: 14px; border-radius: 8px; }
   .wbtns .wprimary { background: var(--accent); color: #04141f; font-weight: 700; }
   .wbtns .wsub { display: block; font-size: 10.5px; font-weight: 400; opacity: 0.75; }
+
+  /* shared modal helper (ui/hud/modal.js) — welcome keeps its own #welcome-card
+     override; generic modals (news history, daily report, stats) use .modal-* */
+  .modal-overlay { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    background: rgba(5, 9, 14, 0.72); backdrop-filter: blur(5px); animation: fadein 0.18s ease; }
+  @keyframes fadein { from { opacity: 0; } }
+  .modal-card { width: 560px; max-width: 94vw; max-height: 92vh; display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid rgba(79, 195, 247, 0.45); border-radius: 14px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6); overflow: hidden; }
+  .modal-card.modal-wide { width: 820px; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .modal-title { font-size: 17px; font-weight: 700; color: var(--accent); }
+  .modal-x { cursor: pointer; color: var(--dim); font-size: 15px; padding: 2px 6px; border-radius: 6px; }
+  .modal-x:hover { color: var(--txt); background: var(--panel2); }
+  .modal-body { padding: 14px 16px; overflow-y: auto; }
+
+  /* news ticker (top-center, under the topbar) + 📰 badge */
+  #newsticker { position: absolute; left: 50%; transform: translateX(-50%); z-index: 13;
+    max-width: min(680px, 90vw); display: none; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--accent); border-top: none;
+    padding: 5px 16px; border-radius: 0 0 10px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45); }
+  #newsticker.shown { display: block; animation: slidedown 0.3s ease; }
+  #newsticker.warn { border-color: var(--warn); } #newsticker.good { border-color: var(--good); }
+  #newsticker .ni { font-size: 15px; }
+  @keyframes slidedown { from { transform: translate(-50%, -12px); opacity: 0; } }
+  #newsbtn { position: relative; }
+  #newsbtn.has-unread { border-color: var(--accent); box-shadow: 0 0 8px rgba(79, 195, 247, 0.4); }
+  .newscount { position: absolute; top: -5px; right: -5px; min-width: 15px; height: 15px; padding: 0 3px;
+    font-size: 10px; font-weight: 700; line-height: 15px; text-align: center; color: #04141f;
+    background: var(--bad); border-radius: 8px; }
+
+  /* news history list */
+  .newslist { min-width: 380px; }
+  .newsitem { display: flex; gap: 10px; padding: 9px 6px; border-bottom: 1px solid var(--line); }
+  .newsitem.flash { animation: newsflash 1.4s ease; }
+  @keyframes newsflash { 0%, 60% { background: rgba(79, 195, 247, 0.18); } }
+  .newsitem.kept { background: rgba(240, 198, 74, 0.07); }
+  .news-ic { font-size: 18px; line-height: 1.2; }
+  .news-txt { flex: 1; min-width: 0; }
+  .news-hd { font-weight: 700; }
+  .newsitem.good .news-hd { color: var(--good); } .newsitem.warn .news-hd { color: var(--warn); }
+  .news-bd { font-size: 12.5px; color: var(--txt); margin: 1px 0 2px; }
+  .news-acts { display: flex; flex-direction: column; gap: 4px; }
+  .news-keep, .news-del { cursor: pointer; opacity: 0.6; padding: 1px 3px; border-radius: 5px; }
+  .news-keep:hover, .news-del:hover { opacity: 1; background: var(--panel2); }
+  .newsitem.kept .news-keep { opacity: 1; }

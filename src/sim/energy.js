@@ -1,6 +1,7 @@
 import { G, emit, hourOfDay, season } from './state.js';
 import { BUILDINGS, CARBON, CLIMATE, FORECAST, H2OFFTAKE, IND_CURTAIL, INTERCONNECT, MARKET, TARIFF, VOLL } from './data.js';
 import { vehicleUpkeep } from './transport.js';
+import { pushNews } from './news.js';
 
 // Flat electricity tariff per MWh served — the price until the Smart Market
 // goes live on day MARKET.liveDay; after that G.price is set dynamically each
@@ -37,6 +38,19 @@ export function eventThresholds() {
     storm: CLIMATE.stormRisk * risk,
     heatwave: season().name === 'Summer' ? CLIMATE.heatRisk * risk : 0,
   };
+}
+
+// a scheduled front enters the news feed too (D-C: forecast-worthy, not just
+// the transient advisor tip). The ticker flash draws the eye to the forecast.
+function newsFront(f) {
+  const eta = Math.max(1, Math.round(f.inHours));
+  const body = f.type === 'dunkelflaute'
+    ? `Est. ${Math.round(f.durationH)} h of dark calm in ~${eta} h. Charge batteries & H₂ now.`
+    : f.type === 'heatwave'
+    ? `Heat dome in ~${eta} h: city demand spikes, wind drops for ~${Math.round(f.durationH)} h. Solar stays strong — charge at noon.`
+    : `Storm front in ~${eta} h — turbines will cut out. Storage bridges the gap.`;
+  const H = { dunkelflaute: '🌫 Dunkelflaute inbound', storm: '🌪 Storm front inbound', heatwave: '🔥 Heatwave inbound' };
+  pushNews({ type: 'energy', icon: '⚠', headline: H[f.type], body });
 }
 
 let weatherTimer = 0;
@@ -81,13 +95,16 @@ export function updateWeather(gameHours) {
           durationH: FORECAST.flauteHmin + Math.random() * (FORECAST.flauteHmax - FORECAST.flauteHmin),
         };
         emit('tip', 'dunkelflaute'); // warn at schedule time — charge everything now
+        newsFront(G.weatherFront);
       } else if (Math.random() < th.storm) {
         G.weatherFront = { type: 'storm', inHours: lead, durationH: FORECAST.stormH };
+        newsFront(G.weatherFront);
       } else if (Math.random() < th.heatwave) {
         G.weatherFront = {
           type: 'heatwave', inHours: lead,
           durationH: CLIMATE.heatHmin + Math.random() * (CLIMATE.heatHmax - CLIMATE.heatHmin),
         };
+        newsFront(G.weatherFront);
       }
     }
   }

@@ -3,6 +3,7 @@
 // counters and live grid state; rewards are cash. Pure logic — the panel UI
 // lives in src/ui/quests.js and listens for the 'toast' event emitted here.
 import { G, emit } from './state.js';
+import { pushNews } from './news.js';
 
 const stat = k => () => G.stats[k];
 const MWh = v => v.toFixed(0) + ' MWh';
@@ -118,11 +119,14 @@ export function checkQuests() {
       G.money += q.reward;
       const next = QUESTS.filter(x => x.req === q.id && isQuestActive(x));
       // quests flagged `win` are milestone victories — celebrate accordingly
+      const text = (q.winText ? q.winText + ' ' : '') + `Reward: €${q.reward.toLocaleString()}.` +
+        (next.length ? ` New objective: ${next.map(n => n.title).join(', ')}` : '');
       emit('toast', {
         title: q.win ? `🏆🎉 ${q.title} — YOU DID IT!` : `🎯 Objective complete: ${q.title}`,
-        text: (q.winText ? q.winText + ' ' : '') + `Reward: €${q.reward.toLocaleString()}.` +
-          (next.length ? ` New objective: ${next.map(n => n.title).join(', ')}` : ''),
+        text,
       });
+      pushNews({ type: 'quest', icon: q.win ? '🏆' : '🎯',
+        headline: q.win ? `${q.title} — you did it!` : `Objective complete: ${q.title}`, body: text });
       emit('questDone', q);
     }
   }

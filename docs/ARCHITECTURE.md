@@ -36,8 +36,8 @@ flowchart TB
         ENERGY["energy.js\nweather · merit-order dispatch\nprices · dispatch selectors"]
         TRANS["transport.js\nroutes · vehicles · aging\npurchaseVehicle()"]
         TDOM["pathfinding.js · stations.js\nindustries.js · cities.js\nA*/poses · catchment · production · demand"]
-        MISC["research.js · quests.js · tutorial.js\ncontracts.js · loans.js · reports.js"]
-        SAVE["save.js\nsnapshot / restore (v5)"]
+        MISC["research.js · quests.js · tutorial.js\ncontracts.js · loans.js · reports.js · news.js"]
+        SAVE["save.js\nsnapshot / restore (v6)"]
         NOISE["noise.js · newGame.js\nseeded value-noise · starter grid"]
     end
     MAIN -->|"tickSim(dt) each frame"| TICK
@@ -87,6 +87,7 @@ happened; renderers and UI decide what that looks like. The important events:
 | `dayReport` | reports.js | ui/hud/dashboard.js (end-of-day report toast) |
 | `tutorialStep` / `tutorialDone` | tutorial.js | ui/tutorial.js (card advance / hide) |
 | `questDone` / `contractDone` | quests.js / contracts.js | nobody yet — announced for future views (both also emit a `toast`) |
+| `news` | news.js (via contracts/quests/energy/reports producers) | ui/hud/news.js (ticker flash + unread badge) |
 | `flyTo` | ui/quests.js | render/scene.js (camera tween) |
 
 Adding an event: `emit('name', payload)` in sim, `on('name', fn)` in a view's
