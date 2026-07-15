@@ -121,13 +121,23 @@ export function renderClimate() {
 }
 
 // ---------- dashboard charts ----------
-const SERIES = [
+// power-chart series colors — exported so the topbar energy hover speaks the
+// same color language (WP3).
+export const SERIES = [
   ['solar', '#f5c542', 'Solar'], ['wind', '#5fd4d0', 'Wind'], ['hydro', '#4a90d9', 'Hydro'],
   ['battery', '#7ed87e', 'Battery'], ['fuelcell', '#c08ae0', 'Fuel cell'], ['gas', '#c2604a', 'Gas'],
   ['import', '#d99a3f', 'Import'],
 ];
 export function drawPowerChart() {
-  const cv = $('powerchart'); const ctx = cv.getContext('2d');
+  drawPowerChartOn($('powerchart'));
+  drawPowerChartExtras();
+}
+
+// the stacked-area power/price chart core, drawable into ANY canvas — the
+// dashboard tab and the stats modal's Energy tab both call it (WP3).
+export function drawPowerChartOn(cv) {
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
   const W = cv.width, H = cv.height;
   ctx.clearRect(0, 0, W, H);
   const hist = G.history;
@@ -177,6 +187,11 @@ export function drawPowerChart() {
   const lastP = priceOf(hist[hist.length - 1]);
   ctx.fillStyle = '#e86fc3';
   ctx.fillText(`€${lastP.toFixed(0)}`, W - 30, Math.max(10, Math.min(H - 3, yP(lastP) - 4)));
+}
+
+// dashboard-tab-only chrome around the chart: legend, storage bars, KPI grid.
+// Kept out of drawPowerChartOn so the modal can reuse the pure chart.
+function drawPowerChartExtras() {
   // legend
   const lg = $('chartlegend');
   if (!lg.dataset.done) {

@@ -2,7 +2,7 @@
 // and all placement/bulldoze rules. Pure logic — the renderer listens to the
 // events emitted here ('placed', 'bulldozed', 'roadBuilt', 'railBuilt') and
 // keeps the Three.js scene in sync.
-import { G, emit, spend } from './state.js';
+import { G, emit, spend, earn } from './state.js';
 import { makeNoise } from './noise.js';
 import { BUILDINGS, CARBON, INDUSTRY_TYPES, UNLOCKS } from './data.js';
 
@@ -302,7 +302,7 @@ export function place(toolId, i, j) {
 // DEBUG go through it directly (charging there would corrupt restores).
 export function purchaseBuilding(toolId, i, j) {
   if (!canPlace(toolId, i, j)) return 'blocked';
-  if (!spend(BUILDINGS[toolId].cost)) return 'poor';
+  if (!spend(BUILDINGS[toolId].cost, 'buildPlant')) return 'poor';
   return place(toolId, i, j);
 }
 
@@ -359,7 +359,7 @@ export function decommissionGas() {
   if (!p) return false;
   G.gasDecommissioned = true;
   bulldoze(p.i, p.j);           // refund = 30% of cost 0 → €0
-  G.money += CARBON.exitGrant;
+  earn(CARBON.exitGrant, 'grant');
   emit('tip', 'gasDecommissioned');
   return true;
 }

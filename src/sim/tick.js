@@ -16,6 +16,7 @@ import { tickContracts } from './contracts.js';
 import { tickResearch } from './research.js';
 import { dailyLoanInterest } from './loans.js';
 import { closeDay, trackDay } from './reports.js';
+import { rollLedgerDay } from './finance.js';
 
 export const MIN_PER_SEC = 8; // game minutes per real second at 1× → 1 day = 3 real minutes
 
@@ -39,11 +40,15 @@ export function tickSim(dtSeconds) {
 
 // Day rollover. Order is load-bearing:
 //   1. closeDay() captures the finished day BEFORE any counter resets
-//   2. rollFossilFreeDay() reads gasMWhToday, so it too runs before the resets
-//   3. shared daily counters reset (energy/transport/report modules own theirs)
-//   4. upkeep & loan interest book AFTER the reset, into the new day
+//   2. rollLedgerDay() archives the finished day's ledger tally (closeDay
+//      already snapshotted it into the report) so upkeep/interest below book
+//      into the NEW day, matching the report's convention
+//   3. rollFossilFreeDay() reads gasMWhToday, so it too runs before the resets
+//   4. shared daily counters reset (energy/transport/report modules own theirs)
+//   5. upkeep & loan interest book AFTER the reset, into the new day
 export function rollOverDay() {
   closeDay();
+  rollLedgerDay();
   G.day = Math.floor(G.minutes / 1440) + 1;
   rollFossilFreeDay();
   G.incomeTransportToday = 0; G.incomeEnergyToday = 0; G.expensesToday = 0;

@@ -3,10 +3,16 @@ import { G, fmtMoney, fmtTime, season, DAYS_PER_SEASON } from '../../sim/state.j
 import { CLIMATE, MARKET } from '../../sim/data.js';
 import { solarFactor, POWER_PRICE } from '../../sim/energy.js';
 import { $, liveTip } from './dom.js';
+import { SERIES } from './dashboard.js';
+
+// supply-source colors, reused from the dashboard power chart so the whole
+// game speaks one color language (WP3); demand rows get their own muted tones.
+const SUP_COLOR = Object.fromEntries(SERIES.map(([k, c]) => [k, c]));
+const DEM_COLOR = { city: '#e8e0d0', industry: '#c08ae0', charging: '#3fae9c' };
 
 // ---------- topbar explainer tooltips ----------
 export function initTopbarTooltips() {
-  liveTip($('money'), () => `<b>💰 Company funds</b><br>Cash for building, vehicles and research. You earn from transport deliveries and from selling every served MWh of electricity (currently €${G.price.toFixed(0)}/MWh).`);
+  // #money hover + click are wired in ui/hud/statsModal.js (finance breakdown)
   liveTip($('pricestat'), () => G.marketLive
     ? `<b>💶 Smart Market price: €${G.price.toFixed(0)}/MWh</b><br>
       Set every moment by the most expensive running source (pay-as-clear merit order):<br>
@@ -33,10 +39,21 @@ export function initTopbarTooltips() {
   });
   liveTip($('gridstat'), () => {
     const sup = G.supply, dem = G.demand;
-    return `<b>⚡ Grid: supply / demand (MW)</b><br>
-      Generation right now — Solar ${sup.solar.toFixed(1)}, Wind ${sup.wind.toFixed(1)}, Hydro ${sup.hydro.toFixed(1)}, Battery ${sup.battery.toFixed(1)}, Fuel cell ${sup.fuelcell.toFixed(1)}${G.gasDecommissioned ? '' : `, Gas ${(sup.gas || 0).toFixed(1)}`}${G.importCapMW > 0 ? `, Import ${(sup.import || 0).toFixed(1)}` : ''}.<br>
-      Demand — Cities ${dem.city.toFixed(1)}, Industry ${dem.industry.toFixed(1)}, Vehicle charging ${dem.charging.toFixed(1)}.<br>
-      <span class="dim">Green = stable · yellow = curtailing surplus · red = blackout.</span>`;
+    const supRows = [['solar', 'Solar'], ['wind', 'Wind'], ['hydro', 'Hydro'], ['battery', 'Battery'], ['fuelcell', 'Fuel cell']];
+    if (!G.gasDecommissioned) supRows.push(['gas', 'Gas']);
+    if (G.importCapMW > 0) supRows.push(['import', 'Import']);
+    const demRows = [['city', 'Cities'], ['industry', 'Industry'], ['charging', 'Charging']];
+    const maxV = Math.max(1,
+      ...supRows.map(([k]) => sup[k] || 0),
+      ...demRows.map(([k]) => dem[k] || 0));
+    const bar = (v, color) => `<span class="gbar"><i style="width:${Math.round((v / maxV) * 100)}%;background:${color}"></i></span>`;
+    const gRow = (label, v, color) => `<div class="grow"><span class="glbl">${label}</span>${bar(v, color)}<span class="gval">${v.toFixed(1)}</span></div>`;
+    const supHtml = supRows.map(([k, label]) => gRow(label, sup[k] || 0, SUP_COLOR[k])).join('');
+    const demHtml = demRows.map(([k, label]) => gRow(label, dem[k] || 0, DEM_COLOR[k])).join('');
+    return `<b>⚡ Grid — supply / demand (MW)</b>
+      <div class="dim small" style="margin:3px 0 1px">Generation now</div>${supHtml}
+      <div class="dim small" style="margin:4px 0 1px">Demand now</div>${demHtml}
+      <div class="dim small" style="margin-top:4px">Green = stable · yellow = curtailing surplus · red = blackout.</div>`;
   });
   liveTip($('storemini'), () => `<b>Energy storage</b><br>
     🔋 Battery: ${G.batteryMWh.toFixed(1)} / ${G.batteryCapMWh.toFixed(0)} MWh — charges on surplus, covers the evening peak (~92% round trip).<br>

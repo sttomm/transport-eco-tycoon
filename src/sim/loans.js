@@ -4,6 +4,7 @@
 // upfront and the "fuel" is free, so the cost of capital matters.
 // Pure logic — the 🏦 box in the dashboard lives in src/ui/hud.js.
 import { G, emit } from './state.js';
+import { book } from './finance.js';
 
 export const LOAN_STEP = 50000;
 export const LOAN_MAX = 500000;
@@ -14,6 +15,7 @@ export function takeLoan(amount = LOAN_STEP) {
   if (amount <= 0) return false;
   G.loan += amount;
   G.money += amount;
+  book('loanDraw', amount);
   emit('tip', 'firstLoan');
   return true;
 }
@@ -24,6 +26,7 @@ export function repayLoan(amount = LOAN_STEP) {
   if (amount <= 0) return false;
   G.loan -= amount;
   G.money -= amount;
+  book('loanRepay', -amount);
   return true;
 }
 
@@ -33,5 +36,6 @@ export function dailyLoanInterest() {
   if (due <= 0) return 0;
   G.money -= due;
   G.expensesToday += due;
+  book('loanInterest', -due);
   return due;
 }

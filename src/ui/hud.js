@@ -22,6 +22,7 @@ import { renderRoutes, renderRoutesLive } from './hud/routes.js';
 import { renderLearn } from './hud/learn.js';
 import { renderInfobox } from './hud/infobox.js';
 import { initNews, onNews } from './hud/news.js';
+import { initStats } from './hud/statsModal.js';
 import { closeTopModal, modalOpen } from './hud/modal.js';
 
 // external surface (main.js, input.js) — unchanged by the ./hud/ split
@@ -54,6 +55,7 @@ export function initUI() {
   initLoanBox();
   initTopbarTooltips();
   initNews();
+  initStats();
   // delegated: the infobox re-renders every 0.25 s, so a handler on the button
   // itself could vanish between mousedown and click (same trick as the vehlist)
   $('infobox').addEventListener('click', e => {

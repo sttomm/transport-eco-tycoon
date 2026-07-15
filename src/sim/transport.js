@@ -5,17 +5,22 @@
 // Pure logic — vehicle/wagon meshes and overlays live in src/render/, driven
 // by the events emitted here ('vehicleBought', 'wagonAdded', 'vehicleSold',
 // 'vehicleReplaced', 'moneyFx').
-import { G, emit, spend, fmtMoney } from './state.js';
+import { G, emit, spend, earn, fmtMoney } from './state.js';
 import { AGING, VEHICLES, WAGONS, CARGO, ROUTE_COLORS } from './data.js';
+import { book } from './finance.js';
 import { isRoad, isRail } from './grid.js';
 import { contractDelivery } from './contracts.js';
 import { findPath, stationRoadTile, passableFor } from './pathfinding.js';
 import { stationCatchment, stationAccepts, LOCAL_MIN_DIST } from './stations.js';
 
+// which ledger category each vehicle kind's delivery income books under
+const INCOME_CAT = { bus: 'transportBus', truck: 'transportTruck', train: 'transportTrain' };
+
 // money earned by a vehicle → today's totals, per-kind and per-route breakdown
 function credit(v, pay) {
   G.money += pay;
   G.incomeTransportToday += pay;
+  book(INCOME_CAT[v.kind], pay);
   const f = G.finance.today;
   f[v.kind] = (f[v.kind] || 0) + pay;
   f.routes[v.route.id] = (f.routes[v.route.id] || 0) + pay;
@@ -118,21 +123,21 @@ export function purchaseVehicle(route, kind) {
   const rk = routeKind(route);
   if (rk && VEHICLE_ROUTE_KIND[kind] !== rk) return 'kind';
   if (!stationRoadTile(route.stops[0], kind === 'train' ? isRail : isRoad)) return 'access';
-  if (!spend(VEHICLES[kind].cost)) return 'poor';
+  if (!spend(VEHICLES[kind].cost, 'buyVehicle')) return 'poor';
   return buyVehicle(route, kind);
 }
 
 export function purchaseWagon(v, type) {
   if (v.kind !== 'train' || !WAGONS[type]) return 'kind';
   if (v.wagons.length >= v.def.maxWagons) return 'full';
-  if (!spend(WAGONS[type].cost)) return 'poor';
+  if (!spend(WAGONS[type].cost, 'buyWagon')) return 'poor';
   return addWagon(v, type);
 }
 
 export function sellVehicle(v) {
   v.route.vehicles = v.route.vehicles.filter(x => x !== v);
   G.vehicles = G.vehicles.filter(x => x !== v);
-  G.money += v.def.cost * 0.4;
+  earn(v.def.cost * 0.4, 'buyVehicle'); // trade-in credit offsets vehicle capex
   emit('vehicleSold', v);
 }
 
@@ -153,7 +158,7 @@ export function effectiveBatteryKWh(v) {
 
 // trade in the old vehicle for a factory-fresh one (same kind, wagons stay)
 export function replaceVehicle(v) {
-  if (!spend(v.def.cost * AGING.replaceFrac)) return false;
+  if (!spend(v.def.cost * AGING.replaceFrac, 'replaceFleet')) return false;
   v.ageDays = 0;
   v.battery = v.def.batteryKWh;
   emit('vehicleReplaced', v);

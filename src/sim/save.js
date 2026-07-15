@@ -68,6 +68,7 @@ export function snapshot() {
     questsDone: G.questsDone || {}, stats: G.stats, firedTips: G.firedTips,
     tutorial: G.tutorial || null,
     finance: G.finance,
+    ledger: G.ledger, // WP3 finance ledger (v6 additive field)
     roads: G.tiles.filter(t => t.t === 'road' && !t.cityStreet).map(t => [t.i, t.j]),
     rails: G.tiles.filter(t => t.rail).map(t => [t.i, t.j]),
     plants: G.plants.map(p => ({ type: p.type, i: p.i, j: p.j })),
@@ -129,6 +130,8 @@ export function restore(d) {
   G.firedTips = d.firedTips || {};
   G.research = d.research || null;
   if (d.finance && d.finance.today) G.finance = d.finance;
+  // WP3 ledger (v6): additive — v5 saves keep the empty initialState default
+  if (d.ledger && d.ledger.today) G.ledger = d.ledger;
   for (const id of Object.keys(d.techs || {})) {
     const t = TECHS.find(x => x.id === id);
     if (t && !G.techs[id]) { t.fx(G.mult); G.techs[id] = true; }

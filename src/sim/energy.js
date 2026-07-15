@@ -2,6 +2,7 @@ import { G, emit, hourOfDay, season } from './state.js';
 import { BUILDINGS, CARBON, CLIMATE, FORECAST, H2OFFTAKE, IND_CURTAIL, INTERCONNECT, MARKET, TARIFF, VOLL } from './data.js';
 import { vehicleUpkeep } from './transport.js';
 import { pushNews } from './news.js';
+import { book } from './finance.js';
 
 // Flat electricity tariff per MWh served — the price until the Smart Market
 // goes live on day MARKET.liveDay; after that G.price is set dynamically each
@@ -301,6 +302,7 @@ export function tickGrid(gameHours) {
       G.money -= cost;
       G.expensesToday += cost;
       G.importCostToday += cost;
+      book('importCost', -cost);
       G.importMWhToday += impMW * gameHours;
       G.co2EmittedTons += impMW * gameHours * INTERCONNECT.co2PerMWh;
       if (impMW > 0.3) emit('tip', 'firstImport');
@@ -315,6 +317,7 @@ export function tickGrid(gameHours) {
       G.money -= cost;
       G.expensesToday += cost;
       G.gasCostToday += cost;
+      book('gasFuel', -cost);
       G.gasMWhToday += gasMW * gameHours;
       G.co2EmittedTons += gasMW * gameHours * BUILDINGS.gas.co2PerMWh;
       if (gasMW > 0.3) emit('tip', 'firstGas');
@@ -329,6 +332,7 @@ export function tickGrid(gameHours) {
       G.money -= comp;
       G.expensesToday += comp;
       G.compCostToday += comp;
+      book('blackoutComp', -comp);
     }
   }
   G.batteryMWh = Math.min(G.batteryMWh, G.batteryCapMWh);
@@ -345,6 +349,7 @@ export function tickGrid(gameHours) {
       const rev = offMW * gameHours * H2OFFTAKE.pricePerMWh;
       G.money += rev;
       G.incomeEnergyToday += rev;
+      book('h2Sale', rev);
       G.h2SoldMWhToday += offMW * gameHours;
       G.h2SoldMWh += offMW * gameHours;
       // e-fuels displace fossil kerosene/diesel downstream — avoided CO₂
@@ -403,10 +408,12 @@ export function tickGrid(gameHours) {
   const revenue = billableMW * gameHours * effPrice;
   G.money += revenue;
   G.incomeEnergyToday += revenue;
+  book('energySale', revenue);
   const gridFee = billableMW * gameHours * TARIFF.gridFeePerMWh;
   G.money -= gridFee;
   G.expensesToday += gridFee;
   G.gridFeeToday += gridFee;
+  book('gridFee', -gridFee);
   // rich-grid teaching moment (one-shot — the UI dedupes via firedTips)
   if (G.incomeEnergyToday > 12000 && G.incomeEnergyToday > G.incomeTransportToday) emit('tip', 'richGrid');
   // gas-served and imported MWh are not your renewables — they avoid nothing
@@ -466,8 +473,13 @@ export function totalUpkeep() {
 }
 
 export function dailyUpkeep() {
-  const cost = totalUpkeep();
+  let plants = 0, vehicles = 0;
+  for (const p of G.plants) plants += p.def.upkeep || 0;
+  for (const v of G.vehicles) vehicles += vehicleUpkeep(v);
+  const cost = plants + vehicles;
   G.money -= cost;
   G.expensesToday += cost;
+  book('upkeepPlants', -plants);
+  book('upkeepVehicles', -vehicles);
   return cost;
 }

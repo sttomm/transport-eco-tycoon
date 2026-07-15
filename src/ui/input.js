@@ -3,7 +3,7 @@
 // (incl. adding stops while editing a route). Translates clicks into sim
 // calls (canPlace/place/bulldoze) — no game rules live here.
 import * as THREE from 'three';
-import { G, spend } from '../sim/state.js';
+import { G, spend, earn } from '../sim/state.js';
 import { BUILDINGS } from '../sim/data.js';
 import {
   tile, tileFromWorld, worldXZ, tileY, canPlace, place, purchaseBuilding, bulldoze, lShapedPath, dragCost,
@@ -131,7 +131,7 @@ function onPointerUp(ev) {
       const [i1, j1] = tileFromWorld(p.x, p.z);
       const tiles = lShapedPath(roadDrag.i0, roadDrag.j0, i1, j1).filter(([i, j]) => canPlace(dragTool, i, j));
       const cost = dragCost(tiles, dragTool);
-      if (tiles.length && spend(cost)) tiles.forEach(([i, j]) => place(dragTool, i, j));
+      if (tiles.length && spend(cost, 'buildPlant')) tiles.forEach(([i, j]) => place(dragTool, i, j));
       else if (tiles.length) showTipText('Too expensive', `That ${BUILDINGS[dragTool].name.toLowerCase()} costs ${cost.toLocaleString()}.`);
     }
     roadDrag = null;
@@ -144,7 +144,7 @@ function onPointerUp(ev) {
 
   if (G.tool === 'bulldoze') {
     const refund = bulldoze(i, j);
-    if (refund > 0) G.money += refund;
+    if (refund > 0) earn(refund, 'buildPlant'); // demolition refund offsets construction capex
     return;
   }
   if (G.tool && G.tool !== 'road') {

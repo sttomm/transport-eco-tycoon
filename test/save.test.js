@@ -169,6 +169,25 @@ test('v6 round-trips the news feed', () => {
   assert.equal(G.news[0].headline, 'Offer');
 });
 
+test('v6 round-trips the finance ledger; v5 saves default it empty', () => {
+  freshWorld();
+  G.ledger.today = { energySale: 1200, gasFuel: -300, buildPlant: -5000 };
+  G.ledger.days = [{ energySale: 900 }, { gridFee: -120 }];
+  const snap = JSON.parse(JSON.stringify(snapshot()));
+  freshWorld();
+  assert.equal(restore(snap), true);
+  assert.equal(G.ledger.today.energySale, 1200);
+  assert.equal(G.ledger.today.buildPlant, -5000);
+  assert.equal(G.ledger.days.length, 2);
+  assert.equal(G.ledger.days[1].gridFee, -120);
+
+  // a genuine v5 payload had no ledger → default empty, not undefined
+  delete snap.ledger;
+  freshWorld();
+  assert.equal(restore({ ...snap, v: 5 }), true);
+  assert.deepEqual(G.ledger, { today: {}, days: [] }, 'missing ledger defaults empty');
+});
+
 test('v5 round-trips vehicle age, route auto-replace and the import/H₂ counters', () => {
   freshWorld();
   buildRoad(2, J, 20, J);

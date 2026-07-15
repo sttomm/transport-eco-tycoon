@@ -251,3 +251,23 @@
   .news-keep, .news-del { cursor: pointer; opacity: 0.6; padding: 1px 3px; border-radius: 5px; }
   .news-keep:hover, .news-del:hover { opacity: 1; background: var(--panel2); }
   .newsitem.kept .news-keep { opacity: 1; }
+
+  /* stats & finance modal (ui/hud/statsModal.js, WP3) */
+  .statstabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .statstabs button { padding: 6px 12px; font-size: 13px; }
+  .statskpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0 12px; }
+  .statsmodal h3 { margin: 12px 0 4px; display: flex; justify-content: space-between; align-items: baseline; }
+  .statstoggle { font-weight: 400; color: var(--dim); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .statslegend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--dim); margin-top: 4px; }
+  .statslegend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 3px; }
+  .statstable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .statstable th { text-align: left; color: var(--dim); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .statstable td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .statstable tbody tr:hover { background: var(--panel2); }
+
+  /* energy grid hover: icon-name-bar-value mini rows (topbar #gridstat, WP3) */
+  .grow { display: flex; align-items: center; gap: 6px; margin: 1px 0; }
+  .glbl { width: 68px; flex: none; font-size: 12px; }
+  .gbar { flex: 1; height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden; }
+  .gbar i { display: block; height: 100%; border-radius: 4px; }
+  .gval { width: 34px; flex: none; text-align: right; font-size: 11.5px; color: var(--dim); }

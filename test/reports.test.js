@@ -86,12 +86,13 @@ test('closeDay resets only its own counters; shared ones are captured, not touch
   assert.equal(G.gasMWhToday, 12);
 });
 
-test('report ring buffer keeps the last 7 days', () => {
-  for (let d = 1; d <= 9; d++) { G.day = d; closeDay(); }
+test('report ring buffer keeps the last REPORT_KEEP days', () => {
+  const N = REPORT_KEEP + 2;
+  for (let d = 1; d <= N; d++) { G.day = d; closeDay(); }
   assert.equal(G.reports.length, REPORT_KEEP);
-  assert.equal(REPORT_KEEP, 7);
-  assert.equal(G.reports[0].day, 3, 'oldest days dropped');
-  assert.equal(G.reports[6].day, 9);
+  assert.equal(REPORT_KEEP, 28, 'WP3 raised the report ring to one game year');
+  assert.equal(G.reports[0].day, N - REPORT_KEEP + 1, 'oldest days dropped');
+  assert.equal(G.reports[REPORT_KEEP - 1].day, N);
 });
 
 test("closeDay emits 'dayReport' with the report", () => {

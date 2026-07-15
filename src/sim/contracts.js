@@ -7,6 +7,7 @@
 import { G, emit } from './state.js';
 import { CARGO } from './data.js';
 import { pushNews } from './news.js';
+import { book } from './finance.js';
 
 export const MAX_OFFERS = 3;      // open offers to pick from
 export const MAX_ACTIVE = 3;      // signed contracts running in parallel
@@ -152,6 +153,7 @@ export function contractDelivery(cargoId, dest, amount, basePay) {
       G.contracts.completed++;
       G.money += c.bonus;
       G.incomeTransportToday += c.bonus;
+      book('contractBonus', c.bonus);
       emit('toast', { title: '📜 Contract fulfilled!', text: `${contractLabel(c)} — bonus €${c.bonus.toLocaleString()} paid out.` });
       pushNews({ type: 'contract-done', icon: '🎉', headline: 'Contract fulfilled!',
         body: `${contractLabel(c)} — €${c.bonus.toLocaleString()} completion bonus paid out.`,

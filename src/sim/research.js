@@ -10,7 +10,7 @@ export function startResearch(id) {
   const t = TECHS.find(x => x.id === id);
   if (!t || G.techs[id] || (t.req && !G.techs[t.req])) return 'invalid';
   if (G.research) return 'busy';
-  if (!spend(t.cost)) return 'poor';
+  if (!spend(t.cost, 'research')) return 'poor';
   G.research = { id: t.id, progress: 0, days: t.days };
   return true;
 }

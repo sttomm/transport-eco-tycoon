@@ -1,5 +1,7 @@
 // Global game state shared by all modules. Pure data — no THREE, no DOM —
 // so the whole simulation can run headless in Node (see test/).
+import { book } from './finance.js';
+
 function initialState() {
   return {
     // time
@@ -29,6 +31,9 @@ function initialState() {
     indCurtailed: false,      // industries paused by crisis prices (demand response)
     reports: [],              // last N daily report cards (closeDay())
     news: [],                 // notification feed ring (sim/news.js)
+    // finance ledger (sim/finance.js): per-category income/expense tallies.
+    // `today` accumulates the current day; `days` is the 28-day archive ring.
+    ledger: { today: {}, days: [] },
     // special transport offers & signed contracts (see sim/contracts.js)
     contracts: { offers: [], active: [], completed: 0, failed: 0, offerTimer: 0, seq: 1 },
     // weather (0..1)
@@ -141,8 +146,18 @@ export function fmtTime() {
   const h = Math.floor(hourOfDay()), m = Math.floor(G.minutes % 60);
   return `Day ${G.day}  ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
-export function spend(v) {
+// spend(cost, cat): charge the player if affordable, booking it as an expense
+// under `cat` (data.js LEDGER_CATS). earn(v, cat): credit + book as income.
+// `cat` is optional so the money-free primitives (place/buyVehicle) callers
+// that don't want a ledger entry can omit it.
+export function spend(v, cat) {
   if (G.money < v) return false;
   G.money -= v; G.expensesToday += v;
+  book(cat, -v);
+  return true;
+}
+export function earn(v, cat) {
+  G.money += v;
+  book(cat, v);
   return true;
 }

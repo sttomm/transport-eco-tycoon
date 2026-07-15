@@ -262,6 +262,42 @@ export const CITY = {
   minPop: 400,
 };
 
+// Finance ledger categories (WP3, sim/finance.js). Every money mutation is
+// booked into one of these; the daily report, money-hover breakdown and the
+// Finance stats tab read them. `kind` groups income vs expense for the trees;
+// `invest: true` marks capex (excluded from the operating net); `balance: true`
+// marks loan draw/repay (balance-sheet, excluded from BOTH nets). label/icon/
+// color are display data — colors reuse the dashboard series/route palette so
+// the whole game speaks one color language.
+export const LEDGER_CATS = {
+  // --- income ---
+  transportBus:   { label: 'Bus fares',        icon: '🚌', color: '#4fc3f7', kind: 'income' },
+  transportTruck: { label: 'Truck freight',    icon: '🚚', color: '#f0a23c', kind: 'income' },
+  transportTrain: { label: 'Rail haulage',     icon: '🚆', color: '#7ed87e', kind: 'income' },
+  energySale:     { label: 'Energy sales',     icon: '⚡', color: '#f5c542', kind: 'income' },
+  h2Sale:         { label: 'H₂ offtake',       icon: '🫧', color: '#c08ae0', kind: 'income' },
+  contractBonus:  { label: 'Contract bonus',   icon: '📜', color: '#5fd4d0', kind: 'income' },
+  questReward:    { label: 'Objective reward', icon: '🎯', color: '#9ad080', kind: 'income' },
+  grant:          { label: 'Grants',           icon: '🏛', color: '#cbb890', kind: 'income' },
+  // --- operating expenses ---
+  gasFuel:        { label: 'Gas fuel + carbon', icon: '🔥', color: '#c2604a', kind: 'expense' },
+  importCost:     { label: 'Power imports',     icon: '🔌', color: '#d99a3f', kind: 'expense' },
+  gridFee:        { label: 'Grid operations',   icon: '🔧', color: '#8a94a0', kind: 'expense' },
+  blackoutComp:   { label: 'Blackout comp.',    icon: '⚠', color: '#ff5e5e', kind: 'expense' },
+  upkeepPlants:   { label: 'Plant upkeep',      icon: '🏭', color: '#6f7c88', kind: 'expense' },
+  upkeepVehicles: { label: 'Fleet upkeep',      icon: '🛠', color: '#9a8a6a', kind: 'expense' },
+  loanInterest:   { label: 'Loan interest',     icon: '🏦', color: '#b0708a', kind: 'expense' },
+  // --- investments (capex — excluded from the operating net) ---
+  buildPlant:     { label: 'Construction',      icon: '🏗', color: '#6a9ad0', kind: 'expense', invest: true },
+  buyVehicle:     { label: 'Vehicles',          icon: '🚋', color: '#56c3c0', kind: 'expense', invest: true },
+  buyWagon:       { label: 'Wagons',            icon: '🚃', color: '#6ad0a0', kind: 'expense', invest: true },
+  research:       { label: 'Research',          icon: '🔬', color: '#b48ae0', kind: 'expense', invest: true },
+  replaceFleet:   { label: 'Fleet renewal',     icon: '🔄', color: '#d0b060', kind: 'expense', invest: true },
+  // --- balance sheet (loans — excluded from BOTH nets) ---
+  loanDraw:       { label: 'Loan drawn',        icon: '🏦', color: '#7a9a7a', kind: 'income',  balance: true },
+  loanRepay:      { label: 'Loan repaid',       icon: '🏦', color: '#8a7a9a', kind: 'expense', balance: true },
+};
+
 // Route display colors + station name suffixes (display data, not rules).
 export const ROUTE_COLORS = ['#4fc3f7', '#f0c64a', '#7ed87e', '#ff6b5e', '#c08ae0', '#f0a23c', '#5fd4d0', '#e87ab0'];
 export const STATION_SUFFIX = { bus: 'Stop', truck: 'Depot', train: 'Station' };

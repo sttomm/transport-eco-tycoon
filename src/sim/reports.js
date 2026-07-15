@@ -1,5 +1,6 @@
 // Daily report card: closeDay() snapshots yesterday's daily counters into a
-// report object on G.reports (ring buffer, last 7 days) and emits 'dayReport'.
+// report object on G.reports (ring buffer, last REPORT_KEEP days) and emits
+// 'dayReport'. Each card carries a per-category ledger snapshot (WP3).
 // trackDay() accumulates the per-day observations no other tick books anywhere
 // (blackout / dunkelflaute / storm / heatwave hours). Pure sim — the end-of-day toast and
 // the "Yesterday" dashboard block live in src/ui/hud.js.
@@ -13,7 +14,7 @@ import { G, emit } from './state.js';
 import { LOAN_RATE } from './loans.js';
 import { totalUpkeep } from './energy.js';
 
-export const REPORT_KEEP = 7;
+export const REPORT_KEEP = 28; // one game year (4 × 7-day seasons) of report cards
 
 // Called every frame from main.js next to the other ticks (after tickGrid,
 // so G.blackout reflects the current grid state).
@@ -64,6 +65,10 @@ export function closeDay() {
     flauteHours: G.flauteHoursToday,
     stormHours: G.stormHoursToday,
     heatHours: G.heatHoursToday,
+    // per-category ledger snapshot of the finished day (WP3) — the source for
+    // the report's income/expense trees. Copied so the archived ledger.days
+    // entry and this snapshot can't alias and drift.
+    ledger: { ...G.ledger.today },
   };
   G.reports.push(report);
   while (G.reports.length > REPORT_KEEP) G.reports.shift();

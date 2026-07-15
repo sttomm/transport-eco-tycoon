@@ -36,7 +36,7 @@ flowchart TB
         ENERGY["energy.js\nweather · merit-order dispatch\nprices · dispatch selectors"]
         TRANS["transport.js\nroutes · vehicles · aging\npurchaseVehicle()"]
         TDOM["pathfinding.js · stations.js\nindustries.js · cities.js\nA*/poses · catchment · production · demand"]
-        MISC["research.js · quests.js · tutorial.js\ncontracts.js · loans.js · reports.js · news.js"]
+        MISC["research.js · quests.js · tutorial.js\ncontracts.js · loans.js · reports.js · news.js\nfinance.js (ledger)"]
         SAVE["save.js\nsnapshot / restore (v6)"]
         NOISE["noise.js · newGame.js\nseeded value-noise · starter grid"]
     end
@@ -695,6 +695,32 @@ rules being written down. Documentation drifts; a red test does not. The
 guards are deliberately coarse (string scans, line counts) so they stay
 zero-dependency and obvious to fix — **do what the message says, never
 weaken the guard to get green.**
+
+### 34. Finance ledger: one categorized tally, not scattered counters (WP3)
+**Decision:** every money mutation books into `G.ledger.today[cat]`
+(`sim/finance.js#book`, +income / −expense) under a data-defined category
+(`data.js LEDGER_CATS`, each with label/icon/color and an `invest`/`balance`
+flag). `spend(cost, cat)` and `earn(v, cat)` (state.js) carry the category;
+`rollLedgerDay()` archives today into `G.ledger.days` (28-day ring = one game
+year) at the day rollover, right after `closeDay()` snapshots the same tally
+onto the report card. Two nets are derived (`ledgerNets`): **netOperating**
+(excludes `invest` capex) and **netTotal**; loan draw/repay carry `balance:
+true` and stay out of both (balance-sheet, not P&L). The legacy scalars
+(`incomeEnergyToday`, `gasCostToday`, per-route `G.finance.today`, …) are kept
+and dual-written for the existing dashboard; the ledger is the new source of
+truth for the stats modal, the money-hover breakdown and the daily report.
+`REPORT_KEEP` rose 7 → 28 to match. Save v6 additive field `G.ledger`
+(default empty on v5 loads — no new version bump).
+**Why:** the old report was "all gray, all minus" — build costs vanished into
+one `expensesToday` lump and the gas penalty was invisible. A per-category
+ledger with an operating/total split makes the gas-fuel line legible against
+real income and turns Finance into a readable P&L. **Invariant (tested,
+`test/finance.test.js`):** the booked categories reconcile exactly to the
+money delta over any played span — every mutation is booked.
+**UI:** `ui/hud/statsModal.js` (opened from the 📈 topbar button and the money
+hover) renders four tabs — Dashboard KPIs, Finance (income/expense trees +
+28-day stacked bar chart with an "include investments" toggle), Energy (the
+power chart), Cities — via the shared modal helper (ADR/D-B, `ui/hud/modal.js`).
 
 ## Persistence
 

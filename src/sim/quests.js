@@ -4,6 +4,7 @@
 // lives in src/ui/quests.js and listens for the 'toast' event emitted here.
 import { G, emit } from './state.js';
 import { pushNews } from './news.js';
+import { book } from './finance.js';
 
 const stat = k => () => G.stats[k];
 const MWh = v => v.toFixed(0) + ' MWh';
@@ -117,6 +118,7 @@ export function checkQuests() {
     if (q.value() >= q.target) {
       G.questsDone[q.id] = true;
       G.money += q.reward;
+      book('questReward', q.reward);
       const next = QUESTS.filter(x => x.req === q.id && isQuestActive(x));
       // quests flagged `win` are milestone victories — celebrate accordingly
       const text = (q.winText ? q.winText + ' ' : '') + `Reward: €${q.reward.toLocaleString()}.` +

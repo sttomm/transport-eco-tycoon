@@ -5,6 +5,7 @@
 // Pure logic — the card UI and element highlighting live in src/ui/tutorial.js.
 // `highlight`/`flags` keys are semantic ids the UI maps to DOM selectors.
 import { G, emit } from './state.js';
+import { book } from './finance.js';
 
 const busStops = () => G.stations.filter(s => s.stype === 'bus').length;
 const routesWithStops = () => G.routes.filter(r => r.stops.length >= 2).length;
@@ -110,11 +111,13 @@ export function checkTutorial() {
   const s = TUTORIAL_STEPS[t.step];
   if (!s || !s.check(t)) return;
   G.money += s.reward;
+  book('grant', s.reward);
   t.step++;
   if (t.step >= TUTORIAL_STEPS.length) {
     t.active = false;
     t.done = true;
     G.money += TUTORIAL_BONUS;
+    book('grant', TUTORIAL_BONUS);
     emit('toast', {
       title: '🎓🎉 Tutorial complete — you\'re in charge now!',
       text: `Graduation bonus €${TUTORIAL_BONUS.toLocaleString()}. Follow the 🎯 Objectives, listen to the 💡 advisor, and grow the cleanest grid on the map. Good luck, Director!`,
