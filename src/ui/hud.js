@@ -24,6 +24,7 @@ import { renderInfobox } from './hud/infobox.js';
 import { initNews, onNews } from './hud/news.js';
 import { initStats } from './hud/statsModal.js';
 import { closeTopModal, modalOpen } from './hud/modal.js';
+import { pickEscapeLayer } from './hud/escape.js';
 
 // external surface (main.js, input.js) — unchanged by the ./hud/ split
 export { showTipText } from './hud/toasts.js';
@@ -86,14 +87,23 @@ export function initUI() {
     if (s !== undefined) setSpeed(+s);
   });
   $('demandbtn').onclick = toggleDemand;
+  // narrow-viewport bottom sheet (WP6/ADR 38): reuses the exact #toolbar built
+  // by buildToolbar() above — no separate render, so locks/tooltips/selection
+  // stay identical between the docked bar and the sheet
+  $('buildbtn').onclick = () => $('toolbar').classList.toggle('sheet-open');
   document.addEventListener('keydown', e => {
-    // Escape peels one layer: top modal first, then tool/route-edit, selection,
-    // demand overlay (WP6 formalises the chain; the modal step lands here).
+    // Escape peels exactly ONE layer per press, in priority order: top modal,
+    // then tool/route-edit, then selection, then the demand overlay
+    // (pickEscapeLayer — WP6; shared with input.js's right-click cancel).
     if (e.key === 'Escape') {
-      if (closeTopModal()) { e.preventDefault(); return; }
-      selectTool(null);
-      G.selected = null;
-      if (G.showDemand) toggleDemand(); // also dismisses the demand arrows
+      e.preventDefault();
+      const layer = pickEscapeLayer({
+        modalOpen: modalOpen(), tool: G.tool, routeEdit: G.routeEdit, selected: G.selected, showDemand: G.showDemand,
+      });
+      if (layer === 'modal') closeTopModal();
+      else if (layer === 'tool') selectTool(null);
+      else if (layer === 'selection') G.selected = null;
+      else if (layer === 'demand') toggleDemand(); // also dismisses the demand arrows
       return;
     }
     if (modalOpen()) return; // game is paused behind a modal (welcome, report, …)

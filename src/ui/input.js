@@ -12,7 +12,8 @@ import { toggleRouteStop } from '../sim/transport.js';
 import { nameStation } from '../sim/stations.js';
 import { scene, camera, renderer, controls } from '../render/scene.js';
 import { buildPlantMesh } from '../render/meshes.js';
-import { renderRoutes, showTipText } from './hud.js';
+import { renderRoutes, showTipText, selectTool } from './hud.js';
+import { pickEscapeLayer } from './hud/escape.js';
 
 const ray = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -37,6 +38,9 @@ export function initInput() {
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
   renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerup', onPointerUp);
+  // right button is camera pan (scene.js); suppress the browser menu so a
+  // right-click-to-cancel gesture (below) doesn't also pop up a context menu
+  renderer.domElement.addEventListener('contextmenu', ev => ev.preventDefault());
 }
 
 function terrainHit(ev) {
@@ -76,7 +80,9 @@ function showRoadPreview(tiles, tool) {
 }
 
 let downPos = null;
+let rightDownPos = null; // right-click cancel (WP6): recorded on down, resolved on up
 function onPointerDown(ev) {
+  if (ev.button === 2) { rightDownPos = [ev.clientX, ev.clientY]; return; }
   if (ev.button !== 0) return;
   downPos = [ev.clientX, ev.clientY];
   if (G.tool && BUILDINGS[G.tool] && BUILDINGS[G.tool].drag) {
@@ -118,6 +124,20 @@ function onPointerMove(ev) {
 }
 
 function onPointerUp(ev) {
+  if (ev.button === 2) {
+    // a right-click (movement < 5 px, i.e. not a camera pan) cancels the
+    // active tool/route-edit, else clears the current selection — one layer,
+    // same priority as Escape's first two layers (pickEscapeLayer, WP6)
+    const p = rightDownPos;
+    rightDownPos = null;
+    if (!p) return;
+    const dx = ev.clientX - p[0], dy = ev.clientY - p[1];
+    if (Math.hypot(dx, dy) >= 5) return; // was a pan drag, not a click
+    const layer = pickEscapeLayer({ modalOpen: false, tool: G.tool, routeEdit: G.routeEdit, selected: G.selected, showDemand: false });
+    if (layer === 'tool') selectTool(null);
+    else if (layer === 'selection') G.selected = null;
+    return;
+  }
   if (ev.button !== 0) return;
   const wasDrag = downPos && (Math.abs(ev.clientX - downPos[0]) + Math.abs(ev.clientY - downPos[1]) > 6);
   downPos = null;

@@ -61,4 +61,7 @@ export function selectTool(id) {
   $('toolhint').textContent = id
     ? (BUILDINGS[id].drag ? `Click & drag to build ${BUILDINGS[id].name.toLowerCase()}. ESC to cancel.` : `Click the map to place ${BUILDINGS[id].name}. ESC to cancel.`)
     : '';
+  // picking (or clearing) a tool is the natural moment to dismiss the narrow-
+  // viewport bottom sheet — no-op on desktop, where the class is never set
+  $('toolbar').classList.remove('sheet-open');
 }

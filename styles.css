@@ -63,11 +63,16 @@
   .tool.locked { position: relative; opacity: 0.45; filter: grayscale(0.75); }
   .tool.locked::after { content: '🔒'; position: absolute; top: 1px; right: 3px; font-size: 11px; filter: none; }
 
+  /* narrow-viewport "🔨 Build" button (ADR 38) — hidden on desktop; the
+     matching #toolbar rules live in the responsive block at the bottom */
+  #buildbtn { display: none; position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 10; padding: 9px 18px; font-size: 14px; border-radius: 10px; }
+
   /* right tab buttons + panel */
   #tabbtns { position: absolute; top: 52px; right: 10px; z-index: 11; display: flex; flex-direction: column; gap: 6px; }
   #tabbtns button { padding: 8px 10px; font-size: 17px; }
   #sidepanel {
-    position: absolute; top: 52px; right: 58px; bottom: 70px; width: 360px; z-index: 10;
+    position: absolute; top: 52px; right: 58px; bottom: 70px; width: min(360px, calc(100vw - 12px)); z-index: 10;
     display: none; flex-direction: column; overflow-y: auto;
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 12px; backdrop-filter: blur(8px);
@@ -175,17 +180,14 @@
   /* tutorial card (above the quest panel) + step-target highlight */
   #tutorial { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px;
     padding: 8px 10px; backdrop-filter: blur(6px); box-shadow: 0 0 14px rgba(79, 195, 247, 0.25); }
-  #tut-head { font-weight: 700; display: flex; gap: 6px; align-items: baseline; }
+  #tut-head { font-weight: 700; display: flex; gap: 6px; align-items: center; }
   .tut-spacer { flex: 1; }
   #tut-skip { cursor: pointer; }
   #tut-skip:hover { color: var(--bad); }
-  .tut-prog { height: 6px; background: #1a222c; border-radius: 3px; overflow: hidden; margin: 5px 0 7px; }
-  .tut-prog div { height: 100%; background: linear-gradient(90deg, #4fc3f7, #7ed87e); transition: width 0.4s; }
   .tut-title { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
   .tut-task { background: var(--panel2); border: 1px solid rgba(79, 195, 247, 0.35); border-radius: 7px;
     padding: 6px 8px; margin-top: 6px; font-size: 12.5px; }
   .tut-reward { color: var(--dim); margin-top: 5px; }
-  .tut-reward b { color: #f0d264; }
   .tut-glow { animation: tutglow 1.3s ease-in-out infinite; }
   @keyframes tutglow {
     0%, 100% { box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.95), 0 0 16px rgba(79, 195, 247, 0.8); }
@@ -308,3 +310,25 @@
   .gbar { flex: 1; height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden; }
   .gbar i { display: block; height: 100%; border-radius: 4px; }
   .gval { width: 34px; flex: none; text-align: right; font-size: 11.5px; color: var(--dim); }
+
+  /* ---- responsive HUD (WP6, ADR 38) — the project's first media queries ---- */
+  /* soft fallback: let the toolbar wrap and shrink before the hard breakpoint */
+  @media (max-width: 1200px) {
+    #toolbar { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 16px); gap: 8px; padding: 6px 10px 8px; }
+    .toolrow { flex-wrap: wrap; justify-content: center; }
+    .tool { width: 64px; padding: 4px 1px; }
+  }
+  /* hard breakpoint: hide the docked bar entirely behind a single Build button,
+     which opens the SAME #toolbar (buildToolbar() never re-renders) as a
+     full-width scrollable bottom sheet — locks/tooltips/selection are
+     untouched because nothing but the CSS position changes */
+  @media (max-width: 920px) {
+    #toolbar { display: none; }
+    #toolbar.sheet-open {
+      display: flex; flex-wrap: wrap; justify-content: center; overflow-y: auto;
+      position: absolute; left: 0; right: 0; bottom: 0; transform: none;
+      width: 100%; max-height: 60vh; max-width: none;
+      border-radius: 14px 14px 0 0; padding: 12px 12px 16px;
+    }
+    #buildbtn { display: block; }
+  }

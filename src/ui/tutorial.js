@@ -59,14 +59,19 @@ function renderTutorial() {
   setHighlight(s.highlight);
   const jump = s.where && s.where().length
     ? `<button class="quest-jump" id="tut-jump" title="Fly to the destination">📍</button>` : '';
+  // step titles are authored as "<emoji> <text>" — split it into the WP6 icon
+  // chip + plain title, same look as the WP5 route-card icon/reward tokens
+  // (.icon-chip / .stat-badge / .meter, styles.css); no change to the data.
+  const [icon, ...rest] = s.title.split(' ');
   el.innerHTML = `
-    <div id="tut-head">🎓 Tutorial <span class="dim small">step ${t.step + 1} / ${TUTORIAL_STEPS.length}</span>
+    <div id="tut-head"><span class="icon-chip">${icon}</span> 🎓 Tutorial <span class="dim small">step ${t.step + 1} / ${TUTORIAL_STEPS.length}</span>
       <span class="tut-spacer"></span><span id="tut-skip" class="dim small" title="End the tutorial">skip ✕</span></div>
-    <div class="tut-prog"><div style="width:${(t.step / TUTORIAL_STEPS.length * 100).toFixed(0)}%"></div></div>
-    <div class="tut-title">${s.title}</div>
+    <div class="meter"><i style="width:${(t.step / TUTORIAL_STEPS.length * 100).toFixed(0)}%"></i></div>
+    <div class="tut-title">${rest.join(' ')}</div>
     <div class="small">${s.text}</div>
     <div class="tut-task">👉 ${s.task} ${jump}</div>
-    <div class="tut-reward small">Reward: <b>€${s.reward.toLocaleString()}</b> · finish all steps for a <b>€25,000</b> graduation bonus</div>`;
+    <div class="tut-reward small">Reward: <span class="stat-badge pos">€${s.reward.toLocaleString()}</span>
+      · finish all steps for a <span class="stat-badge pos">€25,000</span> graduation bonus</div>`;
   $('tut-skip').onclick = () => {
     if (confirm('End the tutorial? (You can always learn from the 💡 advisor and 📚 Learn tab.)')) skipTutorial();
   };

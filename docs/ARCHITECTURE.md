@@ -25,7 +25,7 @@ flowchart TB
         subgraph ui["src/ui/ — DOM panels"]
             HUD["hud.js — shell over ui/hud/*\ntopbar · toolbar · dashboard · routes\nresearch · contracts · infobox · welcome"]
             QPANEL["quests.js / tutorial.js\nobjectives · onboarding cards"]
-            INPUT["input.js\npointer build/select"]
+            INPUT["input.js\npointer build/select\nright-click cancel (ADR 38)"]
         end
     end
     subgraph sim["src/sim/ — pure logic, runs headless in Node (tested by test/)"]
@@ -851,6 +851,67 @@ codes and that the first-stop click finishes without mutating stops, plus
 purchase + `dailyUpkeep` + a played delivery attributing to the right route
 counters; `test/save.test.js` round-trips the counters and defaults them to 0
 for a v5 save. The render highlight and DOM restyle are verified in-browser.
+
+### 38. Input & responsive HUD: layered Escape, right-click cancel, the first media query (WP6)
+
+**Problem:** Escape cleared the tool, the selection AND the demand overlay all
+in one press — a player who just wanted to cancel a tool also lost their
+selection. There was no way to cancel with the right mouse button (reserved
+for camera pan, `scene.js`) despite it being the natural "back out" gesture.
+The bottom toolbar was a non-wrapping flex row with no overflow handling —
+unusable under ~1200 px, broken under ~900 px — and the project had zero
+media queries.
+
+**Decision (layered Escape):** the priority chain — top modal, then
+tool/route-edit, then selection, then the demand overlay — is a pure,
+dependency-free function, `pickEscapeLayer()` (`ui/hud/escape.js`), so the
+*order* is unit-tested without a browser (`test/escape.test.js`) even though
+the actual side effects (`closeTopModal()`, `selectTool(null)`, `G.selected =
+null`, the demand toggle) are DOM/G wiring left in `ui/hud.js`. One Escape
+press now peels exactly one layer.
+
+**Decision (right-click cancel):** `ui/input.js` records the right-button
+pointer position on `pointerdown`; on `pointerup`, if the movement was under
+5 px (a click, not the existing camera-pan drag) it calls the SAME
+`pickEscapeLayer()` — restricted to the tool/selection layers (`modalOpen` and
+`showDemand` passed as `false`, since a right-click cancel doesn't touch
+modals or the overlay) — and applies whichever of `tool`/`selection` comes
+back. A `contextmenu` listener on the canvas prevents the browser's native
+menu. Reusing the same priority function means the two entry points can never
+drift out of sync.
+
+**Decision (responsive toolbar):** the first media queries in the codebase.
+920–1200 px: `#toolbar` gets `flex-wrap` and smaller tool buttons as a soft
+fallback. Below 920 px: `#toolbar` is hidden outright behind a single "🔨
+Build" button; clicking it toggles a `.sheet-open` class that repositions the
+*same* `#toolbar` element (`buildToolbar()` never re-renders — it's the exact
+DOM `buildToolbar()` built once at startup) into a full-width, scrollable
+bottom sheet. Because it's the same nodes, lock state, tooltips and the
+selected-tool highlight are identical in both layouts by construction.
+Picking (or clearing) a tool auto-closes the sheet (`selectTool()`). Also:
+`#sidepanel`'s fixed `width: 360px` became `min(360px, calc(100vw - 12px))`
+so it never overflows a narrow viewport.
+
+**Decision (tutorial restyle):** `ui/tutorial.js` now renders its step icon,
+progress bar and reward line with the WP5 shared tokens (`.icon-chip`,
+`.meter > i`, `.stat-badge.pos`) instead of its own `.tut-prog`/bare `<b>`
+markup — cosmetic only, no change to `sim/tutorial.js` step data or
+completion logic. The step icon is simply the leading emoji already authored
+in each step's `title` string.
+
+**Why:** these were all playtest friction points with small, well-scoped
+fixes; sharing `pickEscapeLayer()` between the keyboard and right-click paths
+avoids two hand-written priority chains silently diverging, and reusing the
+WP5 CSS tokens/DOM (rather than duplicating the toolbar for mobile) keeps the
+"one set of tool buttons" invariant that locks/tooltips depend on.
+
+**Invariants (tested):** `test/escape.test.js` pins the full six-state
+priority order for both call sites (Escape's four layers; right-click's two).
+The right-click gesture, the contextmenu suppression and the responsive
+breakpoints are DOM/CSS and were verified by code review — **the two
+breakpoints (920 px hard cutoff, 1200 px soft wrap) need a human browser
+check** (`resize_window` mobile/tablet presets) that this session didn't run,
+per the "don't drive the shared preview tab" rule.
 
 ## Persistence
 
