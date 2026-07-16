@@ -54,7 +54,7 @@ export function rollOverDay() {
   G.incomeTransportToday = 0; G.incomeEnergyToday = 0; G.expensesToday = 0;
   G.curtailedTodayMWh = 0;
   G.finance.prev = G.finance.today; // keep yesterday for the finance drill-down
-  G.finance.today = { bus: 0, truck: 0, train: 0, routes: {} };
+  G.finance.today = { bus: 0, truck: 0, train: 0, routes: {}, routeCosts: {} };
   dailyUpkeep();
   dailyLoanInterest();
   autoReplaceFleet(); // renew opted-in routes' aged vehicles (ADR 27)

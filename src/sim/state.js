@@ -92,9 +92,13 @@ function initialState() {
       grainToFood: 0, oreToSteel: 0, foodToCity: 0, steelToCity: 0,
       railUnits: 0,   // passengers + cargo units delivered by train
     },
-    // income breakdown for the finance drill-down (reset daily, prev = yesterday)
+    // income breakdown for the finance drill-down (reset daily, prev = yesterday).
+    // routes: per-route income today; routeCosts: per-route upkeep booked today
+    // (dailyUpkeep bills into the NEW day right after rollover — see tick.js).
+    // `prev` archives the whole object at rollover, so it holds the LAST
+    // completed day's income+cost pair per route (the routes-tab "yesterday" badge).
     finance: {
-      today: { bus: 0, truck: 0, train: 0, routes: {} },
+      today: { bus: 0, truck: 0, train: 0, routes: {}, routeCosts: {} },
       prev: null,
     },
     // ui / interaction
@@ -142,23 +146,6 @@ export const SEASONS = [
 ];
 export function seasonOf(day) { return SEASONS[Math.floor((day - 1) / DAYS_PER_SEASON) % 4]; }
 export function season() { return seasonOf(G.day); }
-
-// ---- calendar: display-only months over the implicit 28-day year ----------
-// The sim only ever knows G.day (canonical everywhere in sim/tests/saves). This
-// is a pure presentation mapping: the 4×DAYS_PER_SEASON-day year is shown as 12
-// months so "August → autumn soon" reads at a glance. The year starts in March
-// (spring); months advance every ~2⅓ days and line up exactly with the seasons
-// (Mar/Apr/May = Spring … Dec/Jan/Feb = Winter). NOT used by any game rule.
-const MONTHS = ['March', 'April', 'May', 'June', 'July', 'August',
-  'September', 'October', 'November', 'December', 'January', 'February'];
-export function calendarDate(day) {
-  const yearLen = DAYS_PER_SEASON * 4; // 28
-  const d = Math.max(0, Math.floor(day) - 1);
-  const year = Math.floor(d / yearLen) + 1;
-  const dayInYear = d % yearLen;
-  const monthIndex = Math.floor(dayInYear * MONTHS.length / yearLen);
-  return { month: MONTHS[monthIndex], monthIndex, year };
-}
 
 export function fmtMoney(v) {
   const a = Math.abs(v);

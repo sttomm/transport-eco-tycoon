@@ -1,5 +1,5 @@
 // ---------- topbar / live HUD ----------
-import { G, fmtMoney, hourOfDay, season, calendarDate, DAYS_PER_SEASON } from '../../sim/state.js';
+import { G, fmtMoney, hourOfDay, season, DAYS_PER_SEASON } from '../../sim/state.js';
 import { CLIMATE, MARKET } from '../../sim/data.js';
 import { solarFactor, POWER_PRICE } from '../../sim/energy.js';
 import { $, liveTip } from './dom.js';
@@ -27,9 +27,8 @@ export function initTopbarTooltips() {
   liveTip($('clock'), () => {
     const s = season();
     const into = ((G.day - 1) % DAYS_PER_SEASON) + 1;
-    const cd = calendarDate(G.day);
-    return `<b>📅 Game time — ${cd.month}, Year ${cd.year} · Day ${G.day}</b><br>
-      1 game day ≈ 3 real minutes at 1× speed. Months are a calendar view of the ${DAYS_PER_SEASON * 4}-day year — the day counter stays canonical.<br><br>
+    return `<b>📅 Game time — Day ${G.day}</b><br>
+      1 game day ≈ 3 real minutes at 1× speed. A full year of four seasons lasts ${DAYS_PER_SEASON * 4} days.<br><br>
       Current season: <b>${s.icon} ${s.name}</b> (day ${into}/${DAYS_PER_SEASON}) — it sets solar peak <b>${Math.round(s.solarAmp * 100)}%</b>, wind <b>${Math.round(s.windMul * 100)}%</b>, city demand <b>${Math.round(s.demandMul * 100)}%</b>, and how often dark calms strike (winter most, summer almost never).`;
   });
   liveTip($('season'), () => {
@@ -77,10 +76,9 @@ const fmtH = h => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(
 export function updateTopbar() {
   $('money').textContent = fmtMoney(G.money);
   $('money').className = G.money < 0 ? 'bad' : '';
-  const cd = calendarDate(G.day);
   const h = Math.floor(hourOfDay()), m = Math.floor(G.minutes % 60);
   $('clock').textContent =
-    `🗓 ${cd.month} · Y${cd.year}  ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    `🗓 Day ${G.day}  ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   const sup = G.supply, dem = G.demand;
   const totalSup = sup.solar + sup.wind + sup.hydro + sup.battery + sup.fuelcell + (sup.gas || 0) + (sup.import || 0);
   const totalDem = dem.city + dem.industry + dem.charging;

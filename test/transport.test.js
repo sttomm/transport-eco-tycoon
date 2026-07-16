@@ -9,7 +9,8 @@ import { tickVehicles, createRoute, buyVehicle, purchaseVehicle, toggleRouteStop
 import { dailyUpkeep } from '../src/sim/energy.js';
 import { tickIndustries } from '../src/sim/industries.js';
 import { stationCatchment, stationAccepts } from '../src/sim/stations.js';
-import { freshWorld, buildRoad, fakeIndustry } from './helpers.js';
+import { placeStarterGrid } from '../src/sim/newGame.js';
+import { freshWorld, buildRoad, fakeIndustry, playDays } from './helpers.js';
 
 const J = 90; // quiet grass row in the south-west
 let depotA, depotB, farm, food;
@@ -113,6 +114,45 @@ test('per-route economics: purchase, daily upkeep and delivery all attribute to 
   assert.ok(r.earnedTotal > 0, 'delivery income accrues on the route');
   assert.ok(Math.abs(r.earnedTotal - G.finance.today.routes[r.id]) < 1e-6,
     'earnedTotal mirrors today’s per-route income within a single (un-rolled) day');
+});
+
+test('dailyUpkeep tallies each route\'s cost into G.finance.today.routeCosts (WP-T yesterday badge)', () => {
+  const r = createRoute();
+  r.stops.push(depotA, depotB);
+  const truck = purchaseVehicle(r, 'truck');
+  assert.equal((G.finance.today.routeCosts || {})[r.id] || 0, 0, 'nothing billed yet');
+  dailyUpkeep();
+  assert.ok(Math.abs(G.finance.today.routeCosts[r.id] - vehicleUpkeep(truck)) < 1e-6,
+    'this route\'s upkeep tallied alongside its lifetime spentTotal');
+  dailyUpkeep(); // a second bill without a reset accumulates, like spentTotal does
+  assert.ok(Math.abs(G.finance.today.routeCosts[r.id] - 2 * vehicleUpkeep(truck)) < 1e-6);
+});
+
+test('per-route yesterday tally: G.finance.prev archives the completed day\'s income + cost per route (WP-T)', () => {
+  placeStarterGrid(); // real power capacity — playDays runs the FULL pipeline (tickGrid included)
+  const r = createRoute();
+  r.stops.push(depotA, depotB);
+  const truck = purchaseVehicle(r, 'truck');
+
+  playDays(1); // day 1 finishes: it never got a start-of-day upkeep bill — the
+  // game begins mid-day-1, so no rollover ever "started" day 1
+  assert.ok(G.finance.prev, 'the first rollover archived a finished day');
+  assert.ok((G.finance.prev.routes[r.id] || 0) > 0, 'day 1\'s income archived per route');
+  assert.equal((G.finance.prev.routeCosts || {})[r.id] || 0, 0,
+    'day 1 had no upkeep billing to archive (dailyUpkeep only fires at a rollover\'s start)');
+
+  playDays(1); // day 2 finishes: it WAS billed once, right at its own start
+  const yesterdayCost = G.finance.prev.routeCosts[r.id] || 0;
+  assert.ok(Math.abs(yesterdayCost - vehicleUpkeep(truck)) < 1e-6, 'day 2\'s upkeep bill archived to prev');
+});
+
+test('an old (pre-WP-T) save shape tolerates dailyUpkeep gracefully: routeCosts defaults in place', () => {
+  const r = createRoute();
+  r.stops.push(depotA, depotB);
+  purchaseVehicle(r, 'truck');
+  delete G.finance.today.routeCosts; // simulate a save.js restore() that predates this field
+  assert.doesNotThrow(() => dailyUpkeep());
+  assert.ok(G.finance.today.routeCosts[r.id] > 0, 'lazily initialized and tallied on first use');
 });
 
 test('a truck hauls grain to the food plant: payment, stats, input stock', () => {

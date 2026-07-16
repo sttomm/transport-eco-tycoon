@@ -480,11 +480,18 @@ export function totalUpkeep() {
 
 export function dailyUpkeep() {
   let plants = 0, vehicles = 0;
+  // routeCosts: v6-additive (WP-T) — old saves may restore finance.today
+  // without it, so default it in place rather than assume it exists.
+  const f = G.finance.today;
+  if (!f.routeCosts) f.routeCosts = {};
   for (const p of G.plants) plants += p.def.upkeep || 0;
   for (const v of G.vehicles) {
     const u = vehicleUpkeep(v);
     vehicles += u;
-    if (v.route) v.route.spentTotal = (v.route.spentTotal || 0) + u; // WP5 per-route opex
+    if (v.route) {
+      v.route.spentTotal = (v.route.spentTotal || 0) + u; // WP5 per-route opex (lifetime)
+      f.routeCosts[v.route.id] = (f.routeCosts[v.route.id] || 0) + u; // today's per-route tally (yesterday badge)
+    }
   }
   const cost = plants + vehicles;
   G.money -= cost;

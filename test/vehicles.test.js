@@ -4,8 +4,8 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, on } from '../src/sim/state.js';
 import { place } from '../src/sim/grid.js';
-import { tickVehicles, createRoute, buyVehicle, addWagon, purchaseVehicle, purchaseWagon, sellVehicle, paxCapacity, freightCapacity, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, autoReplaceFleet } from '../src/sim/transport.js';
-import { AGING, VEHICLES, WAGONS } from '../src/sim/data.js';
+import { tickVehicles, createRoute, buyVehicle, addWagon, purchaseVehicle, purchaseWagon, sellVehicle, vehicleSellRefund, paxCapacity, freightCapacity, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, autoReplaceFleet } from '../src/sim/transport.js';
+import { AGING, VEHICLES, WAGONS, VEHICLE_SELL_REFUND } from '../src/sim/data.js';
 import { freshWorld, buildRoad, buildRail } from './helpers.js';
 
 const J = 90;
@@ -227,17 +227,39 @@ test('autoReplaceFleet files a news entry so an overnight renewal is not toast-o
   assert.ok(G.news.some(n => n.type === 'fleet' && n.headline === 'Fleet renewal'), 'renewal filed to the feed');
 });
 
-test('selling a vehicle refunds 40% and removes it everywhere', () => {
+test('selling a vehicle refunds 90% and removes it everywhere', () => {
   const r = roadRoute();
   const v = buyVehicle(r, 'truck');
   const events = [];
   on('vehicleSold', x => events.push(x));
   const before = G.money;
+  assert.equal(vehicleSellRefund(v), v.def.cost * VEHICLE_SELL_REFUND);
   sellVehicle(v);
-  assert.equal(G.money, before + v.def.cost * 0.4);
+  assert.equal(G.money, before + v.def.cost * VEHICLE_SELL_REFUND);
   assert.equal(G.vehicles.length, 0);
   assert.equal(r.vehicles.length, 0);
   assert.deepEqual(events, [v]);
+});
+
+test('selling a vehicle recovers its refund from the route\'s lifetime spend', () => {
+  const r = roadRoute();
+  const v = buyVehicle(r, 'truck');
+  r.spentTotal = VEHICLES.truck.cost; // as if bought through purchaseVehicle
+  sellVehicle(v);
+  assert.ok(Math.abs(r.spentTotal - VEHICLES.truck.cost * (1 - VEHICLE_SELL_REFUND)) < 1e-9,
+    'refund recovered from route capex');
+});
+
+test('selling a train refunds 90% of the locomotive AND every attached wagon', () => {
+  const r = railRoute();
+  const v = buyVehicle(r, 'train');
+  addWagon(v, 'pax');
+  addWagon(v, 'freight');
+  const expected = (VEHICLES.train.cost + WAGONS.pax.cost + WAGONS.freight.cost) * VEHICLE_SELL_REFUND;
+  assert.ok(Math.abs(vehicleSellRefund(v) - expected) < 1e-9);
+  const before = G.money;
+  sellVehicle(v);
+  assert.ok(Math.abs(G.money - (before + expected)) < 1e-9);
 });
 
 // ---------- player purchase wrappers (sim charges & explains refusals) ----------

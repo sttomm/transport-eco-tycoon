@@ -232,6 +232,12 @@ export const AGING = {
   autoAtDays: 22,        // per-route auto-replace triggers at this age
 };
 
+// Selling a vehicle off a route (or deleting a route, which sells its whole
+// fleet) refunds this fraction of the vehicle's list price — and, for
+// trains, the same fraction of every attached wagon's list price. High on
+// purpose: this is a "downsize my fleet" tool, not a fire sale.
+export const VEHICLE_SELL_REFUND = 0.9;
+
 // Passenger demand tuning (transport.js: demand pools → stops → vehicles).
 export const PAX = {
   wantFrac: 0.005,       // share of population wanting to travel per (daytime) hour

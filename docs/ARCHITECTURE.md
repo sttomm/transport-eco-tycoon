@@ -1167,6 +1167,25 @@ name research.js/transport.js as producers.
 **Tests:** one-shot spotlight vs. routine headline on the second offer;
 research completion and fleet renewal each file a news entry. 254 tests.
 
+### 43. Calendar months reverted to a plain day counter
+
+**Problem:** the ADR 41 display calendar ("🗓 August · Y1") confused the
+player it was built for — twelve month names over a 28-day year (7-day
+seasons) implied a much longer timescale than the game actually has, and the
+month changed every ~2⅓ days for no legible reason.
+
+**Decision:** all date displays went back to the canonical counter: the
+topbar clock reads "🗓 Day N HH:MM", the day-report title/toast and the
+dashboard "Yesterday" block read "Day N", news timestamps read
+"Day N · HH:MM". Seasonal intuition — the original motivation for months —
+is already carried by the dedicated season chip (🌸 Spring …) and its
+tooltip. `calendarDate()`/`MONTHS` were removed from `state.js` along with
+their two pinned tests (the guard existed only to protect the mapping, which
+no longer exists); `G.day` was always canonical, so nothing else moved. The
+pinned news-history 📌 behavior is unchanged, but its tooltip now explains
+what pinning does (exemption from the 120-entry ring rotation) and pinned
+entries get a visible accent border.
+
 ## Persistence
 
 `sim/save.js` — `snapshot()`/`restore()` are pure sim; the autosave timers

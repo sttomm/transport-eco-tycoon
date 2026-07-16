@@ -1,7 +1,7 @@
 // ---------- routes ----------
 import { G, fmtMoney } from '../../sim/state.js';
 import { AGING, CARGO, VEHICLES, WAGONS } from '../../sim/data.js';
-import { createRoute, purchaseVehicle, purchaseWagon, sellVehicle, routeColor, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, paxCapacity, freightCapacity } from '../../sim/transport.js';
+import { createRoute, purchaseVehicle, purchaseWagon, sellVehicle, vehicleSellRefund, routeColor, routeKind, vehicleUpkeep, effectiveBatteryKWh, replaceVehicle, paxCapacity, freightCapacity } from '../../sim/transport.js';
 import { $ } from './dom.js';
 import { showTipText } from './toasts.js';
 
@@ -12,6 +12,7 @@ const KIND_ICON = { bus: '🚌', rail: '🚆', cargo: '🚚' };
 let routeFilter = 'all';      // 'all' | 'bus' | 'rail' | 'cargo'
 let cargoFilter = null;       // cargo id — narrows the cargo group to routes that delivered it
 const routeGroupClosed = {};  // routeKind → true when the section is collapsed
+const routeCollapsed = {};    // route id → true when its card is collapsed to a header row
 
 export function renderRoutes() {
   const el = $('tab-routes');
@@ -27,12 +28,14 @@ export function renderRoutes() {
     G.routeEdit = r;
     G.tool = null;
     document.querySelectorAll('.tool').forEach(b => b.classList.remove('on'));
-    renderRoutes();
+    focusRoute(r); // newest route on top, expanded, everything else collapsed (re-renders)
   };
 
-  // group routes by their derived kind; stop-less routes have no kind yet
+  // group routes by their derived kind; stop-less routes have no kind yet.
+  // Newest first for display — iterate a reversed COPY so G.routes (save
+  // order semantics) is never mutated.
   const grouped = { bus: [], rail: [], cargo: [], none: [] };
-  for (const r of G.routes) grouped[routeKind(r) || 'none'].push(r);
+  for (const r of [...G.routes].reverse()) grouped[routeKind(r) || 'none'].push(r);
 
   // filter chips: All + one per group
   const fEl = el.querySelector('#routefilters');
@@ -102,6 +105,24 @@ export function quickBuyVehicle(r) {
   renderRoutes();
 }
 
+// Bring a route to the player's attention: switch the filter chip to its kind
+// group, make sure that group is expanded, collapse every OTHER route's card
+// so this one isn't buried, then scroll it into view. Used both by "+ New
+// Route" (new route on top, focused) and the station-infobox click-through
+// (hud.js) — a single place owns the state knowledge instead of hud.js
+// reaching into routeFilter/routeGroupClosed/routeCollapsed itself.
+export function focusRoute(r) {
+  if (!r) return;
+  const rk = routeKind(r);
+  if (rk) { routeFilter = rk; routeGroupClosed[rk] = false; cargoFilter = null; }
+  for (const other of G.routes) routeCollapsed[other.id] = other !== r;
+  renderRoutes();
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.route[data-route="${r.id}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
 // stop list drawn as a cycle: A → B → C ↻ A (routes loop back automatically)
 function stopChainHTML(r) {
   if (!r.stops.length) return '<i class="dim">click stations on the map…</i>';
@@ -114,20 +135,33 @@ function stopChainHTML(r) {
 }
 
 // one route card: name, kind chip, profit/live metrics, stops as a chain,
-// vehicle-buy buttons (only kinds matching the route's derived kind), fleet list
+// vehicle-buy buttons (only kinds matching the route's derived kind), fleet
+// list. Collapsible (WP-T): a collapsed card is just the header row — a
+// route being edited (G.routeEdit) always renders expanded regardless.
 function routeCard(r) {
   const d = document.createElement('div');
-  d.className = 'route' + (G.routeEdit === r ? ' editing' : '');
+  const editing = G.routeEdit === r;
+  const collapsed = !editing && !!routeCollapsed[r.id];
+  d.className = 'route' + (editing ? ' editing' : '') + (collapsed ? ' collapsed' : '');
+  d.dataset.route = r.id; // focusRoute() scroll target
   d.style.borderLeft = `4px solid ${routeColor(r)}`;
   d.onmouseenter = () => { G.routeHover = r; };
   d.onmouseleave = () => { if (G.routeHover === r) G.routeHover = null; };
   const rk = routeKind(r);
   const kinds = rk ? KIND_BUTTONS[rk] : ['truck', 'bus', 'train']; // kindless route: all options open
-  d.innerHTML = `<div class="route-head">
+  const nStops = r.stops.length;
+
+  const headHTML = `<div class="route-head">
+      <span class="collapse-arrow">${collapsed ? '▸' : '▾'}</span>
       <span class="icon-chip" style="background:${routeColor(r)}22;border-color:${routeColor(r)}">${rk ? KIND_ICON[rk] : '📍'}</span>
       <b>${r.name}</b>
-      ${G.routeEdit === r ? '<button class="pill-btn" data-a="done">✔ Done</button>' : '<button class="pill-btn" data-a="edit">✎</button>'}
-      <button class="pill-btn" data-a="del">🗑</button></div>
+      <span class="dim small">${nStops} stop${nStops === 1 ? '' : 's'}</span>
+      ${collapsed ? `<span data-rm="${r.id}"></span>` : ''}
+      ${!collapsed ? (editing ? '<button class="pill-btn" data-a="done">✔ Done</button>' : '<button class="pill-btn" data-a="edit">✎</button>') : ''}
+      ${!collapsed ? '<button class="pill-btn" data-a="del">🗑</button>' : ''}
+    </div>`;
+
+  d.innerHTML = collapsed ? headHTML : `${headHTML}
     ${stopChainHTML(r)}
     <div class="route-metrics" data-rm="${r.id}"></div>
     <div class="route-veh">
@@ -135,10 +169,21 @@ function routeCard(r) {
     </div>
     ${r.vehicles.length ? `<label class="small dim" style="display:block;margin-top:3px"><input type="checkbox" data-a="auto"${r.autoReplace ? ' checked' : ''}> 🔧 auto-replace aged vehicles (at ${AGING.autoAtDays} days, ${Math.round(AGING.replaceFrac * 100)}% of list price)</label>` : ''}
     <div class="vehlist" data-r="${r.id}"></div>`;
+
+  // header click toggles collapse — but not while editing, and not when the
+  // click actually landed on one of the head's own buttons
+  d.querySelector('.route-head').onclick = e => {
+    if (editing || e.target.closest('button')) return;
+    routeCollapsed[r.id] = !collapsed;
+    renderRoutes();
+  };
+  if (collapsed) return d; // nothing else exists in a collapsed card
+
   d.querySelector('[data-a=del]').onclick = () => {
     [...r.vehicles].forEach(sellVehicle);
     G.routes = G.routes.filter(x => x !== r);
     if (G.routeEdit === r) G.routeEdit = null;
+    delete routeCollapsed[r.id];
     renderRoutes();
   };
   const eb = d.querySelector('[data-a=edit]');
@@ -150,8 +195,21 @@ function routeCard(r) {
   for (const kind of kinds) {
     d.querySelector(`[data-a=${kind}]`).onclick = () => { buyVehicleFeedback(r, kind); renderRoutes(); };
   }
-  // wagon & replace buttons live inside the constantly re-rendered vehlist → delegate clicks
+  // wagon / replace / sell buttons live inside the constantly re-rendered
+  // vehlist → delegate clicks
   d.querySelector('.vehlist').onclick = e => {
+    const sellIx = e.target.dataset.sell;
+    if (sellIx !== undefined) {
+      const v = r.vehicles[+sellIx];
+      if (!v) return;
+      const refund = vehicleSellRefund(v);
+      const wagonNote = v.kind === 'train' && v.wagons.length ? ' (including its wagons)' : '';
+      if (confirm(`Sell this ${v.def.name}${wagonNote}? Refunds ${fmtMoney(refund)} — 90% of list price.`)) {
+        sellVehicle(v);
+        renderRoutesLive();
+      }
+      return;
+    }
     const rv = e.target.dataset.rv;
     if (rv !== undefined) {
       const v = r.vehicles[+rv];
@@ -170,10 +228,32 @@ function routeCard(r) {
   };
   return d;
 }
-// live per-route economics: profit badge, today's income, load-factor meter,
-// waiting pax/cargo per stop. Rebuilt every 0.25 s (renderRoutesLive).
-function routeMetricsHTML(r) {
+// yesterday's NET balance badge (income − vehicle upkeep for the last
+// COMPLETED day, per G.finance.prev — WP-T). Lifetime profit moves to the
+// badge's tooltip; routes with no completed day yet (brand new, or an old
+// save missing the field) fall back to today's income so far, or "new".
+function yesterdayBadgeHTML(r) {
   const profit = (r.earnedTotal || 0) - (r.spentTotal || 0);
+  const tip = `title="lifetime earnings − costs: ${fmtMoney(profit)}"`;
+  const prev = G.finance.prev;
+  const prevRoutes = (prev && prev.routes) || {};
+  const prevCosts = (prev && prev.routeCosts) || {};
+  const hadYesterday = Object.prototype.hasOwnProperty.call(prevRoutes, r.id) ||
+    Object.prototype.hasOwnProperty.call(prevCosts, r.id);
+  if (hadYesterday) {
+    const net = (prevRoutes[r.id] || 0) - (prevCosts[r.id] || 0);
+    return `<span class="stat-badge ${net >= 0 ? 'pos' : 'neg'}" ${tip}>${net >= 0 ? '▲' : '▼'} ${fmtMoney(net)} yesterday</span>`;
+  }
+  const todaySoFar = (G.finance.today.routes || {})[r.id] || 0;
+  if (todaySoFar >= 0.5) return `<span class="stat-badge pos" ${tip}>▲ ${fmtMoney(todaySoFar)} today</span>`;
+  return `<span class="stat-badge" ${tip}>new route</span>`;
+}
+
+// live per-route economics: yesterday-balance badge, today's income,
+// load-factor meter, waiting pax/cargo per stop. Rebuilt every 0.25 s
+// (renderRoutesLive).
+function routeMetricsHTML(r) {
+  const badge = yesterdayBadgeHTML(r);
   const today = (G.finance.today.routes || {})[r.id] || 0;
   let cap = 0, load = 0;
   for (const v of r.vehicles) {
@@ -187,7 +267,6 @@ function routeMetricsHTML(r) {
     else w = Object.entries(st.cargo || {}).filter(([c]) => c !== 'pax').reduce((a, [, n]) => a + n, 0);
     return { name: st.name || st.def.name, w: Math.round(w) };
   }).filter(x => x.w >= 1);
-  const badge = `<span class="stat-badge ${profit >= 0 ? 'pos' : 'neg'}" title="lifetime earnings − costs">${profit >= 0 ? '▲' : '▼'} ${fmtMoney(profit)}</span>`;
   const todayTag = `<span class="metric-today" title="income booked to this route today">today ${today >= 0.5 ? '+' + fmtMoney(today) : '—'}</span>`;
   const meter = r.vehicles.length
     ? `<div class="meter" title="average fleet load ${Math.round(lf * 100)}%"><i style="width:${Math.round(lf * 100)}%"></i></div>`
@@ -200,10 +279,13 @@ function routeMetricsHTML(r) {
 
 export function renderRoutesLive() {
   for (const r of G.routes) {
-    const mEl = document.querySelector(`.route-metrics[data-rm="${r.id}"]`);
-    if (mEl) mEl.innerHTML = routeMetricsHTML(r);
+    const mEl = document.querySelector(`[data-rm="${r.id}"]`);
+    if (mEl) {
+      const collapsed = G.routeEdit !== r && !!routeCollapsed[r.id];
+      mEl.innerHTML = collapsed ? yesterdayBadgeHTML(r) : routeMetricsHTML(r);
+    }
     const el = document.querySelector(`.vehlist[data-r="${r.id}"]`);
-    if (!el) continue;
+    if (!el) continue; // collapsed cards have no fleet list in the DOM
     el.innerHTML = r.vehicles.map((v, vi) => {
       const parts = [];
       const groups = (v.pax || []).filter(g => g.n >= 1);
@@ -215,18 +297,19 @@ export function renderRoutesLive() {
       const aged = (v.ageDays || 0) > AGING.graceDays;
       const ageTag = ` · ${Math.floor(v.ageDays || 0)}d${aged ? ` <span class="warn" title="upkeep ${fmtMoney(vehicleUpkeep(v))}/day">⛭</span>` : ''}`;
       const repBtn = aged ? ` <button data-rv="${vi}" title="Trade in for a factory-fresh vehicle">🔧 Replace ${fmtMoney(v.def.cost * AGING.replaceFrac)}</button>` : '';
+      const sellBtn = ` <button data-sell="${vi}" title="Sell — refunds ${fmtMoney(vehicleSellRefund(v))} (90% of list price)">💶 Sell</button>`;
       if (v.kind === 'train') {
         const st = v.state === 'stranded' ? '⚠️ no rail connection!' : v.state === 'loading' ? 'loading' : G.blackout ? '🚫 no traction power!' : '▶';
         const nPax = v.wagons.filter(w => w.type === 'pax').length, nFr = v.wagons.length - nPax;
         const wag = v.wagons.length ? `${nPax ? nPax + '×🧍' : ''} ${nFr ? nFr + '×📦' : ''}`.trim() : '<span class="warn">no wagons!</span>';
         return `<div class="veh small">${v.def.icon} ${st} · ${wag} · ${carg}${ageTag}<br>
           <button data-w="pax" data-vi="${vi}">+ ${WAGONS.pax.icon} Car ${fmtMoney(WAGONS.pax.cost)}</button>
-          <button data-w="freight" data-vi="${vi}">+ ${WAGONS.freight.icon} Wagon ${fmtMoney(WAGONS.freight.cost)}</button>${repBtn}</div>`;
+          <button data-w="freight" data-vi="${vi}">+ ${WAGONS.freight.icon} Wagon ${fmtMoney(WAGONS.freight.cost)}</button>${repBtn}${sellBtn}</div>`;
       }
       const st = v.state === 'stranded' ? (v.noRoute ? '⚠️ no road connection!' : '🪫 stranded!') : v.state === 'loading' ? (v.charging ? '⚡charging' : 'loading') : '▶';
       const packKWh = effectiveBatteryKWh(v);
       const wear = packKWh < v.def.batteryKWh - 0.5 ? ` <span class="warn" title="pack worn to ${Math.round(packKWh / v.def.batteryKWh * 100)}% of original">▾</span>` : '';
-      return `<div class="veh small">${v.def.icon} ${st} · 🔋${Math.round(v.battery / packKWh * 100)}%${wear} · ${carg}${ageTag}${repBtn}</div>`;
+      return `<div class="veh small">${v.def.icon} ${st} · 🔋${Math.round(v.battery / packKWh * 100)}%${wear} · ${carg}${ageTag}${repBtn}${sellBtn}</div>`;
     }).join('');
   }
 }

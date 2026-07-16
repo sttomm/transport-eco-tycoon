@@ -126,8 +126,11 @@
 
   .route { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 7px 0; }
   .route.editing { border-color: var(--warn); box-shadow: 0 0 8px rgba(240, 198, 74, 0.3); }
-  .route-head { display: flex; gap: 6px; align-items: center; }
+  .route.collapsed { padding: 6px 8px; } /* WP-T: header-only card, no body padding to spare */
+  .route-head { display: flex; gap: 6px; align-items: center; cursor: pointer; }
   .route-head b { flex: 1; }
+  .route-head button.pill-btn { cursor: default; } /* keep buttons from inheriting the header's pointer-as-toggle affordance */
+  .collapse-arrow { color: var(--dim); font-size: 11px; width: 10px; text-align: center; flex: none; } /* WP-T route-card collapse toggle */
   .route-veh { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
   .veh { padding: 2px 0; border-top: 1px dashed var(--line); }
   button.big { width: 100%; padding: 7px; margin: 8px 0 2px; }
@@ -298,7 +301,7 @@
   .newsitem { display: flex; gap: 10px; padding: 9px 6px; border-bottom: 1px solid var(--line); }
   .newsitem.flash { animation: newsflash 1.4s ease; }
   @keyframes newsflash { 0%, 60% { background: rgba(79, 195, 247, 0.18); } }
-  .newsitem.kept { background: rgba(240, 198, 74, 0.07); }
+  .newsitem.kept { background: rgba(240, 198, 74, 0.07); border-left: 3px solid var(--warn); padding-left: 6px; }
   .news-ic { font-size: 18px; line-height: 1.2; }
   .news-txt { flex: 1; min-width: 0; }
   .news-hd { font-weight: 700; }

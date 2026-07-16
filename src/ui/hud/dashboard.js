@@ -1,6 +1,6 @@
 // Dashboard tab: daily report card + "Yesterday" block, weather forecast
 // strip, climate box, power/finance canvas charts and the bank loan box.
-import { G, fmtMoney, seasonOf, calendarDate } from '../../sim/state.js';
+import { G, fmtMoney, seasonOf } from '../../sim/state.js';
 import { CARBON, CLIMATE, H2OFFTAKE, MARKET, LEDGER_CATS } from '../../sim/data.js';
 import { climateRiskMult, POWER_PRICE } from '../../sim/energy.js';
 import { ledgerNets } from '../../sim/finance.js';
@@ -67,7 +67,7 @@ const eventBlock = (items, cls) => items.map(e =>
 // "Day 14" alone reads oddly next to a topbar that now shows "🗓 April · Y1"
 // (WP9) — pair the exact day with its calendar month everywhere a report
 // names a day, same convention as the clock tooltip (topbar.js).
-const dayLabel = day => `${calendarDate(day).month} · Day ${day}`;
+const dayLabel = day => `Day ${day}`;
 
 function dayReportBody(r) {
   const day = r.ledger || {};

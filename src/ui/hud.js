@@ -18,7 +18,7 @@ import {
 } from './hud/dashboard.js';
 import { renderResearch, renderResearchLive } from './hud/research.js';
 import { renderContracts, renderContractsLive } from './hud/contracts.js';
-import { renderRoutes, renderRoutesLive, quickBuyVehicle } from './hud/routes.js';
+import { renderRoutes, renderRoutesLive, quickBuyVehicle, focusRoute } from './hud/routes.js';
 import { renderLearn } from './hud/learn.js';
 import { renderInfobox } from './hud/infobox.js';
 import { initNews, onNews } from './hud/news.js';
@@ -71,14 +71,17 @@ export function initUI() {
       if (st) { emit('flyTo', { i: st.i, j: st.j }); G.selected = st; }
       return;
     }
+    // click-through: switch to the route's kind filter, expand only that
+    // route (collapsing the rest) and scroll it into view — focusRoute()
+    // owns the routes-tab state, hud.js just triggers it (WP-T)
     if (btn.dataset.editroute !== undefined) {
       const r = G.routes.find(x => x.id === +btn.dataset.editroute);
-      if (r) { G.routeEdit = r; openTab('routes', true); }
+      if (r) { G.routeEdit = r; focusRoute(r); openTab('routes', true); }
       return;
     }
     if (btn.dataset.addveh !== undefined) {
       const r = G.routes.find(x => x.id === +btn.dataset.addveh);
-      if (r) { quickBuyVehicle(r); openTab('routes', true); }
+      if (r) { quickBuyVehicle(r); focusRoute(r); openTab('routes', true); }
     }
   });
 

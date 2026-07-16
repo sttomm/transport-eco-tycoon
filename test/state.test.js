@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { G, resetState, on, emit, spend, fmtMoney, hourOfDay, seasonOf, calendarDate, DAYS_PER_SEASON } from '../src/sim/state.js';
+import { G, resetState, on, emit, spend, fmtMoney, hourOfDay, seasonOf, DAYS_PER_SEASON } from '../src/sim/state.js';
 
 beforeEach(() => resetState());
 
@@ -47,29 +47,6 @@ test('winter has shorter days and higher demand than summer', () => {
   assert.ok(winter.sunset - winter.sunrise < summer.sunset - summer.sunrise);
   assert.ok(winter.demandMul > summer.demandMul);
   assert.ok(winter.solarAmp < summer.solarAmp);
-});
-
-test('calendarDate maps the 28-day year onto 12 months, aligned with the seasons', () => {
-  const cd = calendarDate;
-  assert.deepEqual([cd(1).month, cd(1).year], ['March', 1]);       // year starts in spring
-  assert.deepEqual([cd(4).month, cd(4).year], ['April', 1]);
-  assert.deepEqual([cd(8).month, cd(8).year], ['June', 1]);        // first summer day
-  assert.deepEqual([cd(14).month, cd(14).year], ['August', 1]);    // last summer day
-  assert.deepEqual([cd(15).month, cd(15).year], ['September', 1]); // first autumn day
-  assert.deepEqual([cd(22).month, cd(22).year], ['December', 1]);  // first winter day
-  assert.deepEqual([cd(28).month, cd(28).year], ['February', 1]);  // last winter day
-  assert.deepEqual([cd(29).month, cd(29).year], ['March', 2]);     // new year rolls over
-});
-
-test('calendar months never disagree with the canonical season', () => {
-  const SEASON_MONTHS = {
-    Spring: ['March', 'April', 'May'], Summer: ['June', 'July', 'August'],
-    Autumn: ['September', 'October', 'November'], Winter: ['December', 'January', 'February'],
-  };
-  for (let day = 1; day <= 4 * DAYS_PER_SEASON; day++) {
-    const s = seasonOf(day).name, m = calendarDate(day).month;
-    assert.ok(SEASON_MONTHS[s].includes(m), `day ${day}: ${m} should be a ${s} month`);
-  }
 });
 
 test('fmtMoney picks sensible units', () => {

@@ -6,7 +6,7 @@
 // by the events emitted here ('vehicleBought', 'wagonAdded', 'vehicleSold',
 // 'vehicleReplaced', 'moneyFx').
 import { G, emit, spend, earn, fmtMoney } from './state.js';
-import { AGING, VEHICLES, WAGONS, CARGO, ROUTE_COLORS } from './data.js';
+import { AGING, VEHICLES, WAGONS, CARGO, ROUTE_COLORS, VEHICLE_SELL_REFUND } from './data.js';
 import { book } from './finance.js';
 import { isRoad, isRail } from './grid.js';
 import { contractDelivery } from './contracts.js';
@@ -149,12 +149,21 @@ export function purchaseWagon(v, type) {
   return addWagon(v, type);
 }
 
+// what selling this vehicle refunds: VEHICLE_SELL_REFUND of its list price,
+// plus (for trains) the same fraction of every attached wagon's list price.
+// Exported so the UI can show the amount before the player commits.
+export function vehicleSellRefund(v) {
+  let refund = v.def.cost * VEHICLE_SELL_REFUND;
+  if (v.kind === 'train') refund += v.wagons.reduce((a, w) => a + (WAGONS[w.type]?.cost || 0), 0) * VEHICLE_SELL_REFUND;
+  return refund;
+}
+
 export function sellVehicle(v) {
   v.route.vehicles = v.route.vehicles.filter(x => x !== v);
   G.vehicles = G.vehicles.filter(x => x !== v);
-  const tradeIn = v.def.cost * 0.4;
-  earn(tradeIn, 'buyVehicle'); // trade-in credit offsets vehicle capex
-  v.route.spentTotal = Math.max(0, (v.route.spentTotal || 0) - tradeIn); // recover route capex
+  const refund = vehicleSellRefund(v);
+  earn(refund, 'buyVehicle'); // trade-in credit offsets vehicle (+wagon) capex
+  v.route.spentTotal = Math.max(0, (v.route.spentTotal || 0) - refund); // recover route capex
   emit('vehicleSold', v);
 }
 

@@ -3,7 +3,7 @@
 // Clicking either opens the reverse-chronological history modal where the
 // player can 🗑 delete or 📌 keep (pin) past messages — the "let me re-read
 // and curate what I missed" ask. Reads G.news; never contains game rules.
-import { G, calendarDate } from '../../sim/state.js';
+import { G } from '../../sim/state.js';
 import { keepNews, deleteNews, markAllRead, unreadCount } from '../../sim/news.js';
 import { $ } from './dom.js';
 import { openModal } from './modal.js';
@@ -45,9 +45,8 @@ function showTicker(entry) {
   tickerTimer = setTimeout(() => { el.className = ''; }, 12000);
 }
 
-// month alongside the day (WP10 copy polish — the topbar now reads in
-// months, so a bare "Day 14" in a chronological list is the odd one out)
-const fmtWhen = n => `${calendarDate(n.day).month} · Day ${n.day} · ${String(Math.floor((n.minutes / 60) % 24)).padStart(2, '0')}:${String(Math.floor(n.minutes % 60)).padStart(2, '0')}`;
+// plain day count, matching the topbar clock's convention
+const fmtWhen = n => `Day ${n.day} · ${String(Math.floor((n.minutes / 60) % 24)).padStart(2, '0')}:${String(Math.floor(n.minutes % 60)).padStart(2, '0')}`;
 
 function renderList(container) {
   if (!G.news.length) {
@@ -63,7 +62,9 @@ function renderList(container) {
         <div class="news-when dim small">${fmtWhen(n)}</div>
       </div>
       <div class="news-acts">
-        <span class="news-keep" title="${n.kept ? 'Unpin' : 'Keep (never rotates out)'}">${n.kept ? '📌' : '📍'}</span>
+        <span class="news-keep" title="${n.kept
+          ? 'Pinned — this entry is never dropped from the history. Click to unpin.'
+          : 'Pin — the history keeps only the latest 120 entries; a pinned entry is never dropped. Click again to unpin.'}">${n.kept ? '📌' : '📍'}</span>
         <span class="news-del" title="Delete">🗑</span>
       </div>
     </div>`).join('');

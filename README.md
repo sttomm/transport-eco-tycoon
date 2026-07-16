@@ -46,11 +46,15 @@ locked while it runs.
    Freight Depots / Bus Stops next to roads, create routes (🚌 tab → New Route →
    click stations on the map to add stops, click a stop again to remove it),
    buy electric trucks & buses.
-   The routes tab groups routes into collapsible 🚌 Bus / 🚆 Rail / 🚚 Cargo
-   sections (a route's kind follows its stops' station types) with filter
-   chips, and cargo routes can additionally be filtered by the goods they have
-   delivered. Each route only offers the matching vehicle type — a bus route
-   won't sell you a truck.
+   The routes tab lists routes newest-first in collapsible 🚌 Bus / 🚆 Rail /
+   🚚 Cargo sections (a route's kind follows its stops' station types) with
+   filter chips, and cargo routes can additionally be filtered by the goods
+   they have delivered. Each route card collapses to a one-line header —
+   creating a route focuses it and folds the rest away — and shows
+   **yesterday's net balance** (income minus upkeep; lifetime profit in the
+   tooltip). Each route only offers the matching vehicle type — a bus route
+   won't sell you a truck. Vehicles can be sold off a route again for **90%
+   of list price** (💶 in the fleet list).
    Cargo chains: Iron Ore Mine → Green Steel Works → city, Farm → Food Plant → city,
    plus passengers between neighbouring cities (press V to see who wants to go
    where — central towns make natural transfer hubs). Every cargo chain has
@@ -146,9 +150,9 @@ so storage arbitrage becomes the business model. One rule from the EU's 2022
 playbook: a **windfall levy** skims 80% of any price above €100/MWh, so
 flexibility pays but engineered scarcity doesn't.
 
-The calendar runs in **seasons** (the topbar shows the month and year, e.g.
-🗓 August · Y1 — a display view of the 28-day year; hover it for the exact day
-and what the season does). Season sets solar yield, daylight length, wind and
+The calendar runs in **seasons** of 7 days each (the topbar clock counts
+plain days, 🗓 Day 12 — hover it for what the current season does).
+Season sets solar yield, daylight length, wind and
 heating demand — and how often dark calms strike: Dunkelflauten are a winter
 phenomenon and almost never happen in summer.
 
