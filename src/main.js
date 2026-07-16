@@ -41,9 +41,14 @@ initInput();
 // start (sim/newGame.js — shared with the integration tests).
 if (!loadedSave) placeStarterGrid();
 
-// autosave: browser-only concern, so it lives here and not in sim/save.js
-setInterval(saveGame, 10000);           // every 10 real seconds
-addEventListener('pagehide', saveGame); // and when the tab closes
+// autosave: browser-only concern, so it lives here and not in sim/save.js.
+// Suppressed while the welcome screen is open — writing a save for a game the
+// player never started would turn their next visit's tutorial offer into a
+// "Continue game" of nothing (DOM-presence check, same pattern as hud.js
+// keybind suppression).
+const autosave = () => { if (!document.getElementById('welcome')) saveGame(); };
+setInterval(autosave, 10000);           // every 10 real seconds
+addEventListener('pagehide', autosave); // and when the tab closes
 showWelcome(loadedSave);
 
 // ---------- game loop ----------
