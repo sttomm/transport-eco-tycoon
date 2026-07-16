@@ -78,6 +78,10 @@
     display: none; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
     background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
     padding: 8px 10px 10px; backdrop-filter: blur(6px); white-space: nowrap;
+    /* abs-pos shrink-to-fit would resolve against the space right of left:50%
+       (half the narrow bar) and stack the buttons vertically — size to the
+       row's real width instead, wrapping only when the viewport forces it */
+    width: max-content; max-width: calc(100vw - 16px);
   }
   .flyout.open { display: block; }
 
