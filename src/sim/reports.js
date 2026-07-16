@@ -15,6 +15,7 @@ import { LOAN_RATE } from './loans.js';
 import { totalUpkeep } from './energy.js';
 import { REPORT_ALERTS } from './data.js';
 import { happinessFactors } from './cities.js';
+import { isCityServed } from './stations.js';
 import { contractLabel, contractDest } from './contracts.js';
 import { pushNews } from './news.js';
 
@@ -118,6 +119,12 @@ function detectReportEvents(report, prev) {
   const before = name => (prev && prev.cityStats) ? prev.cityStats.find(s => s.name === name) : null;
 
   for (const c of G.cities) {
+    // Only scold/celebrate cities the player actually serves (has a bus stop,
+    // freight depot or train station within reach) — a city with no coverage
+    // yet isn't something the player can act on. Aggregate stats (cityStats,
+    // happiness itself) still cover every city; this only gates which
+    // per-city entries turn into problems/achievements/news.
+    if (!isCityServed(c)) continue;
     const was = before(c.name);
     // problem: happiness fell more than the threshold — name the dominant gap
     if (was && c.happiness < was.happiness - A.happinessDrop) {

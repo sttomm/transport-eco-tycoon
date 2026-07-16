@@ -7,6 +7,7 @@ import { G, resetState, on } from '../src/sim/state.js';
 import { closeDay, trackDay, REPORT_KEEP } from '../src/sim/reports.js';
 import { LOAN_RATE } from '../src/sim/loans.js';
 import { REPORT_ALERTS } from '../src/sim/data.js';
+import { isCityServed, servedCities, STATION_RADIUS } from '../src/sim/stations.js';
 
 beforeEach(() => resetState());
 
@@ -16,6 +17,14 @@ function makeCity(name, over = {}) {
     happiness: 0.6, foodLevel: 0.5, goodsLevel: 0.5, ...over };
 }
 const cityNews = () => G.news.filter(n => n.type === 'city');
+// WP-S: report/news problems & achievements only fire for cities the player
+// actually serves (isCityServed, sim/stations.js) — a station's catchment
+// covers cities within STATION_RADIUS+4 (11 tiles). Drop a minimal fake
+// station right on the city's tile so it counts as served, without needing
+// a full freshWorld()/place() setup.
+function serveCity(c) {
+  G.stations.push({ stype: 'bus', i: c.ci, j: c.cj });
+}
 
 function playDay() {
   G.incomeEnergyToday = 5000;
@@ -132,6 +141,27 @@ test('trackDay accumulates blackout, dunkelflaute, storm and heatwave hours', ()
   assert.equal(G.heatHoursToday, 2);
 });
 
+// ---- isCityServed / servedCities (WP-S) ------------------------------------
+
+test('isCityServed is false with no stations, true once one is within STATION_RADIUS+4', () => {
+  const c = makeCity('Solhaven');
+  G.cities = [c];
+  assert.equal(isCityServed(c), false);
+  G.stations.push({ stype: 'bus', i: c.ci + STATION_RADIUS + 5, j: c.cj }); // just outside
+  assert.equal(isCityServed(c), false);
+  G.stations[0].i = c.ci + STATION_RADIUS; // well within range
+  assert.equal(isCityServed(c), true);
+  assert.deepEqual(servedCities(), [c]);
+});
+
+test('isCityServed counts any station kind (bus, truck, train)', () => {
+  const c = makeCity('Solhaven');
+  for (const stype of ['bus', 'truck', 'train']) {
+    G.stations = [{ stype, i: c.ci, j: c.cj }];
+    assert.equal(isCityServed(c), true, `${stype} stop should count as coverage`);
+  }
+});
+
 // ---- problems & achievements (WP2) -----------------------------------------
 
 test('report card always carries problems & achievements arrays', () => {
@@ -149,6 +179,7 @@ test('day 1 has no baseline, so no happiness diff fires', () => {
 
 test('happiness dropping more than the threshold raises a problem + city news', () => {
   G.cities = [makeCity('Solhaven', { happiness: 0.8 })];
+  serveCity(G.cities[0]);
   closeDay();                       // day 1 baseline (peak 0.8)
   G.day = 2;
   G.cities[0].happiness = 0.8 - REPORT_ALERTS.happinessDrop - 0.05; // clear drop
@@ -162,6 +193,7 @@ test('happiness dropping more than the threshold raises a problem + city news', 
 
 test('a happiness drop AT OR BELOW the threshold does not fire', () => {
   G.cities = [makeCity('Solhaven', { happiness: 0.8 })];
+  serveCity(G.cities[0]);
   closeDay();
   G.day = 2;
   G.cities[0].happiness = 0.8 - REPORT_ALERTS.happinessDrop * 0.5; // small dip
@@ -169,8 +201,22 @@ test('a happiness drop AT OR BELOW the threshold does not fire', () => {
   assert.equal(r.problems.length, 0);
 });
 
+test('a happiness drop in a city with no station coverage raises no problem (WP-S)', () => {
+  G.cities = [makeCity('Solhaven', { happiness: 0.8 })]; // never served — no station pushed
+  closeDay();                       // day 1 baseline (peak 0.8)
+  G.day = 2;
+  G.cities[0].happiness = 0.8 - REPORT_ALERTS.happinessDrop - 0.05; // clear drop, same as the served case above
+  const before = cityNews().length;
+  const r = closeDay();
+  assert.equal(r.problems.length, 0, 'unserved cities stay quiet even on a real happiness drop');
+  assert.equal(cityNews().length, before, 'no city news either');
+  // aggregate stats keep tracking the city regardless of coverage
+  assert.equal(r.cityStats[0].happiness, G.cities[0].happiness);
+});
+
 test('food crossing the supply threshold upward is an achievement', () => {
   G.cities = [makeCity('Solhaven', { foodLevel: REPORT_ALERTS.supplyThreshold - 0.2 })];
+  serveCity(G.cities[0]);
   closeDay();
   G.day = 2;
   G.cities[0].foodLevel = REPORT_ALERTS.supplyThreshold + 0.1; // crossed up
@@ -180,8 +226,18 @@ test('food crossing the supply threshold upward is an achievement', () => {
   assert.equal(cityNews().at(-1).type, 'city');
 });
 
+test('food crossing the supply threshold in an unserved city stays quiet (WP-S)', () => {
+  G.cities = [makeCity('Solhaven', { foodLevel: REPORT_ALERTS.supplyThreshold - 0.2 })];
+  closeDay();
+  G.day = 2;
+  G.cities[0].foodLevel = REPORT_ALERTS.supplyThreshold + 0.1; // crossed up, same as above
+  const r = closeDay();
+  assert.equal(r.achievements.length, 0, 'no station near this city yet, so no achievement');
+});
+
 test('a new happiness high above the celebration floor is an achievement', () => {
   G.cities = [makeCity('Solhaven', { happiness: 0.72 })]; // below happyRecordMin
+  serveCity(G.cities[0]);
   closeDay();                                             // peak 0.72, no record (day1)
   G.day = 2;
   G.cities[0].happiness = 0.9; // new high, above the floor

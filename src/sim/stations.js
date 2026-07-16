@@ -22,6 +22,22 @@ export function stationCatchment(st) {
   return { producers, acceptors, cities };
 }
 
+// Is this city served by ANY placed station (bus stop, freight depot, or
+// train station) — i.e. does it fall in at least one station's catchment?
+// Used to scope per-city report/news noise (reports.js) to cities the player
+// has actually started serving, rather than every city on the map.
+export function isCityServed(c) {
+  for (const st of G.stations) {
+    if (Math.hypot(c.ci - st.i, c.cj - st.j) <= STATION_RADIUS + 4) return true;
+  }
+  return false;
+}
+
+// All cities currently served by at least one station (see isCityServed).
+export function servedCities() {
+  return G.cities.filter(isCityServed);
+}
+
 // which cargo types can be delivered (sold) at this station?
 export function stationAccepts(st) {
   const { acceptors, cities } = stationCatchment(st);
