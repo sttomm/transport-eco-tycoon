@@ -132,6 +132,19 @@ export function makeBallastTexture() {
 }
 
 // ---------- floating text sprites (labels, +€ FX, demand overlay) ----------
+// Dedicated camera layer for these billboards. THREE.Sprite ignores
+// scene.overrideMaterial (it always draws with its own program), so
+// GTAOPass's normal/depth pre-pass — which only hides Points/Line objects,
+// not Sprites — paints each sprite's own color texture straight into its
+// AO input buffer and reads it back as bogus geometry: a camera-angle-
+// dependent dark smudge hovering over every label (most visible on city
+// names, since those are the only always-on sprites). Fix: put every
+// makeTextSprite() sprite on UI_SPRITE_LAYER; postfx.js gives GTAOPass a
+// camera that can't see that layer, so it never touches these at all. The
+// main camera (scene.js) and labels.js's click-raycast both re-enable the
+// layer so the sprites stay visible/clickable exactly as before.
+export const UI_SPRITE_LAYER = 1;
+
 export function makeTextSprite(lines, { color = '#ffffff', size = 2.4, bg = 'rgba(8,14,22,0.74)' } = {}) {
   if (!Array.isArray(lines)) lines = [lines];
   const font = '600 30px "Segoe UI", system-ui, sans-serif';
@@ -153,10 +166,11 @@ export function makeTextSprite(lines, { color = '#ffffff', size = 2.4, bg = 'rgb
   });
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
   const sH = lines.length * size + 0.4;
   sp.scale.set(sH * w / h, sH, 1);
   sp.renderOrder = 50;
+  sp.layers.set(UI_SPRITE_LAYER); // keep off GTAOPass's g-buffer camera (see comment above)
   return sp;
 }
 

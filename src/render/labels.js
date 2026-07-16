@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { G } from '../sim/state.js';
 import { worldXZ, tileY } from '../sim/grid.js';
-import { makeTextSprite } from './meshes.js';
+import { makeTextSprite, UI_SPRITE_LAYER } from './meshes.js';
 import { camera } from './scene.js';
 
 const LABEL_Y = 15;           // world units above ground
@@ -39,8 +39,16 @@ export function updateLabels() {
 
 // input.js's click handler: does this ray hit a city label? Returns the city
 // object (or null). Callers add `.kind = 'city'` themselves, same convention
-// as clicking a cityBlock tile.
+// as clicking a cityBlock tile. Label sprites live on UI_SPRITE_LAYER (see
+// meshes.js — keeps them off GTAOPass's g-buffer camera), which a plain
+// `new THREE.Raycaster()` (input.js's default layer 0 only) can't see by
+// default; enable it here for the intersect test only, then restore the
+// caller's mask so this doesn't leak into whatever else `ray` is used for.
 export function pickCityLabel(ray) {
+  const prevMask = ray.layers.mask;
+  ray.layers.enable(UI_SPRITE_LAYER);
+  ray.camera = camera; // three.js requires this to raycast sprites
   const hit = ray.intersectObjects(labels.map(l => l.sprite))[0];
+  ray.layers.mask = prevMask;
   return hit ? hit.object.userData.city : null;
 }

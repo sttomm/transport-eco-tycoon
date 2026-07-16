@@ -7,6 +7,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { G, hourOfDay, on, season } from '../sim/state.js';
 import { worldXZ } from '../sim/grid.js';
 import { setNightAmount } from './world.js';
+import { UI_SPRITE_LAYER } from './meshes.js';
 
 export let renderer, scene, camera, controls;
 
@@ -26,6 +27,7 @@ export function initScene() {
   scene.fog = new THREE.Fog('#bcd6e8', 380, 1500); // pushed out with the 2× map so the full-map zoom stays readable
 
   camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 4000);
+  camera.layers.enable(UI_SPRITE_LAYER); // see meshes.js: labels/+€/demand-overlay sprites live there too
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(-198, 0, -134); // Solhaven, the starting city

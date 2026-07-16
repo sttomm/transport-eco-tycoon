@@ -9,9 +9,10 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { UI_SPRITE_LAYER } from './meshes.js';
 
 let composer, gtaoPass, bloomPass, tiltH, tiltV;
-let renderer, scene, camera, controls;
+let renderer, scene, camera, controls, aoCamera;
 let enabled = true;
 
 // 9-tap gaussian blur along one axis, ramping up with distance from a
@@ -56,7 +57,16 @@ export function initPostFX(r, s, cam, ctl) {
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
 
-  gtaoPass = new GTAOPass(scene, camera, size.x, size.y);
+  // GTAOPass's normal/depth pre-pass would otherwise paint the city-name/
+  // +€/demand-overlay sprites' own color textures into its g-buffer as if
+  // they were real geometry (Sprites ignore scene.overrideMaterial and the
+  // pass only excludes Points/Line) — a camera-angle-dependent dark smudge
+  // over every label. Give GTAO a camera clone that can't see
+  // UI_SPRITE_LAYER (synced from the real camera every frame below) instead
+  // of patching the vendored pass.
+  aoCamera = camera.clone();
+  aoCamera.layers.disable(UI_SPRITE_LAYER);
+  gtaoPass = new GTAOPass(scene, aoCamera, size.x, size.y);
   gtaoPass.updateGtaoMaterial({
     radius: 1.6,            // world units; tiles are ~2, buildings 2–9 tall
     distanceExponent: 1,
@@ -92,6 +102,13 @@ export const PFX = {}; // live-tuning handle for playtests (DEBUG.PFX)
 const focusV = new THREE.Vector3();
 export function renderPostFX() {
   if (!enabled) { renderer.render(scene, camera); return; }
+  // keep the AO-only camera locked to the real one every frame (position +
+  // projection; OrbitControls/zoom/resize all move/reshape the real camera)
+  aoCamera.position.copy(camera.position);
+  aoCamera.quaternion.copy(camera.quaternion);
+  aoCamera.fov = camera.fov; aoCamera.aspect = camera.aspect;
+  aoCamera.near = camera.near; aoCamera.far = camera.far; aoCamera.zoom = camera.zoom;
+  aoCamera.updateProjectionMatrix();
   // miniature look: sharp band at the camera target, blur grows with zoom-out
   const dist = camera.position.distanceTo(controls.target);
   // WP8: start later and weaker — the old (90, 380)*0.0035 curve blurred the

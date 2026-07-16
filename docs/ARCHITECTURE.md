@@ -256,7 +256,15 @@ the sim and content layers are untouched.
 sun-lit white surfaces (~2.8) or the whole city glows; night window emissive
 (4.5) must stay above it. r185 removed `PCFSoftShadowMap` — its lazy fallback
 leaves compiled materials without shadow lookups, so the renderer must be
-configured with `PCFShadowMap` explicitly.
+configured with `PCFShadowMap` explicitly. `THREE.Sprite` ignores
+`scene.overrideMaterial`, so text sprites used to paint their color texture
+straight into GTAO's normal/depth g-buffer, producing camera-angle-dependent
+dark smudges over city labels. Every `makeTextSprite()` sprite therefore
+lives on `UI_SPRITE_LAYER` (layer 1, `meshes.js`); the main camera enables
+that layer, while `postfx.js` feeds GTAO a cloned `aoCamera` with the layer
+disabled (synced to the real camera every frame). Any future billboard sprite
+must go on that layer too, and raycasts against labels must go through
+`labels.js#pickCityLabel` (enables the layer + sets `ray.camera`).
 
 ### 16. glTF assets from scripted Blender (graphics phase 2)
 **Decision:** Real 3D models replace the box geometry incrementally, one type

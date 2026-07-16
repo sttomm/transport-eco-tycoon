@@ -174,8 +174,13 @@ function disposeOverlay() {
 // ---------- route highlight (while editing / hovering a route) ----------
 let hlGroup = null, hlSig = '', hlPulse = 0;
 const vehRings = [];
+// addable-station markers (ring + light beam + bouncing gem), rebuilt in
+// rebuildHl() alongside hlGroup; animated per-frame in updateRouteHighlight()
+// since their bob/spin needs a stable per-marker Y baseline, not just opacity
+let addMarkers = [];
 
 function disposeHl() {
+  addMarkers = [];
   if (!hlGroup) return;
   hlGroup.traverse(o => {
     if (o.geometry) o.geometry.dispose();
@@ -264,23 +269,53 @@ function rebuildHl(r) {
     tag.position.set(x, tileY(st.i, st.j) + 6.5, z);
     hlGroup.add(tag);
   });
-  // while EDITING: pulsing green rings over stations you can still add — those
-  // matching this route's kind (a kindless empty route accepts any) and not yet
-  // a stop. Teaches "click these to add them" (WP5). Read-only view of state.
+  // while EDITING: a big, hard-to-miss marker over stations you can still
+  // add — those matching this route's kind (a kindless empty route accepts
+  // any) and not yet a stop. Teaches "click these to add them" (WP5).
+  // Three parts, all sharing one bright green identity but each reading
+  // differently so it pops from any camera distance: a large pulsing ring on
+  // the ground, a translucent light-beam column standing over the station
+  // (visible over rooftops/trees from across the map), and a small gem that
+  // bounces + spins at the top of the beam. Distinct from the thin per-
+  // vehicle rings (routeColor-tinted, radius 1.6, ground-hugging) and the
+  // per-stop order rings (radius 2.0, no beam/gem) elsewhere in this
+  // function. Read-only view of state.
   if (r === G.routeEdit) {
     const rk = routeKind(r);
-    const addMat = new THREE.MeshBasicMaterial({ color: '#8fe89a', transparent: true, opacity: 0.8, depthWrite: false });
-    addMat.userData = { pulse: true };
-    const addGeo = new THREE.TorusGeometry(2.5, 0.16, 6, 28).rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({ color: '#9dffc0', transparent: true, opacity: 0.85, depthWrite: false });
+    ringMat.userData = { pulse: true, base: 0.7, amp: 0.3 }; // 0.4–1.0: much stronger swing than the route line's 0.3–0.8
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: '#8fe89a', transparent: true, opacity: 0.3, depthWrite: false,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    });
+    beamMat.userData = { pulse: true, base: 0.32, amp: 0.16, speed: 0.6 }; // slower, softer glow
+    const gemMat = new THREE.MeshBasicMaterial({ color: '#eafff2' });
+    const ringGeo = new THREE.TorusGeometry(3.2, 0.26, 8, 32).rotateX(-Math.PI / 2); // was 2.5/0.16 — bigger, thicker
+    const beamGeo = new THREE.CylinderGeometry(0.22, 0.65, 9, 10, 1, true); // open-ended: no cap disc to read wrong side-on
+    const gemGeo = new THREE.OctahedronGeometry(0.7, 0);
     for (const st of G.stations) {
       if (r.stops.includes(st)) continue;
       const sk = st.stype === 'bus' ? 'bus' : st.stype === 'train' ? 'rail' : 'cargo';
       if (rk && sk !== rk) continue; // non-matching kind: not addable to this route
       const [x, z] = worldXZ(st.i, st.j);
-      const ring = new THREE.Mesh(addGeo, addMat);
-      ring.position.set(x, tileY(st.i, st.j) + 0.35, z);
+      const baseY = tileY(st.i, st.j);
+
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.set(x, baseY + 0.4, z);
       ring.renderOrder = 20;
       hlGroup.add(ring);
+
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.set(x, baseY + 5, z); // spans ~ground+0.5 to ground+9.5
+      beam.renderOrder = 19;
+      hlGroup.add(beam);
+
+      const gemBaseY = baseY + 10;
+      const gem = new THREE.Mesh(gemGeo, gemMat);
+      gem.position.set(x, gemBaseY, z);
+      gem.renderOrder = 21;
+      hlGroup.add(gem);
+      addMarkers.push({ gem, baseY: gemBaseY });
     }
   }
   scene.add(hlGroup);
@@ -295,7 +330,22 @@ function updateRouteHighlight(dt) {
   if (!r) { for (const ring of vehRings) ring.visible = false; return; }
   hlPulse += dt * 3.5;
   const op = 0.55 + Math.sin(hlPulse) * 0.25;
-  if (hlGroup) hlGroup.traverse(o => { if (o.material && o.material.userData && o.material.userData.pulse) o.material.opacity = op; });
+  // each pulsing material can override the base/amplitude/speed of the swing
+  // (the add-station ring/beam pulse harder and slower than this default —
+  // see rebuildHl) so they read as more urgent than the route line itself
+  if (hlGroup) hlGroup.traverse(o => {
+    const ud = o.material && o.material.userData;
+    if (!ud || !ud.pulse) return;
+    o.material.opacity = ud.base === undefined
+      ? op
+      : ud.base + Math.sin(hlPulse * (ud.speed ?? 1)) * ud.amp;
+  });
+  // bounce + spin the addable-station gems (beam/ring pulse via the material
+  // loop above; the gem needs its own per-frame transform, not just opacity)
+  for (const m of addMarkers) {
+    m.gem.position.y = m.baseY + Math.sin(hlPulse * 1.6) * 0.9;
+    m.gem.rotation.y += dt * 2.2;
+  }
   // glowing rings under the route's vehicles
   ensureVehRings();
   const col = new THREE.Color(routeColor(r));
