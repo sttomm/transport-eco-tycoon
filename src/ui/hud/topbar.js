@@ -105,10 +105,11 @@ export function updateTopbar() {
   const pop = Math.floor(G.cities.reduce((a, c) => a + c.pop, 0));
   $('pop').textContent = `👥 ${pop.toLocaleString()}`;
   $('co2').textContent = `🌍 ${G.co2SavedTons.toFixed(0)} t CO₂ avoided`;
-  // storage minis
+  // storage minis — the H₂ half gets its own span (.zero while no H₂ infra
+  // exists) so the narrow-viewport CSS can drop it without touching battery
   $('storemini').innerHTML =
     `🔋 ${pct(G.batteryMWh, G.batteryCapMWh)} <span class="dim">${G.batteryMWh.toFixed(0)}/${G.batteryCapMWh.toFixed(0)} MWh</span>` +
-    ` &nbsp; 🫧 ${pct(G.h2MWh, G.h2CapMWh)} <span class="dim">${G.h2MWh.toFixed(0)}/${G.h2CapMWh.toFixed(0)} MWh</span>`;
+    `<span class="h2mini${G.h2CapMWh > 0 ? '' : ' zero'}"> &nbsp; 🫧 ${pct(G.h2MWh, G.h2CapMWh)} <span class="dim">${G.h2MWh.toFixed(0)}/${G.h2CapMWh.toFixed(0)} MWh</span></span>`;
   updateWeatherBanner();
 }
 const pct = (v, c) => c > 0 ? Math.round(v / c * 100) + '%' : '—';
@@ -120,9 +121,14 @@ function updateWeatherBanner() {
   const el = $('weatherbanner');
   // the topbar wraps to two lines on narrower viewports (it grew a price
   // ticker) — anchor the under-topbar overlays to its real height
-  const tbH = $('topbar').offsetHeight + 'px';
-  el.style.top = tbH;
-  $('toolhint').style.top = tbH;
+  const tbH = $('topbar').offsetHeight;
+  el.style.top = tbH + 'px';
+  $('toolhint').style.top = tbH + 'px';
+  // the right rail + side panel too, else a wrapped topbar overlaps them
+  // (never above their stylesheet default of 52px, so desktop is unchanged)
+  const railTop = Math.max(52, tbH + 6) + 'px';
+  $('tabbtns').style.top = railTop;
+  $('sidepanel').style.top = railTop;
   const f = G.weatherFront;
   if (!f) { el.style.display = 'none'; return; }
   el.style.display = 'block';

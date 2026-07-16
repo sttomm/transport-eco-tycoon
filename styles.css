@@ -323,6 +323,17 @@
      full-width scrollable bottom sheet — locks/tooltips/selection are
      untouched because nothing but the CSS position changes */
   @media (max-width: 920px) {
+    /* topbar: keep money · clock · speed · buttons · power · price · storage;
+       drop the ambience stats (sun %, wind, season, pop, CO₂ — all still in
+       tooltips/dashboard). Wind stays while it carries an event badge
+       (DUNKELFLAUTE/HEATWAVE) — that warning must survive on phones. */
+    #topbar { gap: 4px 12px; padding: 6px 10px; }
+    #solarstat, #season, #pop, #co2 { display: none; }
+    #windstat:not(:has(.blink)) { display: none; }
+    #gridstat ~ .sep { display: none; }         /* seps of the hidden groups */
+    #storemini .dim { display: none; }          /* fill % only, no MWh detail */
+    #storemini .h2mini.zero { display: none; }  /* no H₂ infrastructure yet */
+
     #toolbar { display: none; }
     #toolbar.sheet-open {
       display: flex; flex-wrap: wrap; justify-content: center; overflow-y: auto;

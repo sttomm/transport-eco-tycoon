@@ -587,7 +587,14 @@ negative event days; a thorough player ends ~+130-155% in cash **plus** the
 infrastructure. Trade-off: the fossil-free endgame is intentionally hard —
 decommissioning gas before firm clean capacity exists now hurts (keeping the
 plant idle is the smart bridge), which mirrors reality's capacity-reserve
-debates.
+debates. The harness is checked in as `tools/policy-runs.mjs`
+(`node tools/policy-runs.mjs`): six scripted 30-day policies (passive,
+winter-start passive, bus line, freight chain, express rail, contract
+chasing) run headless through the real `tickSim` pipeline and print a
+comparison table — re-run it after any economy rebalance instead of tuning
+by feel. Its weather draws are unseeded (`Math.random`), so cross-scenario
+end-money deltas need the built-in multi-seed averaging; isolated route P&L
+(`route.earnedTotal − spentTotal`) is the weather-independent signal.
 
 ### 31. Graphics phase 3 — the approved Board 07 look (detailed assets + living landscape)
 **Decision:** rebuild every model at much higher detail and give the world a
@@ -891,6 +898,22 @@ selected-tool highlight are identical in both layouts by construction.
 Picking (or clearing) a tool auto-closes the sheet (`selectTool()`). Also:
 `#sidepanel`'s fixed `width: 360px` became `min(360px, calc(100vw - 12px))`
 so it never overflows a narrow viewport.
+
+**Amendment (responsive topbar):** the same 920 px breakpoint now also slims
+`#topbar`, which at phone widths wrapped into four colliding rows. Below
+920 px the ambience stats are hidden (`#solarstat`, `#season`, `#pop`,
+`#co2` — all still reachable via tooltips and the dashboard), `#storemini`
+drops its MWh detail (`.dim`) and drops the H₂ half entirely while no H₂
+infrastructure exists (`updateTopbar()` wraps it in `.h2mini`, adding `.zero`
+when `h2CapMWh` is 0), and the now-orphaned separators after `#gridstat` go
+too. Exception: `#windstat:not(:has(.blink))` — wind is hidden *unless* it
+carries a live DUNKELFLAUTE/HEATWAVE badge, because that warning must survive
+on phones. What remains is money · clock · speeds · panel buttons · power ·
+price · battery. Since the topbar can still wrap to two rows,
+`updateWeatherBanner()` (which already re-anchored `#toolhint` and
+`#weatherbanner` to the topbar's real height) now also anchors `#tabbtns`
+and `#sidepanel` at `max(52px, topbar height + 6px)` — desktop keeps its
+stylesheet 52 px, wrapped layouts push the right rail below the bar.
 
 **Decision (tutorial restyle):** `ui/tutorial.js` now renders its step icon,
 progress bar and reward line with the WP5 shared tokens (`.icon-chip`,
