@@ -76,7 +76,9 @@ time; a missed deadline costs nothing but the bonus.
 day — income, expenses, net, CO₂, blackout/curtailment — with one advisor
 sentence on the biggest issue (blackouts > gas losses > weather > curtailment).
 The 📊 dashboard keeps a "Yesterday" block with the full breakdown; the last
-7 days are stored in the save.
+7 days are stored in the save. Per-city problems and achievements only
+surface for cities you actually serve (a bus stop, freight depot or rail
+station in range) — the towns you haven't reached yet don't scold you.
 
 **Fleet aging:** vehicles are cheap to run while young; past ~10 days of
 service their upkeep creeps up (to 3× at worst) and EV packs lose usable
@@ -88,6 +90,11 @@ on a route and the depot renews aged vehicles overnight.
 **1% interest per game day**, repay whenever you have the cash. Renewables are
 capital-intensive — all the cost is upfront and the fuel is free — so cheap
 early leverage can pay for itself, but standing debt eats your margin.
+
+**Building:** the bottom bar shows compact categories (🚆 Transport ·
+⚡ Generation · 🔋 Storage · Bulldoze); click one to fan out that category's
+buildings, click a building to arm the placement tool (Escape or a click
+elsewhere closes the flyout).
 
 **Progression:** the build palette grows with you — rail unlocks after your
 first freight chain, the hydrogen chain after you've mastered batteries, the
