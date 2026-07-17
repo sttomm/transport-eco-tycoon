@@ -57,13 +57,27 @@ export function buildToolbar() {
     flyout.className = 'flyout';
     flyout.dataset.flyoutfor = cat;
     flyout.innerHTML = `<div class="toolgroup-label">${label}</div>`;
+    // scroller = [◀ arrow] [horizontally-scrolling row] [▶ arrow]. On desktop
+    // the row never overflows and the arrows stay hidden (CSS); on a narrow
+    // viewport the row scrolls and the arrows appear only on the side that has
+    // more buildings to reveal (updateFlyArrows).
+    const scroller = document.createElement('div');
+    scroller.className = 'flyscroll';
+    const left = document.createElement('button');
+    left.className = 'flyarrow left'; left.innerHTML = '‹'; left.setAttribute('aria-label', 'Scroll left');
     const row = document.createElement('div');
     row.className = 'toolrow';
     for (const [id, def] of Object.entries(BUILDINGS)) {
       if (def.category !== cat || def.legacy || STANDALONE.has(id)) continue;
       row.appendChild(makeToolButton(id, def));
     }
-    flyout.appendChild(row);
+    const right = document.createElement('button');
+    right.className = 'flyarrow right'; right.innerHTML = '›'; right.setAttribute('aria-label', 'Scroll right');
+    left.onclick = () => row.scrollBy({ left: -row.clientWidth * 0.8, behavior: 'smooth' });
+    right.onclick = () => row.scrollBy({ left: row.clientWidth * 0.8, behavior: 'smooth' });
+    row.addEventListener('scroll', () => updateFlyArrows(flyout));
+    scroller.append(left, row, right);
+    flyout.appendChild(scroller);
     bar.appendChild(flyout);
   }
 
@@ -97,8 +111,26 @@ function makeToolButton(id, def) {
 
 function toggleFlyout(cat) {
   openCat = openCat === cat ? null : cat;
-  document.querySelectorAll('.flyout').forEach(f => f.classList.toggle('open', f.dataset.flyoutfor === openCat));
+  document.querySelectorAll('.flyout').forEach(f => {
+    const open = f.dataset.flyoutfor === openCat;
+    f.classList.toggle('open', open);
+    // arrows can only be measured once the flyout is displayed; a just-opened
+    // row starts scrolled to 0, so this shows the ▶ arrow when it overflows
+    if (open) updateFlyArrows(f);
+  });
   document.querySelectorAll('.cat').forEach(b => b.classList.toggle('open', b.dataset.cat === openCat));
+}
+
+// Reveal a scroll arrow only when the row can actually move that way — the ▶
+// arrow while more buildings sit past the right edge, ◀ once the player has
+// scrolled away from the start. A row that fits (desktop) can move neither
+// way, so both stay hidden.
+function updateFlyArrows(flyout) {
+  const row = flyout.querySelector('.toolrow');
+  if (!row) return;
+  const maxScroll = row.scrollWidth - row.clientWidth;
+  flyout.querySelector('.flyarrow.left').classList.toggle('show', row.scrollLeft > 2);
+  flyout.querySelector('.flyarrow.right').classList.toggle('show', row.scrollLeft < maxScroll - 2);
 }
 function closeFlyout() {
   openCat = null;

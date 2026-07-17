@@ -84,6 +84,11 @@
     width: max-content; max-width: calc(100vw - 16px);
   }
   .flyout.open { display: block; }
+  .flyscroll { display: flex; align-items: stretch; gap: 4px; }
+  /* horizontal scroll arrows for the building row — hidden until a narrow
+     viewport makes the row overflow (updateFlyArrows toggles .show) */
+  .flyarrow { display: none; align-items: center; padding: 0 8px; font-size: 22px; line-height: 1; flex: 0 0 auto; }
+  .flyarrow.show { display: flex; }
 
   /* narrow-viewport "🔨 Build" button (ADR 38) — hidden on desktop; the
      matching #toolbar rules live in the responsive block at the bottom */
@@ -360,11 +365,39 @@
     #storemini .h2mini.zero { display: none; }  /* no H₂ infrastructure yet */
 
     #toolbar { display: none; }
+    /* column-reverse: DOM order is [catbar, …flyouts], so reversing paints the
+       open flyout's building ROW above the category bar — exactly what the
+       player expects to appear when they tap a category. No overflow clip
+       here (it used to hide the abs-positioned flyout); the row itself scrolls
+       horizontally instead of wrapping. */
     #toolbar.sheet-open {
-      display: flex; flex-wrap: wrap; justify-content: center; overflow-y: auto;
+      display: flex; flex-direction: column-reverse; align-items: stretch; gap: 10px;
       position: absolute; left: 0; right: 0; bottom: 0; transform: none;
-      width: 100%; max-height: 60vh; max-width: none;
-      border-radius: 14px 14px 0 0; padding: 12px 12px 16px;
+      width: 100%; max-width: none;
+      border-radius: 14px 14px 0 0; padding: 12px 10px 16px;
     }
+    #toolbar.sheet-open .catbar { flex-wrap: nowrap; justify-content: space-between; gap: 6px; }
+    #toolbar.sheet-open .catbar > * { flex: 1 1 0; min-width: 0; }
+    /* flyout drops its desktop pop-over positioning and sits in the column */
+    #toolbar.sheet-open .flyout {
+      /* width:100% (not auto) — a block-level flex item with width:auto sizes to
+         its content and refuses to shrink, so the row would overflow the sheet
+         instead of scrolling. A definite 100% pins it to the sheet width. */
+      position: static; transform: none; width: 100%; max-width: none; min-width: 0;
+      border: none; background: none; padding: 0; backdrop-filter: none;
+    }
+    #toolbar.sheet-open .toolrow {
+      flex: 1 1 0; min-width: 0; /* shrink below content so overflow-x can scroll */
+      flex-wrap: nowrap; overflow-x: auto; scroll-behavior: smooth;
+      /* NOT center (inherited from the ≤1200px rule): centered flex content
+         overflows on both edges and can't be scrolled to — pin it to the start */
+      justify-content: flex-start;
+      scrollbar-width: none; /* arrows are the affordance, hide the native bar */
+    }
+    #toolbar.sheet-open .toolrow::-webkit-scrollbar { display: none; }
+    #toolbar.sheet-open .toolrow .tool { flex: 0 0 auto; }
     #buildbtn { display: block; }
+    /* the Build button toggles the sheet — while it's open the sheet's own
+       catbar replaces it, so hide the floating button to stop it overlapping */
+    #toolbar.sheet-open ~ #buildbtn { display: none; }
   }

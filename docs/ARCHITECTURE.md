@@ -907,6 +907,26 @@ Picking (or clearing) a tool auto-closes the sheet (`selectTool()`). Also:
 `#sidepanel`'s fixed `width: 360px` became `min(360px, calc(100vw - 12px))`
 so it never overflows a narrow viewport.
 
+**Amendment (bottom-sheet flyouts):** once the toolbar became two-layer
+(compact category bar + a per-category flyout, WP-B), the sheet's original
+`overflow-y: auto` silently *clipped* the flyout — the flyout is
+absolutely positioned *above* the bar on desktop, so on a phone tapping a
+category opened a building row that was painted outside the scroll box and
+appeared to do nothing. The fix drops the clip and re-lays the sheet as a
+`flex-direction: column-reverse` stack: DOM order is `[catbar, …flyouts]`, so
+reversing paints the open category's building row *above* the category bar —
+what the player expects. On mobile the flyout goes `position: static`,
+`width: 100%` (a block-level flex item with `width: auto` sizes to content and
+won't shrink, overflowing the sheet), and its `.toolrow` scrolls horizontally
+(`overflow-x: auto`, `flex-wrap: nowrap`, `justify-content: flex-start` — NOT
+the `center` inherited from the ≤1200 px rule, which makes centred content
+overflow both edges and become unscrollable). Two `.flyarrow` buttons flank
+the row; `updateFlyArrows()` shows each only when the row can scroll that way
+(right when more buildings sit past the edge, left once scrolled off the
+start). The arrows are `display: none` on desktop, where the row never
+overflows. The floating `#buildbtn` is hidden while the sheet is open
+(`#toolbar.sheet-open ~ #buildbtn`) so it no longer overlaps the category bar.
+
 **Amendment (responsive topbar):** the same 920 px breakpoint now also slims
 `#topbar`, which at phone widths wrapped into four colliding rows. Below
 920 px the ambience stats are hidden (`#solarstat`, `#season`, `#pop`,
