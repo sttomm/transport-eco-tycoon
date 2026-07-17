@@ -89,6 +89,12 @@ export function buildToolbar() {
   // close the open flyout on an outside click or Escape; only one open at a time
   document.addEventListener('click', e => { if (openCat && !bar.contains(e.target)) closeFlyout(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && openCat) closeFlyout(); });
+  // the scroll arrows depend on how much of the row fits, which changes with
+  // the viewport (a resize, or a phone rotating) — recompute them for the open
+  // flyout, since nothing else fires when the width changes under a static row
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.flyout.open').forEach(updateFlyArrows);
+  });
 
   updateToolbarLocks();
 }

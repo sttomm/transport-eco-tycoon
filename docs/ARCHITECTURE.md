@@ -926,6 +926,10 @@ the row; `updateFlyArrows()` shows each only when the row can scroll that way
 start). The arrows are `display: none` on desktop, where the row never
 overflows. The floating `#buildbtn` is hidden while the sheet is open
 (`#toolbar.sheet-open ~ #buildbtn`) so it no longer overlaps the category bar.
+Arrow visibility also recomputes on `window.resize` (`updateFlyArrows` over the
+open flyout) — nothing else fires when the viewport narrows under an already-open
+row, so without it a phone rotating (or a responsive-mode resize) would keep
+stale arrows until the flyout was re-opened.
 
 **Amendment (responsive topbar):** the same 920 px breakpoint now also slims
 `#topbar`, which at phone widths wrapped into four colliding rows. Below
